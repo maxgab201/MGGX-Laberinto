@@ -109,6 +109,15 @@ class PlayerStats(private val save: SaveData) {
     /** Color de la luz de la antorcha en ARGB. */
     val lightTint: Long = ItemCatalog.get(save.cosmeticLight)?.effect?.color ?: 0xFFFFC58AL
 
+    // --- skin del personaje
+    private val skinItem = ItemCatalog.get(save.cosmeticSkin)
+    /** Color de la piel de las manos, en ARGB. */
+    val skinTint: Long = skinItem?.effect?.color ?: 0xFF95664FL
+    /** Color del traje / manga, en ARGB. */
+    val suitTint: Long = skinItem?.effect?.color2 ?: 0xFF60422AL
+    /** Indice de skin (0..5): el shader lo usa para los detalles propios. */
+    val skinStyle: Int = (skinItem?.effect?.magnitude ?: 0f).toInt()
+
     companion object {
         const val BASE_WALK = 3.2f
         const val BASE_HEALTH = 100f

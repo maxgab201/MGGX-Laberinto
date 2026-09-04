@@ -98,7 +98,8 @@ enum class EffectType {
 
     // --- cosmeticos
     COS_GUANTES,
-    COS_TINTE_LUZ
+    COS_TINTE_LUZ,
+    COS_PIEL            // skin del personaje: piel + traje
 }
 
 data class ItemEffect(
@@ -109,8 +110,10 @@ data class ItemEffect(
     val duration: Float = 0f,
     /** Cargas otorgadas (para objetos de uso contado). */
     val charges: Int = 0,
-    /** Color asociado (cosmeticos de luz), formato ARGB. */
-    val color: Long = 0L
+    /** Color asociado (cosmeticos de luz y piel de la skin), formato ARGB. */
+    val color: Long = 0L,
+    /** Segundo color (traje de la skin), formato ARGB. */
+    val color2: Long = 0L
 )
 
 data class ShopItem(

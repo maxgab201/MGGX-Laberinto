@@ -90,6 +90,7 @@ object ItemText {
 
             EffectType.COS_GUANTES -> "Cambia como se ven tus manos"
             EffectType.COS_TINTE_LUZ -> "Cambia el color de tu luz"
+            EffectType.COS_PIEL -> "Cambia tu piel y tu traje"
         }
     }
 

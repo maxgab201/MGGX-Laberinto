@@ -375,7 +375,36 @@ object MazeGenerator {
         val chestCount = (1 + level / 8).coerceIn(1, 5)
         val trapCount = if (level < 3) 0 else (area * 0.012f * (1f + level / 45f)).toInt().coerceIn(1, 60)
         val torchCount = (area * 0.05f).toInt().coerceIn(4, 90)
-        val stalagCount = (area * 0.07f).toInt().coerceIn(4, 130)
+        // Cada bioma se puebla distinto: en la mina hay entibado por todos
+        // lados y casi ninguna estalagmita; en el bosque de esporas al reves.
+        val densStalag = when (theme.biome) {
+            Biome.MINA -> 0.40f
+            Biome.RUINAS -> 0.55f
+            Biome.TEMPLO -> 0.35f
+            Biome.HONGOS -> 0.60f
+            Biome.CUEVA -> 1f
+        }
+        val densViga = when (theme.biome) {
+            Biome.MINA -> 2.6f
+            Biome.RUINAS -> 0.35f
+            Biome.TEMPLO -> 0.25f
+            Biome.HONGOS -> 0.5f
+            Biome.CUEVA -> 1f
+        }
+        val densHongo = when (theme.biome) {
+            Biome.HONGOS -> 3.2f
+            Biome.RUINAS -> 1.4f
+            Biome.MINA -> 0.5f
+            Biome.TEMPLO -> 0.3f
+            Biome.CUEVA -> 1f
+        }
+        val densCristal = when (theme.biome) {
+            Biome.TEMPLO -> 1.8f
+            Biome.RUINAS -> 0.6f
+            Biome.MINA -> 0.5f
+            else -> 1f
+        }
+        val stalagCount = (area * 0.07f * densStalag).toInt().coerceIn(4, 130)
 
         val coins = take(coinCount)
         val bigCoins = take(bigCount)
@@ -411,9 +440,9 @@ object MazeGenerator {
         // te deja tirado.
         val carbideCount = (1 + area / 260).coerceIn(1, 8)
         val carbide = take(carbideCount)
-        val crystalClusters = take((area * 0.030f).toInt().coerceIn(3, 70))
+        val crystalClusters = take((area * 0.030f * densCristal).toInt().coerceIn(3, 70))
         val rocks = take((area * 0.045f).toInt().coerceIn(4, 90))
-        val mushrooms = take((area * 0.025f).toInt().coerceIn(3, 60))
+        val mushrooms = take((area * 0.025f * densHongo).toInt().coerceIn(3, 80))
         // Los marcos de madera solo entran en pasillos rectos: si no, quedan
         // clavados en el aire.
         val pasillos = open.filter { gi ->
@@ -426,7 +455,7 @@ object MazeGenerator {
             (horizontal || vertical) && gi != startI && gi != exitI
         }.toMutableList()
         pasillos.shuffle(rnd)
-        val beams = pasillos.take((area * 0.02f).toInt().coerceIn(2, 40))
+        val beams = pasillos.take((area * 0.02f * densViga).toInt().coerceIn(2, 60))
 
         // --- bichos
         val enemies = spawnEnemies(maze, level, rnd, distFromStart, take((3 + level / 2).coerceAtMost(26)))

@@ -311,6 +311,8 @@ uniform vec3 uCloth;
 uniform float uBrightness;
 uniform float uTime;
 uniform int uStyle;
+// Skin del personaje: agrega su propio detalle sobre el traje.
+uniform int uSkinStyle;
 
 out vec4 fragColor;
 
@@ -356,6 +358,29 @@ void main() {
         // Cristal vivo: brillo que late
         float p = 0.5 + 0.5 * sin(uTime * 2.4 + vViewPos.y * 12.0);
         base = mix(base, vec3(0.60, 0.92, 1.0), 0.35 + 0.25 * p);
+    }
+
+    // Detalle propio de la skin, encima del guante.
+    if (uSkinStyle == 1) {
+        // Veterano: la casaca esta remendada con parches mas oscuros.
+        float parche = step(0.72, hash(floor(vViewPos.xy * 17.0)));
+        base = mix(base, base * 0.68, parche * (1.0 - t));
+    } else if (uSkinStyle == 2) {
+        // Tecnico: bandas reflectantes en la manga.
+        float banda = step(0.80, fract(vViewPos.y * 9.0 + 0.5));
+        base = mix(base, vec3(0.94, 0.94, 0.86), banda * (1.0 - t) * 0.85);
+    } else if (uSkinStyle == 3) {
+        // Ceniza: polvo gris que apaga los brillos.
+        base *= 0.86;
+    } else if (uSkinStyle == 4) {
+        // Vetagris: la piel tiene vetas que brillan apenas.
+        float veta = smoothstep(0.88, 1.0, hash(floor(vViewPos.xy * 33.0)));
+        base = mix(base, vec3(0.78, 0.90, 1.0), veta * t * 0.9);
+    } else if (uSkinStyle == 5) {
+        // Esporas: puntitos bioluminiscentes que laten.
+        float pl = 0.5 + 0.5 * sin(uTime * 1.8 + vViewPos.x * 21.0);
+        float pt = smoothstep(0.90, 1.0, hash(floor(vViewPos.xy * 29.0)));
+        base = mix(base, vec3(0.55, 1.0, 0.70), pt * (0.35 + 0.45 * pl));
     }
 
     // Las manos siempre llevan algo de luz propia: son lo mas cercano a la

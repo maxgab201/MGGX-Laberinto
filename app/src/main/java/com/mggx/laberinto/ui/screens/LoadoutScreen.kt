@@ -286,8 +286,25 @@ private fun Cosmetics(save: SaveData, refreshKey: Int, onChanged: () -> Unit, on
     val lights = remember(refreshKey) {
         ItemCatalog.ofKind(ItemKind.COSMETICO).filter { it.effect.type == EffectType.COS_TINTE_LUZ }
     }
+    val skins = remember(refreshKey) {
+        ItemCatalog.ofKind(ItemKind.COSMETICO).filter { it.effect.type == EffectType.COS_PIEL }
+    }
 
     Row(Modifier.fillMaxSize()) {
+        Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
+            SectionTitle("Quien sos")
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "La skin te cambia la piel y el traje que se te ven al bajar.",
+                style = MaterialTheme.typography.bodyMedium, color = Cave.TextFaint
+            )
+            Spacer(Modifier.height(10.dp))
+            skins.forEach { item ->
+                CosmeticRow(item, save, save.cosmeticSkin == item.id, onChanged, onMessage)
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+        Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
             SectionTitle("Manos")
             Spacer(Modifier.height(10.dp))
@@ -314,8 +331,11 @@ private fun CosmeticRow(
     onChanged: () -> Unit, onMessage: (String) -> Unit
 ) {
     val owned = save.isOwned(item.id)
-    val accent = if (item.effect.type == EffectType.COS_TINTE_LUZ)
-        Color(item.effect.color) else ItemText.rarityAccent(item.rarity)
+    val accent = when (item.effect.type) {
+        EffectType.COS_TINTE_LUZ -> Color(item.effect.color)
+        EffectType.COS_PIEL -> Color(item.effect.color2)
+        else -> ItemText.rarityAccent(item.rarity)
+    }
     Box(
         Modifier
             .fillMaxWidth()

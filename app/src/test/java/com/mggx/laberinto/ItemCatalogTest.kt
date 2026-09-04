@@ -33,9 +33,12 @@ class ItemCatalogTest {
 
     @Test
     fun ningunObjetoTieneElMismoEfectoQueOtro() {
-        // Cada objeto es unico en (tipo, magnitud, duracion, cargas, color).
+        // Cada objeto es unico en (tipo, magnitud, duracion, cargas, colores).
         val firmas = ItemCatalog.all.map {
-            listOf(it.effect.type, it.effect.magnitude, it.effect.duration, it.effect.charges, it.effect.color)
+            listOf(
+                it.effect.type, it.effect.magnitude, it.effect.duration,
+                it.effect.charges, it.effect.color, it.effect.color2
+            )
         }
         val repetidos = firmas.groupBy { it }.filter { it.value.size > 1 }
         assertTrue("efectos duplicados: $repetidos", repetidos.isEmpty())
@@ -101,7 +104,9 @@ class ItemCatalogTest {
         for (i in ItemCatalog.ofKind(ItemKind.COSMETICO)) {
             assertTrue(
                 "cosmetico con efecto de juego: ${i.id}",
-                i.effect.type == EffectType.COS_GUANTES || i.effect.type == EffectType.COS_TINTE_LUZ
+                i.effect.type == EffectType.COS_GUANTES ||
+                    i.effect.type == EffectType.COS_TINTE_LUZ ||
+                    i.effect.type == EffectType.COS_PIEL
             )
         }
     }

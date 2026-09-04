@@ -2,6 +2,7 @@ package com.mggx.laberinto.gl
 
 import android.opengl.GLES30
 import com.mggx.laberinto.maze.CaveTheme
+import com.mggx.laberinto.maze.Patron
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
@@ -145,7 +146,86 @@ object ProcTextures {
         return ((ridged - 0.90f) / 0.10f).coerceIn(0f, 1f)
     }
 
-    private fun height(layer: Int, u: Float, v: Float, per: Int, seed: Int, rough: Float): Float {
+    /**
+     * Pared de sillares: bloques rectangulares trabados, con la junta de
+     * mortero hundida y cada bloque con su propio desgaste.
+     *
+     * Para que cierre sin costura el numero de FILAS tiene que ser par: si no,
+     * la traba de media pieza no coincide al dar la vuelta a la baldosa.
+     */
+    private fun sillar(u: Float, v: Float, per: Int, seed: Int): Float {
+        var filas = periodo(per, 0.8f)
+        if (filas % 2 != 0) filas++
+        val cols = periodo(per, 0.45f)
+        val fy = v * filas
+        val fila = floor(fy).toInt()
+        val traba = if (((fila % 2) + 2) % 2 == 0) 0f else 0.5f
+        val fx = u * cols + traba
+        val dx = fx - floor(fx)
+        val dy = fy - floor(fy)
+        val borde = min(min(dx, 1f - dx), min(dy, 1f - dy))
+        val mortero = 1f - smoothstep(0.028f, 0.105f, borde)
+
+        val cx = ((floor(fx).toInt() % cols) + cols) % cols
+        val cy = ((fila % filas) + filas) % filas
+        val pieza = hash2(cx, cy, seed + 313)
+        val desgaste = fbm(u * per, v * per, 4, per, seed + 41)
+        var h = 0.58f + pieza * 0.17f + desgaste * 0.25f
+        h -= mortero * 0.44f
+        h -= crackMask(u, v, per, seed + 88) * 0.16f
+        return h.coerceIn(0f, 1f)
+    }
+
+    /** Entibado de madera: tablas horizontales con veta y juntas marcadas. */
+    private fun madera(u: Float, v: Float, per: Int, seed: Int): Float {
+        val tablas = periodo(per, 0.55f)
+        val fy = v * tablas
+        val idx = floor(fy).toInt()
+        val dy = fy - floor(fy)
+        val junta = 1f - smoothstep(0f, 0.075f, min(dy, 1f - dy))
+
+        // La veta corre a lo largo de la tabla; tiene que dar un numero entero
+        // de ciclos por baldosa o se corta en la union.
+        val ciclos = periodo(per, 2.4f)
+        val onda = 0.5f + 0.5f * kotlin.math.sin(
+            u * ciclos * 2.0 * Math.PI +
+                fbm(u * per, v * per, 3, per, seed + idx * 17) * 9.0
+        ).toFloat()
+        val nudo = 1f - worley(u * periodo(per, 1.1f), v * periodo(per, 1.1f), periodo(per, 1.1f), seed + 611)
+        // Cada tabla arranca de un tono propio: es lo que hace que un entibado
+        // no se lea como una pared lisa.
+        val tono = hash2(0, ((idx % tablas) + tablas) % tablas, seed + 733)
+        var h = 0.34f + tono * 0.26f + onda * 0.30f + nudo * 0.20f
+        h -= junta * 0.52f
+        return contraste(h.coerceIn(0f, 1f), 1.30f)
+    }
+
+    /** Pared viva: bultos redondeados y poros, sin ninguna arista recta. */
+    private fun organico(u: Float, v: Float, per: Int, seed: Int): Float {
+        val pBultos = periodo(per, 0.55f)
+        val bultos = 1f - worley(u * pBultos, v * pBultos, pBultos, seed + 55)
+        val pPoros = periodo(per, 1.8f)
+        val poros = worley(u * pPoros, v * pPoros, pPoros, seed + 91)
+        val suave = fbm(u * periodo(per, 0.9f), v * periodo(per, 0.9f), 4, periodo(per, 0.9f), seed + 7)
+        // Los poros se hunden de verdad: si solo se suman, la pared queda plana.
+        var h = bultos * 0.52f + suave * 0.28f + 0.20f
+        h -= smoothstep(0.62f, 0.95f, poros) * 0.34f
+        return contraste(h.coerceIn(0f, 1f), 1.25f)
+    }
+
+    private fun height(
+        layer: Int, u: Float, v: Float, per: Int, seed: Int, rough: Float,
+        patron: Patron = Patron.ROCA
+    ): Float {
+        // Las paredes labradas tienen su propio relieve; el piso, el techo y las
+        // vetas siguen siendo roca en todos los biomas.
+        if (layer == LAYER_WALL && patron != Patron.ROCA) {
+            return when (patron) {
+                Patron.SILLAR -> sillar(u, v, per, seed)
+                Patron.MADERA -> madera(u, v, per, seed)
+                else -> organico(u, v, per, seed)
+            }
+        }
         return when (layer) {
             LAYER_WALL -> {
                 val base = fbm(u * per, v * per, 5, per, seed)
@@ -254,7 +334,7 @@ object ProcTextures {
                 val v = y.toFloat() / size
                 for (x in 0 until size) {
                     val u = x.toFloat() / size
-                    h[y * size + x] = height(layer, u, v, per, seed, theme.roughness)
+                    h[y * size + x] = height(layer, u, v, per, seed, theme.roughness, theme.patron)
                 }
             }
 

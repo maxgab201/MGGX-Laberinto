@@ -117,6 +117,24 @@ class CaveRenderer(
     private var shapeCylinder: InstancedShape? = null
     private var shapeArrow: InstancedShape? = null
     /** Vigas y travesanos de madera. */
+    /**
+     * Pasa un color ARGB de la interfaz al espacio lineal que usa el shader.
+     * Sin esto los trajes se ven lavados, porque el shader ya hace su propia
+     * correccion de gamma al final.
+     */
+    private fun sRgbLineal(argb: Long): FloatArray {
+        fun canal(v: Int): Float {
+            val c = v / 255f
+            return if (c <= 0.04045f) c / 12.92f
+            else Math.pow(((c + 0.055f) / 1.055f).toDouble(), 2.4).toFloat()
+        }
+        return floatArrayOf(
+            canal(((argb shr 16) and 0xFF).toInt()),
+            canal(((argb shr 8) and 0xFF).toInt()),
+            canal((argb and 0xFF).toInt())
+        )
+    }
+
     /** Direccion en la que mira la camara este frame (para la linterna). */
     private var camDirX = 0f
     private var camDirY = 0f
@@ -574,19 +592,49 @@ class CaveRenderer(
             }
         }
 
-        // --- estalagmitas (suelo) y estalactitas (techo)
+        // --- relleno del suelo y del techo: cada bioma pone lo suyo
         for (gi in s.stalagmites) {
             val gx = gi % m.gw; val gy = gi / m.gw
             val x = (gx + 0.5f) * C; val z = (gy + 0.5f) * C
             if (!near(x, z)) continue
             val h = 0.42f + ((gx * 7 + gy * 13) % 7) * 0.13f
             val t = s.theme
-            if ((gx + gy) % 2 == 0) {
-                cone.add(x, WorldMesh.floorHeight(s.maze, gx, gy), z, h, t.rockR * 1.15f, t.rockG * 1.15f, t.rockB * 1.15f, 0f,
-                    ((gx * 31 + gy * 17) % 20) * 0.31f, 0f, 0f, 1f)
-            } else {
-                coneD.add(x, WorldMesh.ceilHeight(s.maze, gx, gy), z, h * 0.78f, t.rockR * 0.95f, t.rockG * 0.95f, t.rockB * 0.95f, 0f,
-                    ((gx * 13 + gy * 29) % 20) * 0.31f, 0f, 0f, 1f)
+            val fy = WorldMesh.floorHeight(s.maze, gx, gy)
+            val giro = ((gx * 31 + gy * 17) % 20) * 0.31f
+            when (t.biome) {
+                com.mggx.laberinto.maze.Biome.MINA -> {
+                    // Durmientes y riel de la vagoneta.
+                    shapeSlab?.add(x, fy + 0.05f, z, C * 0.55f, 0.30f, 0.22f, 0.15f, 0.01f,
+                        if ((gx + gy) % 2 == 0) 0f else 1.5708f, 0f, 0f, 1f)
+                    shapeSlab?.add(x, fy + 0.12f, z, C * 0.30f, 0.36f, 0.30f, 0.26f, 0.02f,
+                        if ((gx + gy) % 2 == 0) 1.5708f else 0f, 0f, 0f, 1f)
+                }
+                com.mggx.laberinto.maze.Biome.RUINAS,
+                com.mggx.laberinto.maze.Biome.TEMPLO -> {
+                    // Fuste de columna partido, con su basa cuadrada.
+                    val alto = 0.55f + ((gx * 5 + gy * 3) % 5) * 0.32f
+                    boxS.add(x, fy + 0.07f, z, 0.72f, t.rockR * 1.1f, t.rockG * 1.1f, t.rockB * 1.1f, 0f, giro, 0f, 0f, 1f)
+                    cyl.add(x, fy + 0.12f, z, alto * 2.6f, t.rockR * 1.18f, t.rockG * 1.16f, t.rockB * 1.12f, 0f, giro, 0f, 0f, 1f)
+                    if (t.biome == com.mggx.laberinto.maze.Biome.TEMPLO) {
+                        gem.add(x, fy + 0.12f + alto * 2.6f, z, 0.13f, t.veinR, t.veinG, t.veinB, 0.75f, giro, 0f, 0f, 1f)
+                    }
+                }
+                com.mggx.laberinto.maze.Biome.HONGOS -> {
+                    // Hongo gigante: tronco grueso y sombrero que alumbra.
+                    val alto = 0.9f + ((gx * 11 + gy * 7) % 6) * 0.22f
+                    cyl.add(x, fy, z, alto * 2.2f, 0.66f, 0.62f, 0.52f, 0.02f, giro, 0f, 0f, 1f)
+                    coneD.add(x, fy + alto * 2.2f + 0.30f, z, 0.62f, 0.52f, 0.92f, 0.66f, 0.75f, giro, 0f, 0f, 1f)
+                    gem.add(x, fy + alto * 2.2f + 0.10f, z, 0.14f, 0.60f, 1.0f, 0.75f, 1.05f, giro, gx.toFloat(), 1f, 1f)
+                }
+                com.mggx.laberinto.maze.Biome.CUEVA -> {
+                    if ((gx + gy) % 2 == 0) {
+                        cone.add(x, fy, z, h, t.rockR * 1.15f, t.rockG * 1.15f, t.rockB * 1.15f, 0f, giro, 0f, 0f, 1f)
+                    } else {
+                        coneD.add(x, WorldMesh.ceilHeight(s.maze, gx, gy), z, h * 0.78f,
+                            t.rockR * 0.95f, t.rockG * 0.95f, t.rockB * 0.95f, 0f,
+                            ((gx * 13 + gy * 29) % 20) * 0.31f, 0f, 0f, 1f)
+                    }
+                }
             }
         }
 
@@ -647,7 +695,8 @@ class CaveRenderer(
                 val rr = 0.34f + k * 0.16f
                 val hx = x + cos(ang.toDouble()).toFloat() * rr
                 val hz = z + sin(ang.toDouble()).toFloat() * rr
-                val alto = 0.16f + ((gx + gy + k) % 4) * 0.05f
+                val porte = if (th.biome == com.mggx.laberinto.maze.Biome.HONGOS) 2.2f else 1f
+                val alto = (0.16f + ((gx + gy + k) % 4) * 0.05f) * porte
                 cyl.add(hx, fy, hz, alto * 2.2f, 0.72f, 0.68f, 0.58f, 0.02f, 0f, 0f, 0f, 1f)
                 gem.add(hx, fy + alto * 2.1f, hz, 0.11f + k * 0.02f,
                     0.52f, 0.95f, 0.72f, 0.85f, 0f, ang, 0f, 1f)
@@ -988,21 +1037,15 @@ class CaveRenderer(
             GLES30.glGetUniformLocation(p, "uAmbient"),
             t.ambientR + ambBoost, t.ambientG + ambBoost, t.ambientB + ambBoost
         )
+        // El guante decide el DETALLE (malla, ceniza, gema...) y la skin decide
+        // los colores de la piel y del traje. Son dos cosmeticos distintos y se
+        // combinan libremente.
         val style = s.stats.gloveStyle
-        val skin = when (style) {
-            2 -> floatArrayOf(0.32f, 0.27f, 0.25f)
-            4 -> floatArrayOf(0.64f, 0.57f, 0.52f)
-            else -> floatArrayOf(0.58f, 0.42f, 0.32f)
-        }
-        val cloth = when (style) {
-            1 -> floatArrayOf(0.36f, 0.37f, 0.40f)
-            2 -> floatArrayOf(0.19f, 0.17f, 0.17f)
-            3 -> floatArrayOf(0.40f, 0.28f, 0.17f)
-            4 -> floatArrayOf(0.44f, 0.52f, 0.58f)
-            else -> floatArrayOf(0.38f, 0.26f, 0.16f)
-        }
+        val skin = sRgbLineal(s.stats.skinTint)
+        val cloth = sRgbLineal(s.stats.suitTint)
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uSkin"), skin[0], skin[1], skin[2])
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uCloth"), cloth[0], cloth[1], cloth[2])
+        GLES30.glUniform1i(GLES30.glGetUniformLocation(p, "uSkinStyle"), s.stats.skinStyle)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uBrightness"), brightness)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uTime"), time)
         GLES30.glUniform1i(GLES30.glGetUniformLocation(p, "uStyle"), style)

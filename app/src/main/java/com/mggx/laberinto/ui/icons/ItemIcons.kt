@@ -470,6 +470,14 @@ fun drawItemIcon(p: Pen, id: IconId): Boolean {
         IconId.TINTE_CALIDO -> drawTint(p, Color(0xFFFFC58A))
         IconId.TINTE_AMBAR -> drawTint(p, Color(0xFFFFB25E))
         IconId.TINTE_VERDE -> drawTint(p, Color(0xFF7BF0A8))
+        // ------------------------------------------------ skins del personaje
+        IconId.SKIN_MINERO -> drawSkin(p, Color(0xFF95664F), Color(0xFF60422A), 0)
+        IconId.SKIN_VETERANO -> drawSkin(p, Color(0xFF7E5A46), Color(0xFF5C6068), 1)
+        IconId.SKIN_TECNICO -> drawSkin(p, Color(0xFF6B4A38), Color(0xFFA83B32), 2)
+        IconId.SKIN_CENIZA -> drawSkin(p, Color(0xFF6E6660), Color(0xFF2A2724), 3)
+        IconId.SKIN_VETAGRIS -> drawSkin(p, Color(0xFFB8C2CC), Color(0xFF6E8496), 4)
+        IconId.SKIN_ESPORA -> drawSkin(p, Color(0xFF86B08A), Color(0xFF33543C), 5)
+
         // ------------------------------------------------ poderes
         IconId.LINTERNA -> {
             // Cuerpo de linterna de carburo con el haz saliendo.
@@ -542,6 +550,46 @@ fun drawItemIcon(p: Pen, id: IconId): Boolean {
         else -> return false
     }
     return true
+}
+
+/**
+ * Retrato de la skin: busto con casco, con el color de la piel y el del traje,
+ * y una marca distinta para cada una asi no se confunden nunca.
+ */
+private fun drawSkin(p: Pen, piel: Color, traje: Color, marca: Int) {
+    // Hombros
+    p.fill(traje) { m(3.4f, 21.4f); c(3.4f, 16.4f, 7.4f, 14.4f, 12f, 14.4f); c(16.6f, 14.4f, 20.6f, 16.4f, 20.6f, 21.4f); z() }
+    // Cuello y cara
+    p.fill(piel) { m(9.6f, 12.4f); l(14.4f, 12.4f); l(14.4f, 15.4f); l(9.6f, 15.4f); z() }
+    p.dot(12f, 9.4f, 3.6f, piel)
+    // Casco
+    p.fill(traje) { m(7.8f, 9.2f); c(7.8f, 4.4f, 16.2f, 4.4f, 16.2f, 9.2f); l(16.2f, 9.8f); l(7.8f, 9.8f); z() }
+    p.seg(6.6f, 9.8f, 17.4f, 9.8f, traje, 1.5f)
+
+    when (marca) {
+        0 -> p.dot(12f, 7.4f, 1.15f, Color(0xFFFFD27A))              // lampara de carburo
+        1 -> {                                                        // remiendos
+            p.seg(5.4f, 18.4f, 8.4f, 18.4f, piel.copy(alpha = 0.5f), 1.3f)
+            p.seg(15.6f, 19.4f, 18.6f, 19.4f, piel.copy(alpha = 0.5f), 1.3f)
+        }
+        2 -> {                                                        // bandas reflectantes
+            p.seg(4.4f, 19.2f, 19.6f, 19.2f, Color(0xFFF2F0DC), 1.5f)
+            p.seg(4.6f, 21.2f, 19.4f, 21.2f, Color(0xFFF2F0DC), 1.1f)
+        }
+        3 -> {                                                        // ceniza al viento
+            p.dot(6.4f, 16.4f, 0.75f, Color(0xFF8A837C))
+            p.dot(17.4f, 17.4f, 0.65f, Color(0xFF8A837C))
+            p.dot(9.4f, 20.4f, 0.55f, Color(0xFF8A837C))
+        }
+        4 -> {                                                        // vetas minerales
+            p.line(Color(0xFFDCE8F2), 1.1f) { m(9.6f, 11.4f); l(11f, 8.4f); l(12.6f, 10.4f); l(14.4f, 7.6f) }
+        }
+        else -> {                                                     // esporas
+            p.dot(8.6f, 17.4f, 0.85f, Color(0xFF8CFFB4))
+            p.dot(15.4f, 18.6f, 0.75f, Color(0xFF8CFFB4))
+            p.dot(12f, 20.4f, 0.65f, Color(0xFF8CFFB4))
+        }
+    }
 }
 
 private fun drawTint(p: Pen, c: Color) {

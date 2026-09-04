@@ -49,6 +49,8 @@ class SaveData private constructor(private val store: Store) {
 
     var cosmeticGloves: String = "cos_guantes_cuero"; private set
     var cosmeticLight: String = "cos_luz_calida"; private set
+    /** Skin del personaje: define la piel y el traje que se ven en primera persona. */
+    var cosmeticSkin: String = "skin_minero"; private set
 
     // --- estadisticas
     var totalRuns: Int = 0; private set
@@ -192,6 +194,7 @@ class SaveData private constructor(private val store: Store) {
         when (item.effect.type) {
             com.mggx.laberinto.game.EffectType.COS_GUANTES -> cosmeticGloves = id
             com.mggx.laberinto.game.EffectType.COS_TINTE_LUZ -> cosmeticLight = id
+            com.mggx.laberinto.game.EffectType.COS_PIEL -> cosmeticSkin = id
             else -> return
         }
         save()
@@ -328,6 +331,7 @@ class SaveData private constructor(private val store: Store) {
         ecos = 0; vetagris = 0; maxLevel = 1; currentLevel = 1
         owned.clear(); stock.clear(); equippedRelics.clear(); loadout.clear()
         cosmeticGloves = "cos_guantes_cuero"; cosmeticLight = "cos_luz_calida"
+        cosmeticSkin = "skin_minero"
         totalRuns = 0; totalWins = 0; totalDeaths = 0; totalEcosGanados = 0
         bestTimeMs = 0; totalPlayMs = 0; totalSteps = 0; levelsSinceVetagris = 0
         exploredLevel = 0; exploredMask = ""
@@ -346,6 +350,7 @@ class SaveData private constructor(private val store: Store) {
         root.put("curLevel", currentLevel)
         root.put("gloves", cosmeticGloves)
         root.put("light", cosmeticLight)
+        root.put("skin", cosmeticSkin)
         root.put("owned", JSONObject(owned as Map<*, *>))
         root.put("stock", JSONObject(stock as Map<*, *>))
         root.put("relics", JSONArray(equippedRelics))
@@ -392,6 +397,7 @@ class SaveData private constructor(private val store: Store) {
             currentLevel = root.optInt("curLevel", 1).coerceIn(1, maxLevel)
             cosmeticGloves = root.optString("gloves", "cos_guantes_cuero")
             cosmeticLight = root.optString("light", "cos_luz_calida")
+            cosmeticSkin = root.optString("skin", "skin_minero")
             exploredLevel = root.optInt("expLevel", 0)
             exploredMask = root.optString("expMask", "")
 

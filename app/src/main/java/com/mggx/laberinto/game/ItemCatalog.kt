@@ -3,7 +3,7 @@ package com.mggx.laberinto.game
 import com.mggx.laberinto.ui.icons.IconId
 
 /**
- * Catalogo completo de la tienda: 69 objetos, todos con un efecto propio.
+ * Catalogo completo de la tienda: 75 objetos, todos con un efecto propio.
  * No hay dos entradas que compartan (EffectType, magnitud, duracion).
  * La consistencia se verifica en los tests unitarios.
  */
@@ -343,6 +343,43 @@ object ItemCatalog {
             ItemKind.COSMETICO, Rarity.LEGENDARIO, Currency.VETAGRIS, 6,
             ItemEffect(EffectType.COS_GUANTES, 4f), IconId.BRAZALETE, unlockLevel = 30))
 
+        // --- skins del personaje: cambian la piel y el traje que se te ven
+        add(ShopItem("skin_minero", "Minero de Turno",
+            "El mameluco de lona marron con el que baja todo el mundo la primera vez.",
+            ItemKind.COSMETICO, Rarity.COMUN, Currency.ECOS, 0,
+            ItemEffect(EffectType.COS_PIEL, 0f, color = 0xFF95664FL, color2 = 0xFF60422AL),
+            IconId.SKIN_MINERO))
+
+        add(ShopItem("skin_veterano", "Veterano de la Sima",
+            "Piel curtida de tanta humedad y una casaca gris remendada mil veces.",
+            ItemKind.COSMETICO, Rarity.COMUN, Currency.ECOS, 260,
+            ItemEffect(EffectType.COS_PIEL, 1f, color = 0xFF7E5A46L, color2 = 0xFF5C6068L),
+            IconId.SKIN_VETERANO, unlockLevel = 5))
+
+        add(ShopItem("skin_tecnico", "Espeleologo Tecnico",
+            "Traje rojo de rescate, el que se ve de lejos aunque no haya luz.",
+            ItemKind.COSMETICO, Rarity.RARO, Currency.ECOS, 520,
+            ItemEffect(EffectType.COS_PIEL, 2f, color = 0xFF6B4A38L, color2 = 0xFFA83B32L),
+            IconId.SKIN_TECNICO, unlockLevel = 12))
+
+        add(ShopItem("skin_ceniza", "Hijo de la Ceniza",
+            "Piel gris de polvo volcanico y traje negro que se confunde con la roca.",
+            ItemKind.COSMETICO, Rarity.EPICO, Currency.ECOS, 780,
+            ItemEffect(EffectType.COS_PIEL, 3f, color = 0xFF6E6660L, color2 = 0xFF2A2724L),
+            IconId.SKIN_CENIZA, unlockLevel = 20))
+
+        add(ShopItem("skin_vetagris", "Tocado por el Vetagris",
+            "El mineral te fue tomando la piel. Brilla apenas, como la veta.",
+            ItemKind.COSMETICO, Rarity.LEGENDARIO, Currency.VETAGRIS, 5,
+            ItemEffect(EffectType.COS_PIEL, 4f, color = 0xFFB8C2CCL, color2 = 0xFF6E8496L),
+            IconId.SKIN_VETAGRIS, unlockLevel = 26))
+
+        add(ShopItem("skin_espora", "Portador de Esporas",
+            "El bosque de hongos se te metio en el cuerpo y ahora alumbras vos.",
+            ItemKind.COSMETICO, Rarity.LEGENDARIO, Currency.VETAGRIS, 7,
+            ItemEffect(EffectType.COS_PIEL, 5f, color = 0xFF86B08AL, color2 = 0xFF33543CL),
+            IconId.SKIN_ESPORA, unlockLevel = 32))
+
         add(ShopItem("cos_luz_calida", "Luz Calida",
             "El naranja de siempre de una antorcha honesta.",
             ItemKind.COSMETICO, Rarity.COMUN, Currency.ECOS, 0,
@@ -376,7 +413,7 @@ object ItemCatalog {
         ofKind(kind).filter { it.unlockLevel <= maxLevelReached }
 
     /** Objetos que el jugador tiene de arranque, sin pagar. */
-    val defaultsOwned = listOf("cos_guantes_cuero", "cos_luz_calida")
+    val defaultsOwned = listOf("cos_guantes_cuero", "cos_luz_calida", "skin_minero")
 
     const val RELIC_SLOTS = 3
 }
