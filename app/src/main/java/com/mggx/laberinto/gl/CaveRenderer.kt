@@ -68,6 +68,8 @@ class CaveRenderer(
     @Volatile var session: GameSession? = null
         private set
     private val pending = ConcurrentLinkedQueue<GameSession>()
+    /** Se perdio el contexto de GL y hay que rearmar el nivel que ya estaba. */
+    @Volatile private var needsRebuild = false
     @Volatile var ready = false
         private set
     @Volatile var fps = 0f
@@ -142,7 +144,20 @@ class CaveRenderer(
 
     // ------------------------------------------------------------- API
 
-    fun setSession(s: GameSession) { pending.add(s) }
+    /**
+     * Encola un nivel nuevo. Marca ready = false hasta que el hilo de GL lo
+     * levante y arme su malla: si no, la pantalla de carga se iba de una en el
+     * segundo nivel y el juego arrancaba mostrando todavia el nivel anterior.
+     *
+     * Tambien vacia la cola: si quedo algun nivel encolado sin levantar, tiene
+     * que quedar descartado, nunca pisar al que se pide ahora.
+     */
+    fun setSession(s: GameSession) {
+        ready = false
+        soundOut.clear()
+        pending.clear()
+        pending.add(s)
+    }
 
     // ------------------------------------------------------ ciclo de vida
 
@@ -172,13 +187,17 @@ class CaveRenderer(
         // El contexto de GL se puede perder (pantalla apagada, cambio de app).
         // Cuando vuelve hay que rehacer texturas y malla desde cero, si no
         // queda todo en negro.
+        //
+        // Se marca con una bandera y NO se vuelve a encolar la partida: en la
+        // cola puede haber un nivel mas nuevo esperando, y reencolar el viejo
+        // lo dejaria ganar el cambio y el jugador entraria al nivel anterior.
         albedoTex = 0
         normalTex = 0
         texturedTheme = null
         worldIndexCount = 0
         lastFrameNs = 0L
         ready = false
-        session?.let { pending.add(it) }
+        needsRebuild = session != null
     }
 
     override fun onSurfaceChanged(unused: GL10?, w: Int, h: Int) {
@@ -200,7 +219,8 @@ class CaveRenderer(
             GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
             return
         }
-        if (swapped) {
+        if (swapped || needsRebuild) {
+            needsRebuild = false
             prepareLevel(s)
             lastFrameNs = 0L
             lastPhase = GameSession.Phase.JUGANDO
@@ -445,7 +465,7 @@ class CaveRenderer(
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uVeinPulse"), 0.055f)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uBrightness"), brightness)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uTime"), time)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uNormalStrength"), if (save.settings.quality >= 2) 1f else 0.6f)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uNormalStrength"), if (save.settings.quality >= 2) 1.35f else 0.7f)
         GLES30.glUniform1i(GLES30.glGetUniformLocation(p, "uQuality"), save.settings.quality)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSonarRange"), if (s.isSonarOn()) s.sonarRange() else 0f)
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uSonarColor"), 0.35f, 0.85f, 1.0f)

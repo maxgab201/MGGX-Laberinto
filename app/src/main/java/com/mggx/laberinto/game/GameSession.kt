@@ -20,9 +20,21 @@ import kotlin.random.Random
 class GameSession(
     val save: SaveData,
     val level: Int,
-    seed: Long = System.nanoTime()
+    seed: Long = seedForLevel(level)
 ) {
     companion object {
+        /**
+         * Semilla fija por nivel: el nivel 7 es siempre el mismo laberinto, con
+         * los mismos ecos y las mismas trampas. Si cambiara en cada intento,
+         * "Reintentar" no seria reintentar el nivel sino jugar otro distinto.
+         */
+        fun seedForLevel(level: Int): Long {
+            var z = level.toLong() * -0x61c8864680b583ebL + 0x9e3779b97f4a7c15uL.toLong()
+            z = (z xor (z ushr 30)) * -0x40a7b892e31b1a47L
+            z = (z xor (z ushr 27)) * -0x6b2fb644ecceee15L
+            return z xor (z ushr 31)
+        }
+
         /** Lado de una casilla de la grilla, en metros. */
         const val CELL = 3.0f
         const val WALL_HEIGHT = 3.4f
@@ -201,10 +213,13 @@ class GameSession(
 
     fun distanceToExit(): Float = hypot(exitWorldX - posX, exitWorldZ - posZ)
 
-    /** Angulo (grados) desde el frente del jugador hacia la salida. */
+    /**
+     * Cuanto tenes que girar para quedar de frente a la salida, en grados.
+     * Positivo = la salida esta a tu derecha; negativo = a tu izquierda.
+     */
     fun bearingToExit(): Float {
         val ang = Math.toDegrees(atan2((exitWorldX - posX).toDouble(), (exitWorldZ - posZ).toDouble())).toFloat()
-        var d = ang - yawDeg
+        var d = yawDeg - ang
         while (d > 180f) d -= 360f
         while (d < -180f) d += 360f
         return d
@@ -270,7 +285,9 @@ class GameSession(
 
         // --- camara
         val lookMul = effects.multiplier(EffectType.GIRO_RAPIDO)
-        yawDeg = normalizeAngle(yawDeg + input.lookX * lookMul)
+        // Con frente = (sin yaw, cos yaw), subir el yaw gira hacia la izquierda,
+        // asi que arrastrar hacia la derecha tiene que RESTAR.
+        yawDeg = normalizeAngle(yawDeg - input.lookX * lookMul)
         pitchDeg = (pitchDeg + input.lookY * lookMul).coerceIn(-82f, 82f)
 
         // --- movimiento
@@ -331,9 +348,11 @@ class GameSession(
         val yawRad = Math.toRadians(yawDeg.toDouble())
         val fx = sin(yawRad).toFloat()
         val fz = cos(yawRad).toFloat()
-        // Derecha = frente rotado 90 grados
-        val rx = fz
-        val rz = -fx
+        // Derecha de la PANTALLA = frente x arriba, que es exactamente el vector
+        // lateral que arma Matrix.setLookAtM. Con el signo al reves el personaje
+        // se movia para el lado contrario al que empujabas el joystick.
+        val rx = -fz
+        val rz = fx
 
         var dx = fx * input.moveY + rx * input.moveX
         var dz = fz * input.moveY + rz * input.moveX

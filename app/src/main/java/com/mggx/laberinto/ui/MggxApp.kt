@@ -99,8 +99,11 @@ fun MggxApp(
             renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
         }
     }
-    DisposableEffect(Unit) {
-        onDispose { glView.onPause() }
+    // El hilo de OpenGL solo corre mientras se esta jugando. Sin esto seguia
+    // dibujando (y gastando bateria) en el lobby y en la tienda.
+    DisposableEffect(screen) {
+        if (screen == Screen.JUEGO) glView.onResume() else glView.onPause()
+        onDispose { }
     }
 
     // Resolucion interna: dibujar a menos pixeles y estirar es la forma mas
@@ -126,6 +129,10 @@ fun MggxApp(
     // ------------------------------------------------------------- acciones
     fun startLevel(level: Int) {
         if (loading) return
+        // El nivel a jugar queda fijado aca y no en cada lugar que llama:
+        // antes se ignoraba el parametro y se leia save.currentLevel, asi que
+        // cualquier llamada que se olvidara de fijarlo arrancaba otro nivel.
+        save.setCurrentLevel(level)
         loading = true
         paused = false
         input.paused = true
@@ -140,9 +147,11 @@ fun MggxApp(
             session = s
             renderer.setSession(s)
             audio.setTrack(CaveAudio.Track.CUEVA, s.theme)
-            // Espera a que el renderer termine de armar la geometria del nivel.
+            // Espera a que el renderer levante el nivel y arme su malla.
+            // El tope de 8 segundos es solo por las dudas: si el hilo de GL no
+            // arranca, es mejor entrar igual que quedarse colgado en la carga.
             var guard = 0
-            while (!renderer.ready && guard < 400) { delay(16); guard++ }
+            while (!renderer.ready && guard < 500) { delay(16); guard++ }
             delay(120)
             input.paused = false
             pad.inGame = true
@@ -257,7 +266,7 @@ fun MggxApp(
             // La superficie 3D solo existe mientras se juega.
             if (screen == Screen.JUEGO) {
                 AndroidView(
-                    factory = { glView.apply { onResume() } },
+                    factory = { glView },
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -265,7 +274,7 @@ fun MggxApp(
             when (screen) {
                 Screen.LOBBY -> LobbyScreen(
                     save = save, refreshKey = refresh,
-                    onPlay = { lvl -> save.setCurrentLevel(lvl); startLevel(lvl) },
+                    onPlay = { lvl -> startLevel(lvl) },
                     onShop = { screen = Screen.TIENDA },
                     onLoadout = { screen = Screen.EQUIPO },
                     onSettings = { screen = Screen.AJUSTES },
@@ -321,9 +330,9 @@ fun MggxApp(
                             won = r.won, level = r.level,
                             colorBlindMode = save.settings.colorBlindMode,
                             reward = r.reward,
-                            timeMs = r.timeMs, steps = r.steps, nextLevel = save.currentLevel,
-                            onNext = { startLevel(save.currentLevel) },
-                            onRetry = { save.setCurrentLevel(r.level); startLevel(r.level) },
+                            timeMs = r.timeMs, steps = r.steps, nextLevel = r.nextLevel,
+                            onNext = { startLevel(r.nextLevel) },
+                            onRetry = { startLevel(r.level) },
                             onLobby = { screen = Screen.LOBBY; refresh++ },
                             onShop = { screen = Screen.TIENDA; refresh++ }
                         )

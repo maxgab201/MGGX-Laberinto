@@ -76,19 +76,35 @@ vec3 applyNormalMap(vec3 n, vec3 mapN) {
 }
 
 void main() {
+    vec3 toLight = uCamPos - vWorld;
+    float dist = length(toLight);
+    vec3 L = toLight / max(dist, 0.0001);
+
     vec4 alb = texture(uAlbedo, vec3(vUv, vLayer));
     vec3 baseColor = alb.rgb;
     float veinMask = alb.a;
 
-    vec3 n = normalize(vNormal);
-    if (uQuality > 0) {
-        vec3 mapN = texture(uNormalMap, vec3(vUv, vLayer)).rgb;
-        n = applyNormalMap(n, mapN);
+    if (uQuality > 1) {
+        // La misma textura, muy estirada, modula el brillo de a manchones
+        // grandes. Es lo que rompe la repeticion cada 3 metros, que era lo
+        // que mas cantaba a la vista.
+        float macro = texture(uAlbedo, vec3(vUv * 0.143 + vec2(0.37, 0.71), vLayer)).g;
+        baseColor *= (0.70 + 0.60 * macro);
+
+        // Grano fino que solo se nota de cerca: a lo lejos se apaga para que
+        // no titile con el mipmap.
+        float cerca = 1.0 - clamp(dist / 7.0, 0.0, 1.0);
+        float fino = texture(uAlbedo, vec3(vUv * 5.3, vLayer)).r;
+        baseColor *= mix(1.0, 0.80 + 0.40 * fino, cerca * 0.55);
     }
 
-    vec3 toLight = uCamPos - vWorld;
-    float dist = length(toLight);
-    vec3 L = toLight / max(dist, 0.0001);
+    vec3 n = normalize(vNormal);
+    float altura = 0.5;
+    if (uQuality > 0) {
+        vec4 nm = texture(uNormalMap, vec3(vUv, vLayer));
+        n = applyNormalMap(n, nm.rgb);
+        altura = nm.a;
+    }
 
     // Atenuacion suave con corte en el radio de la antorcha
     float x = clamp(1.0 - dist / max(uLightRadius, 0.001), 0.0, 1.0);
@@ -97,9 +113,14 @@ void main() {
     float ndl = max(dot(n, L), 0.0);
     vec3 diffuse = uLightColor * ndl * atten;
 
-    // Especular barato: la roca humeda brilla un poco
-    vec3 h = normalize(L + L);
-    float spec = pow(max(dot(n, h), 0.0), 24.0) * atten * 0.16;
+    // La antorcha va pegada al ojo, asi que el vector medio del especular es la
+    // propia luz. Las hondonadas de la roca juntan humedad y brillan mas que
+    // los salientes, que estan secos.
+    // Ojo: smoothstep exige edge0 < edge1. Al reves es indefinido en GLSL ES y
+    // en algunos drivers devuelve una constante, con lo que el brillo de
+    // humedad desaparecia sin dar ningun error.
+    float humedad = 1.0 - smoothstep(0.05, 0.62, altura);
+    float spec = pow(max(dot(n, L), 0.0), 30.0) * atten * (0.05 + 0.34 * humedad);
 
     vec3 color = baseColor * (uAmbient + diffuse) * vAo + uLightColor * spec;
 

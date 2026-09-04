@@ -319,7 +319,7 @@ private fun LevelPicker(save: SaveData, refreshKey: Int, onPlay: (Int) -> Unit) 
                                 )
                             )
                         )
-                        .clickable { save.setCurrentLevel(lv); onPlay(lv) },
+                        .clickable { onPlay(lv) },
                     contentAlignment = Alignment.Center
                 ) {
                     Canvas(Modifier.matchParentSize()) {
