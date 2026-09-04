@@ -46,6 +46,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,7 +72,9 @@ fun StonePanel(
                 )
             )
     ) {
-        Canvas(Modifier.fillMaxSize()) {
+        // matchParentSize y no fillMaxSize: el fondo NO tiene que decidir el
+        // tamano del panel, si no el panel se estira y empuja todo lo de abajo.
+        Canvas(Modifier.matchParentSize()) {
             val r = corner.toPx()
             drawRoundRect(
                 brush = Brush.verticalGradient(
@@ -166,13 +169,17 @@ fun CaveButton(
                 Text(
                     text.uppercase(),
                     style = MaterialTheme.typography.labelLarge,
-                    color = contentColor
+                    color = contentColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 if (subtitle != null) {
                     Text(
                         subtitle,
                         style = MaterialTheme.typography.labelMedium,
-                        color = Cave.TextFaint
+                        color = Cave.TextFaint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

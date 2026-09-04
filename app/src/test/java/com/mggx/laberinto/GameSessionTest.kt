@@ -85,6 +85,25 @@ class GameSessionTest {
     }
 
     @Test
+    fun nuncaSeArrancaMirandoAUnaPared() {
+        for (level in 1..60) {
+            val s = sesion(level, level * 137L)
+            // A un paso y medio hacia adelante tiene que haber aire, no roca.
+            val rad = Math.toRadians(s.yawDeg.toDouble())
+            val fx = Math.sin(rad).toFloat()
+            val fz = Math.cos(rad).toFloat()
+            val x = s.posX + fx * GameSession.CELL * 1.2f
+            val z = s.posZ + fz * GameSession.CELL * 1.2f
+            val gx = (x / GameSession.CELL).toInt()
+            val gy = (z / GameSession.CELL).toInt()
+            assertFalse(
+                "en el nivel $level se arranca de frente a la roca (yaw=${s.yawDeg})",
+                s.maze.isSolid(gx, gy)
+            )
+        }
+    }
+
+    @Test
     fun elJugadorArrancaEnUnLugarLibreYNoAtraviesaLaRoca() {
         for (level in 1..40) {
             val s = sesion(level, level * 31L)

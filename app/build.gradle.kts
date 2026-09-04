@@ -91,3 +91,40 @@ dependencies {
     // org.json real: en los tests de JVM el de Android es solo un stub vacio.
     testImplementation(libs.org.json)
 }
+
+/**
+ * Valida los shaders GLSL antes de compilar. Un shader roto no da error de
+ * compilacion en Kotlin: revienta recien al abrir el nivel en el telefono.
+ * Si la maquina no tiene glslangValidator o python3, la tarea se saltea sola.
+ */
+val checkShaders by tasks.registering {
+    val script = rootProject.file("tools/check_shaders.py")
+    inputs.file(rootProject.file("app/src/main/java/com/mggx/laberinto/gl/Shaders.kt"))
+    inputs.file(script)
+    outputs.upToDateWhen { false }
+    doLast {
+        fun disponible(cmd: String): Boolean = try {
+            providers.exec {
+                commandLine("sh", "-c", "command -v $cmd")
+                isIgnoreExitValue = true
+            }.result.get().exitValue == 0
+        } catch (t: Throwable) { false }
+
+        if (!script.exists() || !disponible("python3") || !disponible("glslangValidator")) {
+            logger.lifecycle("checkShaders: se saltea (falta python3 o glslangValidator)")
+            return@doLast
+        }
+        val r = providers.exec {
+            workingDir = rootProject.projectDir
+            commandLine("python3", script.absolutePath)
+            isIgnoreExitValue = true
+        }
+        val salida = r.standardOutput.asText.get() + r.standardError.asText.get()
+        if (r.result.get().exitValue != 0) {
+            throw GradleException("Hay shaders GLSL con errores:\n$salida")
+        }
+        logger.lifecycle(salida.trim().lines().last())
+    }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(checkShaders) }

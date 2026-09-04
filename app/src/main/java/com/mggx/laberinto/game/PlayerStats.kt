@@ -85,7 +85,7 @@ class PlayerStats(private val save: SaveData) {
         const val BASE_WALK = 3.2f
         const val BASE_HEALTH = 100f
         const val BASE_STAMINA = 100f
-        const val BASE_LIGHT = 7.0f
+        const val BASE_LIGHT = 7.8f
         const val BASE_PICKUP = 1.1f
         const val BASE_STAMINA_DRAIN = 22f
         const val STAMINA_REGEN = 16f

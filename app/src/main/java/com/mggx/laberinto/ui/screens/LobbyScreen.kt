@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +39,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mggx.laberinto.core.SaveData
@@ -69,13 +71,18 @@ fun LobbyScreen(
         0.85f, 1f, infiniteRepeatable(tween(2200), RepeatMode.Reverse), label = "latido"
     )
 
-    Box(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        // El lobby se achica solo en pantallas angostas para que nunca se
+        // desborde ni se pisen los textos.
+        val k = (maxWidth / 860.dp).coerceIn(0.58f, 1f)
+        val compacto = maxWidth < 660.dp
+
         CaveBackdrop(seed = 11)
 
         Row(
             Modifier
                 .fillMaxSize()
-                .padding(horizontal = 26.dp, vertical = 18.dp)
+                .padding(horizontal = (26 * k).dp, vertical = (18 * k).dp)
         ) {
             // -------------------------------------------------- columna izquierda
             Column(
@@ -83,33 +90,39 @@ fun LobbyScreen(
                 verticalArrangement = Arrangement.Center
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    LabyrinthGlyph(pulse)
-                    Spacer(Modifier.width(16.dp))
+                    LabyrinthGlyph(pulse, (78 * k).dp)
+                    Spacer(Modifier.width((16 * k).dp))
                     Column {
                         Text(
                             "MGGX",
-                            fontSize = 42.sp,
+                            fontSize = (42 * k).sp,
                             fontWeight = FontWeight.Black,
-                            letterSpacing = 8.sp,
-                            color = Cave.Text
+                            letterSpacing = (8 * k).sp,
+                            color = Cave.Text,
+                            maxLines = 1
                         )
                         Text(
                             "LABERINTO",
-                            fontSize = 26.sp,
+                            fontSize = (26 * k).sp,
                             fontWeight = FontWeight.Light,
-                            letterSpacing = 11.sp,
-                            color = Cave.Amber
+                            letterSpacing = (9 * k).sp,
+                            color = Cave.Amber,
+                            maxLines = 1
                         )
                     }
                 }
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "Bajas, te perdes, encontras la salida. Y despues bajas mas.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Cave.TextFaint
-                )
+                if (!compacto) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Bajas, te perdes, encontras la salida. Y despues bajas mas.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Cave.TextFaint,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
 
-                Spacer(Modifier.height(26.dp))
+                Spacer(Modifier.height((26 * k).dp))
 
                 val level = save.currentLevel
                 val theme = CaveTheme.forLevel(level)
@@ -117,7 +130,7 @@ fun LobbyScreen(
                     Modifier.fillMaxWidth(0.92f),
                     glow = Cave.Amber
                 ) {
-                    Column(Modifier.padding(18.dp)) {
+                    Column(Modifier.padding((18 * k).dp)) {
                         Text(
                             "PROXIMO DESCENSO",
                             style = MaterialTheme.typography.labelMedium,
@@ -127,7 +140,8 @@ fun LobbyScreen(
                         Row(verticalAlignment = Alignment.Bottom) {
                             Text(
                                 "Nivel $level",
-                                style = MaterialTheme.typography.headlineLarge
+                                style = MaterialTheme.typography.headlineLarge,
+                                maxLines = 1
                             )
                             Spacer(Modifier.width(12.dp))
                             Text(
@@ -142,25 +156,31 @@ fun LobbyScreen(
                             style = MaterialTheme.typography.titleMedium,
                             color = Cave.Amber
                         )
-                        Text(
-                            theme.description,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Cave.TextFaint
-                        )
-                        Spacer(Modifier.height(16.dp))
+                        if (!compacto) {
+                            Text(
+                                theme.description,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Cave.TextFaint,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(Modifier.height((16 * k).dp))
                         CaveButton(
                             "Descender",
                             onClick = { onPlay(level) },
                             icon = IconId.JUGAR,
                             style = CaveButtonStyle.PRIMARIO,
                             modifier = Modifier.fillMaxWidth(),
-                            subtitle = "Empeza el nivel $level"
+                            subtitle = if (compacto) null else "Empeza el nivel $level"
                         )
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
-                LevelPicker(save, refreshKey, onPlay)
+                if (save.maxLevel > 1) {
+                    Spacer(Modifier.height((14 * k).dp))
+                    LevelPicker(save, refreshKey, onPlay)
+                }
             }
 
             Spacer(Modifier.width(24.dp))
@@ -182,28 +202,28 @@ fun LobbyScreen(
                         CaveButton(
                             "Tienda", onShop, icon = IconId.TIENDA,
                             modifier = Modifier.fillMaxWidth(),
-                            subtitle = "61 objetos para el descenso"
+                            subtitle = if (compacto) null else "61 objetos para el descenso"
                         )
                         CaveButton(
                             "Equipo", onLoadout, icon = IconId.MOCHILA,
                             modifier = Modifier.fillMaxWidth(),
-                            subtitle = "Reliquias y ranuras rapidas"
+                            subtitle = if (compacto) null else "Reliquias y ranuras rapidas"
                         )
                         CaveButton(
                             "Ajustes", onSettings, icon = IconId.ENGRANAJE,
                             modifier = Modifier.fillMaxWidth(),
-                            subtitle = "Controles, imagen y sonido"
+                            subtitle = if (compacto) null else "Controles, imagen y sonido"
                         )
                         CaveButton(
                             "Registro", onStats, icon = IconId.ESTADISTICA,
                             modifier = Modifier.fillMaxWidth(),
-                            subtitle = "Todo lo que llevas hecho"
+                            subtitle = if (compacto) null else "Todo lo que llevas hecho"
                         )
                     }
                 }
 
-                Spacer(Modifier.height(14.dp))
-                StonePanel(Modifier.fillMaxWidth()) {
+                Spacer(Modifier.height(12.dp))
+                if (!compacto) StonePanel(Modifier.fillMaxWidth()) {
                     Row(
                         Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -238,8 +258,8 @@ private fun MiniStat(icon: IconId, value: String, label: String) {
 
 /** Glifo animado del laberinto: la misma espiral del icono, dibujada en vivo. */
 @Composable
-private fun LabyrinthGlyph(pulse: Float) {
-    Canvas(Modifier.size(78.dp)) {
+private fun LabyrinthGlyph(pulse: Float, side: androidx.compose.ui.unit.Dp = 78.dp) {
+    Canvas(Modifier.size(side)) {
         val s = size.minDimension
         val pts = listOf(
             0.500f to 0.500f, 0.500f to 0.365f, 0.365f to 0.365f, 0.365f to 0.635f,

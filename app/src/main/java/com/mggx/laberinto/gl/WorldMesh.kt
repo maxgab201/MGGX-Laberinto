@@ -67,9 +67,15 @@ object WorldMesh {
             return vertCount++
         }
 
+        /**
+         * Los cuatro vertices se pasan en el orden natural del recorrido del
+         * borde, pero OpenGL espera antihorario visto DESDE el lado al que
+         * apunta la normal. Con este orden invertido las caras miran para el
+         * lado correcto y no se las come el descarte de caras traseras.
+         */
         fun quad(a: Int, b: Int, c: Int, d: Int) {
-            idx.add(a); idx.add(b); idx.add(c)
-            idx.add(a); idx.add(c); idx.add(d)
+            idx.add(a); idx.add(c); idx.add(b)
+            idx.add(a); idx.add(d); idx.add(c)
         }
 
         for (gy in 0 until maze.gh) {

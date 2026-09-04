@@ -47,15 +47,15 @@ object PropMeshes {
             v.add(0f, tipY, 0f, nn[0], nn[1], nn[2])
             v.add(x0, 0f, z0, nn[0], nn[1], nn[2])
             v.add(x1, 0f, z1, nn[0], nn[1], nn[2])
-            if (inverted) { idx.add(n); idx.add(n + 2); idx.add(n + 1) }
-            else { idx.add(n); idx.add(n + 1); idx.add(n + 2) }
+            if (inverted) { idx.add(n); idx.add(n + 1); idx.add(n + 2) }
+            else { idx.add(n); idx.add(n + 2); idx.add(n + 1) }
             n += 3
             // Base
             v.add(0f, 0f, 0f, 0f, if (inverted) 1f else -1f, 0f)
             v.add(x1, 0f, z1, 0f, if (inverted) 1f else -1f, 0f)
             v.add(x0, 0f, z0, 0f, if (inverted) 1f else -1f, 0f)
-            if (inverted) { idx.add(n); idx.add(n + 2); idx.add(n + 1) }
-            else { idx.add(n); idx.add(n + 1); idx.add(n + 2) }
+            if (inverted) { idx.add(n); idx.add(n + 1); idx.add(n + 2) }
+            else { idx.add(n); idx.add(n + 2); idx.add(n + 1) }
             n += 3
         }
         return Geometry(v.toArray(), idx.toArray())
@@ -76,14 +76,14 @@ object PropMeshes {
             v.add(x1, 0f, z1, n1[0], n1[1], n1[2])
             v.add(x1, height, z1, n1[0], n1[1], n1[2])
             v.add(x0, height, z0, n0[0], n0[1], n0[2])
-            idx.add(n); idx.add(n + 1); idx.add(n + 2)
-            idx.add(n); idx.add(n + 2); idx.add(n + 3)
+            idx.add(n); idx.add(n + 2); idx.add(n + 1)
+            idx.add(n); idx.add(n + 3); idx.add(n + 2)
             n += 4
             // Tapa superior
             v.add(0f, height, 0f, 0f, 1f, 0f)
             v.add(x0, height, z0, 0f, 1f, 0f)
             v.add(x1, height, z1, 0f, 1f, 0f)
-            idx.add(n); idx.add(n + 1); idx.add(n + 2)
+            idx.add(n); idx.add(n + 2); idx.add(n + 1)
             n += 3
         }
         return Geometry(v.toArray(), idx.toArray())

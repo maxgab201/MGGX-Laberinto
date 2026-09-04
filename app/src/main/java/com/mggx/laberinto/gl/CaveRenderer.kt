@@ -427,7 +427,7 @@ class CaveRenderer(
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uCamPos"), s.posX, GameSession.EYE_HEIGHT, s.posZ)
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uLightColor"), lr, lg, lb)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightRadius"), radius)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightIntensity"), 2.35f * flicker)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightIntensity"), 2.45f * flicker)
         val t = s.theme
         GLES30.glUniform3f(
             GLES30.glGetUniformLocation(p, "uAmbient"),
@@ -590,7 +590,7 @@ class CaveRenderer(
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uCamPos"), px, GameSession.EYE_HEIGHT, pz)
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uLightColor"), lr, lg, lb)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightRadius"), radius)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightIntensity"), 2.35f * flicker)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightIntensity"), 2.45f * flicker)
         val t = s.theme
         GLES30.glUniform3f(
             GLES30.glGetUniformLocation(p, "uAmbient"),
@@ -675,7 +675,7 @@ class CaveRenderer(
         if (armsIndexCount == 0) return
         // Los brazos usan su propia proyeccion, mas cerrada, y limpian profundidad
         // para que nunca los atraviese una pared.
-        Matrix.perspectiveM(armProj, 0, 58f, aspect, 0.01f, 4f)
+        Matrix.perspectiveM(armProj, 0, 62f, aspect, 0.01f, 4f)
         GLES30.glClear(GLES30.GL_DEPTH_BUFFER_BIT)
 
         val speed = hypot(s.velX, s.velZ) / max(0.001f, s.stats.walkSpeed)
@@ -683,17 +683,22 @@ class CaveRenderer(
         val sway = sin((time * 3.6f).toDouble()).toFloat() * 0.016f * speed
         val breathe = sin((time * 1.25f).toDouble()).toFloat() * 0.006f
 
+        // Las manos tienen que entrar dentro del cono de vision: con 62 grados
+        // de campo vertical, a 44 cm de la camara el borde de abajo esta a
+        // 0.44 * tan(31) = 0.264. Por eso la altura es -0.205 y no mas baja.
         fun armMatrix(out: FloatArray, side: Float) {
             Matrix.setIdentityM(out, 0)
             Matrix.translateM(
                 out, 0,
-                side * (0.215f + sway * side * 0.5f),
-                -0.285f + bob + breathe,
-                -0.30f - abs(sway) * 0.4f
+                side * (0.205f + sway * side * 0.5f),
+                -0.190f + bob + breathe,
+                -0.50f - abs(sway) * 0.4f
             )
-            Matrix.rotateM(out, 0, side * -13.5f, 0f, 1f, 0f)
-            Matrix.rotateM(out, 0, -9.5f + bob * 90f, 1f, 0f, 0f)
-            Matrix.rotateM(out, 0, side * 6f, 0f, 0f, 1f)
+            // Las manos se inclinan hacia abajo y hacia adentro: asi se ve el
+            // dorso y los dedos, en vez de mirarlos de punta.
+            Matrix.rotateM(out, 0, side * -16f, 0f, 1f, 0f)
+            Matrix.rotateM(out, 0, -20f + bob * 80f, 1f, 0f, 0f)
+            Matrix.rotateM(out, 0, side * 11f, 0f, 0f, 1f)
         }
         armMatrix(armMatL, -1f)
         armMatrix(armMatR, 1f)

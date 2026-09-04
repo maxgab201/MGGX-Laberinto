@@ -152,13 +152,9 @@ class GameSession(
         blueprint.chests.forEach { pickups.add(Pickup(it % maze.gw, it / maze.gw, PickupKind.COFRE)) }
         blueprint.traps.forEach { traps.add(TrapInstance(it.gx, it.gy, it.kind)) }
 
-        // Orientacion inicial: mirando hacia el pasillo abierto.
-        yawDeg = when {
-            maze.isOpen(maze.startGx + 1, maze.startGy) -> 90f
-            maze.isOpen(maze.startGx, maze.startGy + 1) -> 180f
-            maze.isOpen(maze.startGx - 1, maze.startGy) -> 270f
-            else -> 0f
-        }
+        // Orientacion inicial: mirando hacia donde arranca el camino a la salida.
+        // Nunca de frente a una pared.
+        yawDeg = initialYaw()
 
         // Revelado inicial por la mejora Cartografo Innato.
         if (stats.startMapReveal > 0f) revealFraction(stats.startMapReveal)
@@ -166,6 +162,36 @@ class GameSession(
         if (stats.exitPingSeconds > 0f) exitPingTimer = stats.exitPingSeconds
         if (stats.freeSonarSeconds > 0f) freeSonarTimer = stats.freeSonarSeconds
         markWalked()
+    }
+
+    /**
+     * Angulo de arranque. Se mira hacia el primer tramo del camino a la salida;
+     * si por lo que sea no hay camino, se busca cualquier vecino transitable.
+     * El mapeo es: yaw 0 = +Z, 90 = +X, 180 = -Z, 270 = -X.
+     */
+    private fun initialYaw(): Float {
+        val path = maze.solutionPath
+        if (path.size >= 2) {
+            // El primer paso siempre es una casilla pegada y transitable:
+            // apuntar mas lejos podria dar una diagonal contra la roca.
+            val i = path[1]
+            val tx = (i % maze.gw + 0.5f) * CELL
+            val tz = (i / maze.gw + 0.5f) * CELL
+            val dx = tx - posX
+            val dz = tz - posZ
+            if (abs(dx) > 0.01f || abs(dz) > 0.01f) {
+                return Math.toDegrees(atan2(dx.toDouble(), dz.toDouble())).toFloat().let {
+                    if (it < 0f) it + 360f else it
+                }
+            }
+        }
+        return when {
+            maze.isOpen(maze.startGx, maze.startGy + 1) -> 0f
+            maze.isOpen(maze.startGx + 1, maze.startGy) -> 90f
+            maze.isOpen(maze.startGx, maze.startGy - 1) -> 180f
+            maze.isOpen(maze.startGx - 1, maze.startGy) -> 270f
+            else -> 0f
+        }
     }
 
     // ------------------------------------------------------------ consultas

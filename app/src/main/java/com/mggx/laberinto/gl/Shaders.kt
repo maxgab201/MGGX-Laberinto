@@ -267,7 +267,9 @@ void main() {
     float ndl = max(dot(n, L), 0.0);
 
     // La mano se separa en piel (punta) y guante (base) segun la profundidad local
-    float t = clamp((vViewPos.z + 0.62) / 0.46, 0.0, 1.0);
+    // Cuanto mas lejos de la camara, mas mano y menos guante: el antebrazo
+    // (que esta cerca) va de cuero y la mano (mas adelante) va de piel.
+    float t = clamp((-vViewPos.z - 0.50) / 0.17, 0.0, 1.0);
     vec3 base = mix(uCloth, uSkin, t);
 
     if (uStyle == 1) {
@@ -289,7 +291,9 @@ void main() {
         base = mix(base, vec3(0.60, 0.92, 1.0), 0.35 + 0.25 * p);
     }
 
-    vec3 color = base * (uAmbient * 1.6 + uLightColor * ndl * atten);
+    // Las manos siempre llevan algo de luz propia: son lo mas cercano a la
+    // antorcha y si quedan negras el juego se siente vacio.
+    vec3 color = base * (uAmbient * 2.2 + vec3(0.10) + uLightColor * ndl * atten);
     float rim = pow(1.0 - max(dot(n, vec3(0.0, 0.0, 1.0)), 0.0), 2.5);
     color += uLightColor * rim * 0.10 * atten;
 

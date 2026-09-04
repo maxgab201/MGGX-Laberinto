@@ -53,7 +53,9 @@ object ArmsMesh {
         fun tx(x: Float, y: Float, z: Float): FloatArray {
             val ry = y * cp - z * sp
             val rz = y * sp + z * cp
-            return floatArrayOf(cx + x * side, cy + ry, cz + rz)
+            // El centro tambien se refleja: si no, el pulgar del brazo
+            // izquierdo termina del lado equivocado de la mano.
+            return floatArrayOf((cx + x) * side, cy + ry, cz + rz)
         }
         fun tn(x: Float, y: Float, z: Float): FloatArray {
             val ry = y * cp - z * sp
@@ -94,7 +96,9 @@ object ArmsMesh {
         z0: Float, z1: Float, r0: Float, r1: Float,
         segments: Int = 10, flatten: Float = 0.78f
     ) {
-        val flip = side < 0f
+        // El anillo se recorre en sentido contrario al de las cajas, asi que
+        // aca la condicion del giro va al reves (lo verifica MeshWindingTest).
+        val flip = side > 0f
         for (i in 0 until segments) {
             val a0 = i * 2.0 * PI / segments
             val a1 = (i + 1) * 2.0 * PI / segments
@@ -122,32 +126,33 @@ object ArmsMesh {
 
     private fun buildArm(b: Builder, side: Float) {
         // Antebrazo: entra desde atras de la camara y se afina hacia la muneca.
-        taperedTube(b, side, 0f, 0f, 0.62f, 0.02f, 0.088f, 0.055f, 12, 0.80f)
-        // Puno del guante (un anillo mas grueso)
-        taperedTube(b, side, 0f, 0f, 0.10f, 0.03f, 0.072f, 0.066f, 12, 0.85f)
-        // Palma
-        box(b, side, 0f, 0f, -0.085f, 0.052f, 0.026f, 0.075f, 0f)
-        // Nudillos
-        box(b, side, 0f, 0.006f, -0.158f, 0.050f, 0.024f, 0.014f, 0f)
+        taperedTube(b, side, 0f, 0f, 0.62f, 0.05f, 0.074f, 0.047f, 14, 0.92f)
+        // Puno del guante: un anillo mas grueso que marca donde termina la tela.
+        taperedTube(b, side, 0f, 0f, 0.13f, 0.042f, 0.062f, 0.055f, 14, 0.94f)
+        // Palma, un poco mas angosta en la muneca que en los nudillos.
+        box(b, side, 0f, 0f, -0.075f, 0.046f, 0.021f, 0.055f, 0.02f)
+        box(b, side, 0.002f, 0.002f, -0.128f, 0.050f, 0.020f, 0.014f, 0.05f)
 
-        // Cuatro dedos, cada uno con dos falanges y curvatura creciente.
-        val fingerX = floatArrayOf(-0.033f, -0.011f, 0.011f, 0.033f)
-        val fingerLen = floatArrayOf(0.048f, 0.056f, 0.052f, 0.040f)
-        val curl = floatArrayOf(0.30f, 0.24f, 0.28f, 0.38f)
+        // Cuatro dedos separados, cada uno con dos falanges y su propia curva.
+        val fingerX = floatArrayOf(-0.034f, -0.0115f, 0.0115f, 0.034f)
+        val l1 = floatArrayOf(0.052f, 0.060f, 0.056f, 0.043f)
+        val curl = floatArrayOf(0.34f, 0.26f, 0.30f, 0.42f)
         for (i in 0 until 4) {
             val x = fingerX[i]
-            val l1 = fingerLen[i]
-            val l2 = l1 * 0.78f
+            val a = l1[i]
+            val bLen = a * 0.80f
             // Falange proximal
-            box(b, side, x, -0.004f, -0.172f - l1 * 0.5f, 0.0105f, 0.0115f, l1 * 0.5f, curl[i] * 0.45f)
-            // Falange distal, mas curvada
-            val z2 = -0.172f - l1 - l2 * 0.45f
-            box(b, side, x, -0.004f - l1 * 0.20f, z2, 0.0098f, 0.0105f, l2 * 0.5f, curl[i] * 1.15f)
+            box(b, side, x, 0.001f, -0.142f - a * 0.5f, 0.0092f, 0.0105f, a * 0.5f, curl[i] * 0.40f)
+            // Falange distal, mas curvada hacia abajo
+            box(
+                b, side, x, 0.001f - a * 0.22f, -0.142f - a - bLen * 0.42f,
+                0.0086f, 0.0096f, bLen * 0.5f, curl[i] * 1.20f
+            )
         }
 
-        // Pulgar: sale del costado y apunta hacia adentro.
-        box(b, side, 0.055f, -0.012f, -0.086f, 0.014f, 0.014f, 0.036f, 0.15f)
-        box(b, side, 0.062f, -0.020f, -0.145f, 0.012f, 0.012f, 0.030f, 0.55f)
+        // Pulgar: sale del costado de la palma y apunta hacia adentro.
+        box(b, side, 0.050f, -0.010f, -0.072f, 0.0125f, 0.0125f, 0.032f, 0.12f)
+        box(b, side, 0.056f, -0.019f, -0.124f, 0.0108f, 0.0108f, 0.027f, 0.50f)
     }
 
     fun build(): Mesh {
