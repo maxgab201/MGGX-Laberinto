@@ -62,7 +62,7 @@ fun MultiplayerScreen(onBack: () -> Unit) {
                         .padding(horizontal = 14.dp, vertical = 8.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        CaveIcon(IconId.RELOJ_ARENA, size = 16.dp, tint = Cave.Amber, accent = Cave.AmberSoft)
+                        CaveIcon(IconId.RELOJ, size = 16.dp, tint = Cave.Amber, accent = Cave.AmberSoft)
                         Spacer(Modifier.width(8.dp))
                         Text("PROXIMAMENTE", fontSize = 12.sp, color = Cave.Amber)
                     }
@@ -159,7 +159,7 @@ fun MultiplayerScreen(onBack: () -> Unit) {
 private fun Paso(hecho: Boolean, que: String, estado: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         CaveIcon(
-            if (hecho) IconId.TILDE else IconId.RELOJ_ARENA,
+            if (hecho) IconId.TILDE else IconId.RELOJ,
             size = 18.dp,
             tint = if (hecho) Cave.Good else Cave.TextFaint,
             accent = if (hecho) Cave.Good else Cave.AmberDeep

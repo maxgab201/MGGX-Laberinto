@@ -177,6 +177,10 @@ fun MggxApp(
     }
 
     fun leaveGame(toScreen: Screen) {
+        // La vitrina del lobby tiene que rearmarse: la sesion que quedaba es la
+        // que se acaba de jugar, con las monedas ya levantadas y las trampas
+        // descubiertas. Poner el nivel en 0 fuerza una cueva nueva.
+        vitrinaLevel = 0
         input.paused = true
         pad.inGame = false
         pad.release()
@@ -261,6 +265,7 @@ fun MggxApp(
             }
         }
         pad.onChalk = { session?.dropChalk() }
+        pad.onFlashlight = { session?.toggleLinterna() }
         pad.onCycleItem = { dir ->
             val n = save.loadoutList().size
             if (n > 0) selectedSlotCycle = ((selectedSlotCycle + dir) % n + n) % n
@@ -474,7 +479,7 @@ private fun TutorialOverlay(onClose: () -> Unit) {
                 Text("Primeros pasos", style = MaterialTheme.typography.headlineLarge)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Cuatro cosas y arrancamos.",
+                    "Seis cosas y arrancamos.",
                     style = MaterialTheme.typography.bodyMedium, color = Cave.TextFaint
                 )
                 Spacer(Modifier.height(18.dp))
@@ -482,6 +487,12 @@ private fun TutorialOverlay(onClose: () -> Unit) {
                     "Arrastra en la mitad izquierda de la pantalla. Empuja el joystick a fondo para correr.")
                 TutorialLine(IconId.OJO, "Mirar",
                     "Arrastra en la mitad derecha para girar la cabeza.")
+                TutorialLine(IconId.AGACHARSE, "Agacharte y saltar",
+                    "El boton de agacharse cicla de pie, agachado y bien raso. En los tramos " +
+                        "bajos te agachas solo, y agacharte no gasta aguante.")
+                TutorialLine(IconId.CALAVERA, "Cuidado",
+                    "Hay trampas y bichos. Los pinches y los pozos se ven; los bichos hacen " +
+                        "ruido antes de encontrarte.")
                 TutorialLine(IconId.SALIDA, "Salir",
                     "Busca la columna de cristal que brilla. Esa es la salida del nivel.")
                 TutorialLine(IconId.MOCHILA, "Objetos",

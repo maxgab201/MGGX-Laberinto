@@ -425,6 +425,7 @@ private fun GamepadMapHelp() {
             "Y" to "Cambiar de objeto",
             "B" to "Volver atras",
             "L1 / R1" to "Objeto anterior / siguiente",
+            "Cruceta arriba" to "Prender y apagar la linterna",
             "Start" to "Pausa",
             "Cruceta" to "Moverte por los menus"
         )

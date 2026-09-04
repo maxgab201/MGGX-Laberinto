@@ -25,6 +25,7 @@ class GamepadBridge(
     var onPause: () -> Unit = {}
     var onUseItem: () -> Unit = {}
     var onChalk: () -> Unit = {}
+    var onFlashlight: () -> Unit = {}
     var onCycleItem: (Int) -> Unit = {}
     var onBack: () -> Unit = {}
     /** Envia una tecla sintetica a la ventana (para navegar menus). */
@@ -76,6 +77,8 @@ class GamepadBridge(
                     input.crouchLevel = (input.crouchLevel + 1) % 3
                     return true
                 }
+                // Cruceta arriba: prende y apaga la linterna de carburo.
+                KeyEvent.KEYCODE_DPAD_UP -> { if (event.repeatCount == 0) onFlashlight(); return true }
                 KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_MENU -> { onPause(); return true }
                 KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK -> { onPause(); return true }
                 KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_R2 -> {

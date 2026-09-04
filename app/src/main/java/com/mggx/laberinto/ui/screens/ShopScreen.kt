@@ -101,7 +101,7 @@ fun ShopScreen(
             CaveTabs(
                 kinds.map { it.label }, tab,
                 { tab = it; selectedId = null },
-                Modifier.fillMaxWidth(0.62f)
+                Modifier.fillMaxWidth(0.80f)
             )
             Spacer(Modifier.height(4.dp))
             Text(

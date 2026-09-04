@@ -7,6 +7,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -452,7 +453,12 @@ fun CaveTabs(
                     style = MaterialTheme.typography.labelMedium,
                     color = if (on) Cave.AmberSoft else Cave.TextDim,
                     textAlign = TextAlign.Center,
-                    maxLines = 1
+                    maxLines = 1,
+                    // Con cinco categorias las etiquetas ya no entran en un
+                    // telefono angosto: se achican solas antes de recortarse.
+                    softWrap = false,
+                    overflow = TextOverflow.Visible,
+                    modifier = Modifier.basicMarquee()
                 )
             }
         }
