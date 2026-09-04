@@ -9,10 +9,10 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version, por ejemplo 1.0.1'
-        required: true
+        description: 'Dejalo VACIO: se toma el versionName del proyecto'
+        required: false
       nombre:
-        description: 'Nombre de la release (si se deja vacio se elige solo)'
+        description: 'Dejalo VACIO: se elige un nombre de zona sin usar'
         required: false
 
 permissions:
@@ -38,10 +38,27 @@ jobs:
       - name: Version
         id: v
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          V="${{ github.event.inputs.version }}"
+          # Si no la escribieron a mano se saca del propio proyecto, asi no hay
+          # forma de publicar una version que no coincida con la del APK.
+          if [ -z "$V" ] && [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            V="${GITHUB_REF_NAME#v}"
+          fi
+          if [ -z "$V" ]; then
+            V="$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)"
+          fi
+          [ -n "$V" ] || { echo "No se pudo determinar la version"; exit 1; }
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Publicando la version $V"
+
+      - name: Controlar que la version no este publicada
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          if gh release view "v$V" >/dev/null 2>&1; then
+            echo "Ya existe la release v$V. Subi el versionName en app/build.gradle.kts."
+            exit 1
           fi
 
       - name: Elegir un nombre que no se haya usado
@@ -50,6 +67,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           NOMBRE="${{ github.event.inputs.nombre }}"
+          # Si por error pusieron el numero de version en el campo del nombre,
+          # se ignora: si no, la release queda llamada "1.0 - 1.0".
+          if [ "$NOMBRE" = "${{ steps.v.outputs.version }}" ]; then NOMBRE=""; fi
           if [ -z "$NOMBRE" ]; then
             USADOS="$(gh release list --limit 100 --json name --jq '.[].name' || true)"
             ZONAS=(
