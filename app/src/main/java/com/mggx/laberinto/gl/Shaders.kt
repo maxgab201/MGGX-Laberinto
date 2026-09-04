@@ -1,0 +1,381 @@
+package com.mggx.laberinto.gl
+
+/**
+ * Shaders GLSL ES 3.0. La iluminacion es una antorcha puntual pegada a la camara
+ * mas ambiental del tema, niebla exponencial y vetas de mineral emisivas.
+ */
+object Shaders {
+
+    // ------------------------------------------------------------------ mundo
+    const val WORLD_VS = """#version 300 es
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec2 aUv;
+layout(location = 3) in float aAo;
+layout(location = 4) in float aLayer;
+
+uniform mat4 uViewProj;
+
+out vec3 vWorld;
+out vec3 vNormal;
+out vec2 vUv;
+out float vAo;
+out float vLayer;
+
+void main() {
+    vWorld = aPos;
+    vNormal = aNormal;
+    vUv = aUv;
+    vAo = aAo;
+    vLayer = aLayer;
+    gl_Position = uViewProj * vec4(aPos, 1.0);
+}
+"""
+
+    const val WORLD_FS = """#version 300 es
+precision highp float;
+precision highp sampler2DArray;
+
+in vec3 vWorld;
+in vec3 vNormal;
+in vec2 vUv;
+in float vAo;
+in float vLayer;
+
+uniform sampler2DArray uAlbedo;
+uniform sampler2DArray uNormalMap;
+
+uniform vec3 uCamPos;
+uniform vec3 uLightColor;
+uniform float uLightRadius;
+uniform float uLightIntensity;
+uniform vec3 uAmbient;
+uniform vec3 uFogColor;
+uniform float uFogDensity;
+uniform vec3 uVeinColor;
+uniform float uVeinPulse;
+uniform float uBrightness;
+uniform float uTime;
+uniform float uNormalStrength;
+uniform int uQuality;
+
+// Sonar: dibuja el contorno de las paredes cercanas
+uniform float uSonarRange;
+uniform vec3 uSonarColor;
+
+out vec4 fragColor;
+
+vec3 applyNormalMap(vec3 n, vec3 mapN) {
+    // Las caras del laberinto son alineadas a ejes: la tangente sale del eje dominante.
+    vec3 up = abs(n.y) > 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+    vec3 t = normalize(cross(up, n));
+    vec3 b = cross(n, t);
+    vec3 m = mapN * 2.0 - 1.0;
+    m.xy *= uNormalStrength;
+    return normalize(t * m.x + b * m.y + n * m.z);
+}
+
+void main() {
+    vec4 alb = texture(uAlbedo, vec3(vUv, vLayer));
+    vec3 baseColor = alb.rgb;
+    float veinMask = alb.a;
+
+    vec3 n = normalize(vNormal);
+    if (uQuality > 0) {
+        vec3 mapN = texture(uNormalMap, vec3(vUv, vLayer)).rgb;
+        n = applyNormalMap(n, mapN);
+    }
+
+    vec3 toLight = uCamPos - vWorld;
+    float dist = length(toLight);
+    vec3 L = toLight / max(dist, 0.0001);
+
+    // Atenuacion suave con corte en el radio de la antorcha
+    float x = clamp(1.0 - dist / max(uLightRadius, 0.001), 0.0, 1.0);
+    float atten = x * x * uLightIntensity;
+
+    float ndl = max(dot(n, L), 0.0);
+    vec3 diffuse = uLightColor * ndl * atten;
+
+    // Especular barato: la roca humeda brilla un poco
+    vec3 h = normalize(L + L);
+    float spec = pow(max(dot(n, h), 0.0), 24.0) * atten * 0.16;
+
+    vec3 color = baseColor * (uAmbient + diffuse) * vAo + uLightColor * spec;
+
+    // Vetas de mineral: brillan solas y laten
+    float pulse = 0.72 + 0.28 * sin(uTime * 1.6 + vWorld.x * 0.35 + vWorld.z * 0.27);
+    color += uVeinColor * veinMask * uVeinPulse * pulse;
+
+    // Sonar
+    if (uSonarRange > 0.0 && dist < uSonarRange) {
+        float edge = 1.0 - abs(dot(n, L));
+        float wave = smoothstep(0.55, 1.0, edge);
+        float falloff = 1.0 - dist / uSonarRange;
+        color += uSonarColor * wave * falloff * 0.9;
+    }
+
+    // Niebla exponencial al cuadrado
+    float f = 1.0 - exp(-uFogDensity * uFogDensity * dist * dist);
+    color = mix(color, uFogColor, clamp(f, 0.0, 1.0));
+
+    color *= uBrightness;
+    // Tonemap Reinhard suave para que las luces no quemen
+    color = color / (color + vec3(0.85));
+    color = pow(color, vec3(1.0 / 2.2));
+
+    fragColor = vec4(color, 1.0);
+}
+"""
+
+    // ------------------------------------------------------------------ props
+    const val PROP_VS = """#version 300 es
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+// Instancia: xyz posicion, w escala
+layout(location = 2) in vec4 iPosScale;
+// Instancia: rgb color, a intensidad de emision
+layout(location = 3) in vec4 iColor;
+// Instancia: x rotacion Y, y desfase de animacion, z tipo, w alpha
+layout(location = 4) in vec4 iParams;
+
+uniform mat4 uViewProj;
+uniform float uTime;
+
+out vec3 vWorld;
+out vec3 vNormal;
+out vec4 vColor;
+out float vEmissive;
+out float vAlpha;
+
+void main() {
+    float ang = iParams.x + uTime * (iParams.z > 0.5 ? 1.15 : 0.0);
+    float s = sin(ang), c = cos(ang);
+    vec3 p = aPos * iPosScale.w;
+    vec3 rp = vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c);
+    vec3 rn = vec3(aNormal.x * c + aNormal.z * s, aNormal.y, -aNormal.x * s + aNormal.z * c);
+
+    float bob = iParams.z > 0.5 ? sin(uTime * 2.1 + iParams.y) * 0.11 : 0.0;
+    vec3 world = iPosScale.xyz + rp + vec3(0.0, bob, 0.0);
+
+    vWorld = world;
+    vNormal = rn;
+    vColor = iColor;
+    vEmissive = iColor.a;
+    vAlpha = iParams.w;
+    gl_Position = uViewProj * vec4(world, 1.0);
+}
+"""
+
+    const val PROP_FS = """#version 300 es
+precision highp float;
+
+in vec3 vWorld;
+in vec3 vNormal;
+in vec4 vColor;
+in float vEmissive;
+in float vAlpha;
+
+uniform vec3 uCamPos;
+uniform vec3 uLightColor;
+uniform float uLightRadius;
+uniform float uLightIntensity;
+uniform vec3 uAmbient;
+uniform vec3 uFogColor;
+uniform float uFogDensity;
+uniform float uBrightness;
+
+out vec4 fragColor;
+
+void main() {
+    vec3 n = normalize(vNormal);
+    vec3 toLight = uCamPos - vWorld;
+    float dist = length(toLight);
+    vec3 L = toLight / max(dist, 0.0001);
+
+    float x = clamp(1.0 - dist / max(uLightRadius, 0.001), 0.0, 1.0);
+    float atten = x * x * uLightIntensity;
+    float ndl = max(dot(n, L), 0.0);
+
+    vec3 color = vColor.rgb * (uAmbient + uLightColor * ndl * atten);
+    color += vColor.rgb * vEmissive;
+
+    float f = 1.0 - exp(-uFogDensity * uFogDensity * dist * dist);
+    color = mix(color, uFogColor, clamp(f, 0.0, 1.0) * (1.0 - vEmissive * 0.65));
+
+    color *= uBrightness;
+    color = color / (color + vec3(0.85));
+    color = pow(color, vec3(1.0 / 2.2));
+
+    fragColor = vec4(color, vAlpha);
+}
+"""
+
+    // ------------------------------------------------------------------ brazos
+    const val ARMS_VS = """#version 300 es
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in float aSide;   // -1 izquierda, +1 derecha
+
+uniform mat4 uProj;
+uniform mat4 uArmL;
+uniform mat4 uArmR;
+
+out vec3 vViewPos;
+out vec3 vNormal;
+out float vSide;
+
+void main() {
+    mat4 m = aSide < 0.0 ? uArmL : uArmR;
+    vec4 vp = m * vec4(aPos, 1.0);
+    vViewPos = vp.xyz;
+    vNormal = normalize(mat3(m) * aNormal);
+    vSide = aSide;
+    gl_Position = uProj * vp;
+}
+"""
+
+    const val ARMS_FS = """#version 300 es
+precision highp float;
+
+in vec3 vViewPos;
+in vec3 vNormal;
+in float vSide;
+
+uniform vec3 uLightColor;
+uniform float uLightIntensity;
+uniform vec3 uAmbient;
+uniform vec3 uSkin;
+uniform vec3 uCloth;
+uniform float uBrightness;
+uniform float uTime;
+uniform int uStyle;
+
+out vec4 fragColor;
+
+// Ruido barato para la textura del guante
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+void main() {
+    vec3 n = normalize(vNormal);
+    // La antorcha esta practicamente en el ojo: la luz sale del origen de la vista
+    vec3 L = normalize(-vViewPos);
+    float dist = length(vViewPos);
+    float atten = uLightIntensity * clamp(1.0 - dist / 2.6, 0.15, 1.0);
+    float ndl = max(dot(n, L), 0.0);
+
+    // La mano se separa en piel (punta) y guante (base) segun la profundidad local
+    float t = clamp((vViewPos.z + 0.62) / 0.46, 0.0, 1.0);
+    vec3 base = mix(uCloth, uSkin, t);
+
+    if (uStyle == 1) {
+        // Malla de hierro: retícula regular
+        float g = step(0.55, hash(floor(vViewPos.xy * 46.0)));
+        base = mix(base, base * 1.75, g * (1.0 - t));
+    } else if (uStyle == 2) {
+        // Manos de ceniza: grietas incandescentes
+        float cr = hash(floor(vViewPos.xy * 26.0));
+        float glow = smoothstep(0.86, 1.0, cr);
+        base = mix(base * 0.55, vec3(1.0, 0.42, 0.12), glow * 0.85);
+    } else if (uStyle == 3) {
+        // Cazador: gema en el dorso
+        float d = length(vViewPos.xy - vec2(vSide * 0.16, -0.10));
+        base = mix(base, vec3(0.62, 0.90, 1.0), smoothstep(0.055, 0.0, d));
+    } else if (uStyle == 4) {
+        // Cristal vivo: brillo que late
+        float p = 0.5 + 0.5 * sin(uTime * 2.4 + vViewPos.y * 12.0);
+        base = mix(base, vec3(0.60, 0.92, 1.0), 0.35 + 0.25 * p);
+    }
+
+    vec3 color = base * (uAmbient * 1.6 + uLightColor * ndl * atten);
+    float rim = pow(1.0 - max(dot(n, vec3(0.0, 0.0, 1.0)), 0.0), 2.5);
+    color += uLightColor * rim * 0.10 * atten;
+
+    color *= uBrightness;
+    color = color / (color + vec3(0.85));
+    color = pow(color, vec3(1.0 / 2.2));
+    fragColor = vec4(color, 1.0);
+}
+"""
+
+    // ---------------------------------------------------- decals de suelo
+    const val DECAL_VS = """#version 300 es
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec2 aUv;
+layout(location = 2) in vec4 aColor;
+
+uniform mat4 uViewProj;
+
+out vec2 vUv;
+out vec4 vColor;
+out vec3 vWorld;
+
+void main() {
+    vUv = aUv;
+    vColor = aColor;
+    vWorld = aPos;
+    gl_Position = uViewProj * vec4(aPos, 1.0);
+}
+"""
+
+    const val DECAL_FS = """#version 300 es
+precision highp float;
+in vec2 vUv;
+in vec4 vColor;
+in vec3 vWorld;
+
+uniform vec3 uCamPos;
+uniform float uFogDensity;
+uniform float uBrightness;
+
+out vec4 fragColor;
+
+void main() {
+    float d = length(vUv - vec2(0.5)) * 2.0;
+    float a = smoothstep(1.0, 0.15, d) * vColor.a;
+    float dist = length(uCamPos - vWorld);
+    float f = 1.0 - exp(-uFogDensity * uFogDensity * dist * dist);
+    a *= (1.0 - clamp(f, 0.0, 1.0));
+    if (a < 0.01) discard;
+    vec3 c = vColor.rgb * uBrightness;
+    c = c / (c + vec3(0.85));
+    fragColor = vec4(pow(c, vec3(1.0 / 2.2)), a);
+}
+"""
+
+    // ------------------------------------------------------------- vineta
+    const val OVERLAY_VS = """#version 300 es
+layout(location = 0) in vec2 aPos;
+out vec2 vUv;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}
+"""
+
+    const val OVERLAY_FS = """#version 300 es
+precision mediump float;
+in vec2 vUv;
+uniform float uStrength;
+uniform vec3 uTintColor;
+uniform float uTintAmount;
+uniform float uHurt;
+out vec4 fragColor;
+
+void main() {
+    vec2 p = vUv - 0.5;
+    float r = length(p) * 1.42;
+    float v = smoothstep(0.42, 1.05, r) * uStrength;
+    vec3 col = mix(vec3(0.0), uTintColor, uTintAmount);
+    float a = v;
+    if (uHurt > 0.0) {
+        float edge = smoothstep(0.25, 1.0, r);
+        col = mix(col, vec3(0.72, 0.06, 0.05), uHurt);
+        a = max(a, edge * uHurt);
+    }
+    fragColor = vec4(col, clamp(a, 0.0, 1.0));
+}
+"""
+}
