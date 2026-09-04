@@ -118,8 +118,10 @@ object ProcTextures {
     private fun veinMask(u: Float, v: Float, per: Int, seed: Int): Float {
         val n = fbm(u * per * 0.6f, v * per * 0.6f, 4, (per * 0.6f).toInt().coerceAtLeast(2), seed + 900)
         val ridged = 1f - abs(n * 2f - 1f)
-        val m = ((ridged - 0.86f) / 0.14f).coerceIn(0f, 1f)
-        return m * m
+        // Umbral alto y curva cubica: quedan hilos finos y separados, no una
+        // telarana que tapa toda la roca.
+        val m = ((ridged - 0.945f) / 0.055f).coerceIn(0f, 1f)
+        return m * m * m
     }
 
     // ------------------------------------------------------------ subida
@@ -179,10 +181,10 @@ object ProcTextures {
                     var r = cr * shade + grain
                     var g = cg * shade + grain
                     var b = cb * shade + grain
-                    // La veta tine ligeramente el albedo alrededor
-                    r = r * (1f - vm * 0.5f) + theme.veinR * vm * 0.5f
-                    g = g * (1f - vm * 0.5f) + theme.veinG * vm * 0.5f
-                    b = b * (1f - vm * 0.5f) + theme.veinB * vm * 0.5f
+                    // La veta tine apenas el albedo de alrededor
+                    r = r * (1f - vm * 0.28f) + theme.veinR * vm * 0.28f
+                    g = g * (1f - vm * 0.28f) + theme.veinG * vm * 0.28f
+                    b = b * (1f - vm * 0.28f) + theme.veinB * vm * 0.28f
                     albedo.put(toByte(r)); albedo.put(toByte(g)); albedo.put(toByte(b)); albedo.put(toByte(vm))
                 }
             }

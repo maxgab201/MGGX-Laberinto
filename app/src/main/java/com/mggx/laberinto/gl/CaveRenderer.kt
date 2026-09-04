@@ -442,7 +442,7 @@ class CaveRenderer(
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uFogColor"), t.fogR, t.fogG, t.fogB)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uFogDensity"), fogDensity)
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uVeinColor"), t.veinR, t.veinG, t.veinB)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uVeinPulse"), 0.09f)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uVeinPulse"), 0.055f)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uBrightness"), brightness)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uTime"), time)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uNormalStrength"), if (save.settings.quality >= 2) 1f else 0.6f)
@@ -696,15 +696,17 @@ class CaveRenderer(
             Matrix.setIdentityM(out, 0)
             Matrix.translateM(
                 out, 0,
-                side * (0.205f + sway * side * 0.5f),
-                -0.190f + bob + breathe,
-                -0.50f - abs(sway) * 0.4f
+                side * (0.258f + sway * side * 0.5f),
+                -0.196f + bob + breathe,
+                -0.48f - abs(sway) * 0.4f
             )
-            // Las manos se inclinan hacia abajo y hacia adentro: asi se ve el
-            // dorso y los dedos, en vez de mirarlos de punta.
-            Matrix.rotateM(out, 0, side * -16f, 0f, 1f, 0f)
-            Matrix.rotateM(out, 0, -20f + bob * 80f, 1f, 0f, 0f)
-            Matrix.rotateM(out, 0, side * 11f, 0f, 0f, 1f)
+            // El brazo entra desde la esquina de abajo: se abre hacia afuera con
+            // el giro en Y y baja apenas con el de X, para que se vea el dorso
+            // de la mano y los dedos sin mirarlos de punta.
+            Matrix.rotateM(out, 0, side * -27f, 0f, 1f, 0f)
+            Matrix.rotateM(out, 0, 3f + bob * 80f, 1f, 0f, 0f)
+            Matrix.rotateM(out, 0, side * 14f, 0f, 0f, 1f)
+            Matrix.scaleM(out, 0, 0.95f, 0.95f, 0.95f)
         }
         armMatrix(armMatL, -1f)
         armMatrix(armMatR, 1f)
@@ -715,7 +717,7 @@ class CaveRenderer(
         GLES30.glUniformMatrix4fv(GLES30.glGetUniformLocation(p, "uArmL"), 1, false, armMatL, 0)
         GLES30.glUniformMatrix4fv(GLES30.glGetUniformLocation(p, "uArmR"), 1, false, armMatR, 0)
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uLightColor"), lr, lg, lb)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightIntensity"), 2.0f * flicker)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightIntensity"), 1.15f * flicker)
         val t = s.theme
         GLES30.glUniform3f(
             GLES30.glGetUniformLocation(p, "uAmbient"),
@@ -724,15 +726,15 @@ class CaveRenderer(
         val style = s.stats.gloveStyle
         val skin = when (style) {
             2 -> floatArrayOf(0.32f, 0.27f, 0.25f)
-            4 -> floatArrayOf(0.74f, 0.66f, 0.60f)
-            else -> floatArrayOf(0.68f, 0.50f, 0.39f)
+            4 -> floatArrayOf(0.64f, 0.57f, 0.52f)
+            else -> floatArrayOf(0.58f, 0.42f, 0.32f)
         }
         val cloth = when (style) {
             1 -> floatArrayOf(0.36f, 0.37f, 0.40f)
             2 -> floatArrayOf(0.19f, 0.17f, 0.17f)
             3 -> floatArrayOf(0.40f, 0.28f, 0.17f)
             4 -> floatArrayOf(0.44f, 0.52f, 0.58f)
-            else -> floatArrayOf(0.47f, 0.33f, 0.21f)
+            else -> floatArrayOf(0.38f, 0.26f, 0.16f)
         }
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uSkin"), skin[0], skin[1], skin[2])
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uCloth"), cloth[0], cloth[1], cloth[2])

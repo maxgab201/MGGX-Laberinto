@@ -263,14 +263,20 @@ void main() {
     // La antorcha esta practicamente en el ojo: la luz sale del origen de la vista
     vec3 L = normalize(-vViewPos);
     float dist = length(vViewPos);
-    float atten = uLightIntensity * clamp(1.0 - dist / 2.6, 0.15, 1.0);
+    float atten = uLightIntensity * clamp(1.0 - dist / 1.9, 0.12, 1.0);
     float ndl = max(dot(n, L), 0.0);
 
     // La mano se separa en piel (punta) y guante (base) segun la profundidad local
     // Cuanto mas lejos de la camara, mas mano y menos guante: el antebrazo
     // (que esta cerca) va de cuero y la mano (mas adelante) va de piel.
-    float t = clamp((-vViewPos.z - 0.50) / 0.17, 0.0, 1.0);
+    float t = clamp((-vViewPos.z - 0.52) / 0.16, 0.0, 1.0);
     vec3 base = mix(uCloth, uSkin, t);
+    // Grano fino: la piel y el cuero no son superficies planas de un solo color.
+    float grano = hash(floor(vViewPos.xy * 190.0)) * 0.16 - 0.08;
+    base *= (1.0 + grano);
+    // Sombra en los pliegues entre los dedos
+    float pliegue = smoothstep(0.0, 0.35, abs(fract(vViewPos.x * 26.0) - 0.5));
+    base *= mix(0.86, 1.0, pliegue);
 
     if (uStyle == 1) {
         // Malla de hierro: retícula regular
@@ -293,9 +299,9 @@ void main() {
 
     // Las manos siempre llevan algo de luz propia: son lo mas cercano a la
     // antorcha y si quedan negras el juego se siente vacio.
-    vec3 color = base * (uAmbient * 2.2 + vec3(0.10) + uLightColor * ndl * atten);
+    vec3 color = base * (uAmbient * 1.8 + vec3(0.045) + uLightColor * ndl * atten);
     float rim = pow(1.0 - max(dot(n, vec3(0.0, 0.0, 1.0)), 0.0), 2.5);
-    color += uLightColor * rim * 0.10 * atten;
+    color += uLightColor * rim * 0.07 * atten;
 
     color *= uBrightness;
     color = color / (color + vec3(0.85));
