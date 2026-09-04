@@ -47,6 +47,23 @@ puede actualizar la app sin desinstalarla.
 Huella SHA-256 de la firma:
 `A3:72:F9:5E:9E:EC:57:46:A2:66:8C:DA:F3:1C:56:6A:FC:97:39:B0:A4:49:A5:C1:6A:FA:66:86:52:4E:31:EE`
 
+## Como se publica una version nueva
+
+Hay dos caminos, los dos usan la misma clave de firma:
+
+**Desde GitHub (lo mas comodo).** En la pestana *Actions* del repo, entra en
+*Publicar release*, toca *Run workflow* y pone el numero de version. Compila,
+corre los tests, firma el APK y crea la release solo. Si no le pones nombre,
+elige el siguiente nombre de zona de la cueva que no se haya usado todavia.
+Empujar una etiqueta `v1.2.3` hace exactamente lo mismo.
+
+**Desde la maquina.**
+
+```bash
+./gradlew :app:assembleRelease
+GITHUB_TOKEN=<tu token> tools/publicar_release.sh 1.0.1
+```
+
 ## Como se prueba
 
 ```bash
