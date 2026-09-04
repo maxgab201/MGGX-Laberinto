@@ -55,6 +55,8 @@ class GameSession(
         const val VEL_ESCALERA = 2.4f
         /** Caida a partir de la cual empieza a doler, en m/s. */
         const val CAIDA_SEGURA = 11f
+        /** Segundos que dura un tanque lleno de carburo con la linterna prendida. */
+        const val DURACION_CARBURO = 150f
     }
 
     enum class Phase { JUGANDO, PAUSA, GANADO, PERDIDO }
@@ -140,6 +142,33 @@ class GameSession(
     val trail = ArrayList<TrailPoint>()
     val torches: List<Int> = blueprint.torches
     val stalagmites: List<Int> = blueprint.stalagmites
+    val carbideStations: List<Int> = blueprint.carbide
+    val crystalClusters: List<Int> = blueprint.crystalClusters
+    val rocks: List<Int> = blueprint.rocks
+    val mushrooms: List<Int> = blueprint.mushrooms
+    val beams: List<Int> = blueprint.beams
+
+    /** Bichos vivos del nivel y su cabeza compartida. */
+    val enemies: List<Enemy> = blueprint.enemies.mapIndexed { i, e ->
+        Enemy(
+            e.kind,
+            (e.gx + 0.5f) * CELL, (e.gy + 0.5f) * CELL,
+            e.gx, e.gy,
+            (i * 0.7391f) % 6.2831f
+        )
+    }
+    private val brain = EnemyBrain(maze, seed)
+
+    // ---------------------------------------------------------- linterna
+    /** La linterna esta encendida. */
+    var linternaEncendida: Boolean = false
+        private set
+    /** Carburo que le queda, de 0 a 1. */
+    var carburo: Float = if (stats.tieneLinterna) 1f else 0f
+        private set
+    /** Estaciones de carga ya usadas (se gastan una vez por nivel). */
+    private val estacionesUsadas = HashSet<Int>()
+    fun estacionUsada(gi: Int): Boolean = estacionesUsadas.contains(gi)
 
     /** Cargas activas de objetos de uso puntual. */
     var pickCharges = 0; private set
@@ -175,7 +204,7 @@ class GameSession(
 
     /** Sonidos pendientes que el motor de audio va a consumir este frame. */
     private val soundQueue = ArrayList<Sfx>()
-    enum class Sfx { PASO, ECO, ECO_GRANDE, VETAGRIS, COFRE, TRAMPA, DANO, USAR, ROMPER, GANAR, PERDER, MARCA, ZUMBIDO }
+    enum class Sfx { PASO, ECO, ECO_GRANDE, VETAGRIS, COFRE, TRAMPA, DANO, USAR, ROMPER, GANAR, PERDER, MARCA, ZUMBIDO, BICHO }
     fun drainSounds(): List<Sfx> {
         if (soundQueue.isEmpty()) return emptyList()
         val out = ArrayList(soundQueue); soundQueue.clear(); return out
@@ -199,6 +228,20 @@ class GameSession(
         revealAround(maze.startGx, maze.startGy, 3)
         if (stats.exitPingSeconds > 0f) exitPingTimer = stats.exitPingSeconds
         if (stats.freeSonarSeconds > 0f) freeSonarTimer = stats.freeSonarSeconds
+
+        // Poder Memoria de la Sima: lo que ya exploraste de ESTE nivel vuelve.
+        if (stats.mapaPersistente) save.restoreExplored(level, revealed)
+        // Poder Ojo de la Veta: lo que vale la pena ya viene marcado.
+        if (stats.verTesoros) {
+            for (pk in pickups) {
+                if (pk.kind == PickupKind.VETAGRIS || pk.kind == PickupKind.COFRE) {
+                    revealAround(pk.gx, pk.gy, 1)
+                }
+            }
+        }
+        // Poder Pico Eterno: un golpe de pico de regalo en cada bajada.
+        if (stats.picosGratis > 0) pickCharges += stats.picosGratis
+
         markWalked()
     }
 
@@ -335,7 +378,9 @@ class GameSession(
         if (exitPingFlash > 0f) exitPingFlash -= dt
         if (stats.freeSonarSeconds > 0f && freeSonarTimer > 0f) freeSonarTimer -= dt
 
-        // --- rastro
+        // --- linterna, bichos y rastro
+        updateLinterna(dt)
+        updateEnemies(dt, input)
         updateTrail(dt)
         // --- objetos y trampas
         updatePickups(dt)
@@ -367,7 +412,8 @@ class GameSession(
         var speed = stats.walkSpeed
         speed *= effects.multiplier(EffectType.VELOCIDAD)
         if (runBurstLeft > 0f) speed *= (1f + stats.startBurstSpeed)
-        speed *= postura.velocidad
+        // El poder Reptador saca la penalidad de ir agachado.
+        speed *= if (stats.posturaLibre) 1f else postura.velocidad
 
         val wantsRun = (input.running || save.settings.autoRun) && stamina > 1f && postura.puedeCorrer
         val moving = abs(input.moveX) > 0.02f || abs(input.moveY) > 0.02f
@@ -480,7 +526,7 @@ class GameSession(
 
         // --- salto: solo de pie, con suelo bajo los pies y techo arriba.
         if (input.saltar && enSuelo && postura.puedeSaltar && libre >= Postura.DE_PIE.alturaCuerpo) {
-            velY = VEL_SALTO
+            velY = VEL_SALTO * stats.saltoExtra
             enSuelo = false
         }
 
@@ -494,7 +540,7 @@ class GameSession(
                 posY = suelo
                 velY = 0f
                 enSuelo = true
-                if (golpe > CAIDA_SEGURA) {
+                if (golpe > CAIDA_SEGURA && !stats.sinDanoDeCaida) {
                     applyDamage((golpe - CAIDA_SEGURA) * 3.2f)
                     toast("Mala caida")
                 }
@@ -686,6 +732,88 @@ class GameSession(
                 play(Sfx.COFRE)
             }
         }
+    }
+
+    // ------------------------------------------------------------ linterna
+
+    /** Enciende o apaga la linterna. Devuelve si quedo encendida. */
+    fun toggleLinterna(): Boolean {
+        if (!stats.tieneLinterna) return false
+        if (!linternaEncendida && carburo <= 0.01f) {
+            toast("Sin carburo: buscá una estación")
+            return false
+        }
+        linternaEncendida = !linternaEncendida
+        play(Sfx.USAR)
+        toast(if (linternaEncendida) "Linterna encendida" else "Linterna apagada")
+        return linternaEncendida
+    }
+
+    /**
+     * Gasta carburo mientras esta prendida y la recarga al pisar una estacion.
+     * Cada estacion sirve una sola vez por bajada.
+     */
+    private fun updateLinterna(dt: Float) {
+        if (!stats.tieneLinterna) return
+        if (linternaEncendida) {
+            carburo = (carburo - dt / DURACION_CARBURO).coerceAtLeast(0f)
+            if (carburo <= 0f) {
+                linternaEncendida = false
+                toast("Se acabó el carburo")
+            }
+        }
+        if (carburo >= 0.999f) return
+        for (gi in carbideStations) {
+            if (estacionesUsadas.contains(gi)) continue
+            val gx = gi % maze.gw
+            val gy = gi / maze.gw
+            val d = hypot((gx + 0.5f) * CELL - posX, (gy + 0.5f) * CELL - posZ)
+            if (d > 1.35f) continue
+            estacionesUsadas.add(gi)
+            carburo = 1f
+            play(Sfx.USAR)
+            toast("Linterna recargada")
+            break
+        }
+    }
+
+    /** Aporte de la linterna al alcance de la luz, ya con el carburo que queda. */
+    fun linternaFuerza(): Float =
+        if (linternaEncendida && carburo > 0f) (0.35f + 0.65f * carburo) else 0f
+
+    // -------------------------------------------------------------- bichos
+
+    /** Bichos que ahora mismo te estan persiguiendo. */
+    fun enemigosAlerta(): Int = enemies.count { it.alerta }
+
+    private fun updateEnemies(dt: Float, input: Input) {
+        if (enemies.isEmpty()) return
+        // Arrastrandose con Paso de Sombra directamente no te ven.
+        val invisible = stats.invisibleArrastrandose && postura == Postura.ARRASTRANDOSE
+        val ruidoso = (input.running || save.settings.autoRun) &&
+            (abs(input.moveX) > 0.02f || abs(input.moveY) > 0.02f) && postura.puedeCorrer
+        brain.update(
+            dt = dt,
+            enemigos = enemies,
+            px = posX, pz = posZ, pRadio = PLAYER_RADIUS,
+            alcanceEscala = stats.sigilo,
+            detectable = !invisible && phaseWindow <= 0f,
+            ruidoso = ruidoso,
+            cell = CELL,
+            pisoDe = { gx, gy -> maze.floorY(gx, gy) },
+            muerde = { e -> mordidaDe(e) }
+        )
+    }
+
+    private fun mordidaDe(e: Enemy) {
+        if (effects.isActive(EffectType.INMUNE_TRAMPAS)) return
+        var dmg = e.kind.dano * (1f + level * 0.010f)
+        dmg *= stats.damageTaken
+        dmg *= (1f - effects.magnitude(EffectType.RESISTENCIA, 0f))
+        if (healthFraction() < 0.30f) dmg *= (1f - stats.criticalArmor)
+        applyDamage(dmg)
+        toast("${e.kind.etiqueta}!")
+        play(Sfx.BICHO)
     }
 
     private fun updateTraps(dt: Float) {
@@ -903,6 +1031,7 @@ class GameSession(
     private fun win() {
         if (phase != Phase.JUGANDO) return
         phase = Phase.GANADO
+        guardarExploracion()
         play(Sfx.GANAR)
     }
 
@@ -910,7 +1039,13 @@ class GameSession(
         if (phase != Phase.JUGANDO) return
         phase = Phase.PERDIDO
         health = 0f
+        guardarExploracion()
         play(Sfx.PERDER)
+    }
+
+    /** Poder Memoria de la Sima: deja escrito lo que exploraste de este nivel. */
+    private fun guardarExploracion() {
+        if (stats.mapaPersistente) save.rememberExplored(level, revealed)
     }
 
     fun forceLose() { lose() }

@@ -183,6 +183,7 @@ class CaveAudio(private val save: SaveData) {
             GameSession.Sfx.PERDER -> { v.kind = 9; v.dur = 2.10; v.amp = 0.45; v.freq = 220.0 }
             GameSession.Sfx.MARCA -> { v.kind = 10; v.dur = 0.24; v.amp = 0.30; v.freq = 1200.0 }
             GameSession.Sfx.ZUMBIDO -> { v.kind = 11; v.dur = 0.50; v.amp = 0.18; v.freq = 58.0 }
+            GameSession.Sfx.BICHO -> { v.kind = 12; v.dur = 0.62; v.amp = 0.42; v.freq = 168.0 }
         }
     }
 
@@ -262,6 +263,13 @@ class CaveAudio(private val save: SaveData) {
                 env = exp(-x * 12.0)
                 sample = sin(v.phase) * 0.5
                 v.phase += 2 * PI * (v.freq * (1.0 - 0.3 * x)) * dt
+            }
+            12 -> { // bicho: chillido raspado que baja de golpe
+                env = exp(-x * 5.5) * (1.0 - x * 0.35)
+                v.noise = v.noise * 0.55f + noise() * 0.45f
+                val f = v.freq * (1.0 + 0.9 * exp(-x * 9.0)) * (1.0 - 0.45 * x)
+                sample = sin(v.phase) * 0.42 + sin(v.phase * 2.51) * 0.22 + v.noise * 0.30
+                v.phase += 2 * PI * f * dt
             }
             else -> { // zumbido de peligro
                 env = sin(PI * x) * 0.9

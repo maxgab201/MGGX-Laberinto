@@ -81,7 +81,7 @@ class CoverageTest {
             "game/PlayerStats.kt", "game/GameSession.kt", "core/SaveData.kt"
         )
         val idsValidos = ItemCatalog.all.map { it.id }.toSet()
-        val patron = Regex("\"((?:up|rel|cos)_[a-z_]+)\"")
+        val patron = Regex("\"((?:up|rel|cos|pod)_[a-z_]+)\"")
         val malos = mutableListOf<String>()
         for (a in archivos) {
             patron.findAll(fuente(a)).forEach { m ->

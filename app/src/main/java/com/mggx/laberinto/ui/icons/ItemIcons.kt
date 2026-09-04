@@ -470,6 +470,73 @@ fun drawItemIcon(p: Pen, id: IconId): Boolean {
         IconId.TINTE_CALIDO -> drawTint(p, Color(0xFFFFC58A))
         IconId.TINTE_AMBAR -> drawTint(p, Color(0xFFFFB25E))
         IconId.TINTE_VERDE -> drawTint(p, Color(0xFF7BF0A8))
+        // ------------------------------------------------ poderes
+        IconId.LINTERNA -> {
+            // Cuerpo de linterna de carburo con el haz saliendo.
+            p.fill(dim) { m(3.4f, 8.6f); l(9.4f, 8.6f); l(9.4f, 15.4f); l(3.4f, 15.4f); z() }
+            p.line(m, 1.4f) { rect(3.4f, 8.6f, 6f, 6.8f) }
+            p.line(m, 1.4f) { m(9.4f, 9.8f); l(11.6f, 7.6f); l(11.6f, 16.4f); l(9.4f, 14.2f); z() }
+            p.seg(4.6f, 15.4f, 4.6f, 19.4f, m, 1.4f)
+            p.seg(8.2f, 15.4f, 8.2f, 19.4f, m, 1.4f)
+            p.fill(a.copy(alpha = 0.32f)) { m(11.6f, 7.6f); l(21.4f, 3.4f); l(21.4f, 20.6f); l(11.6f, 16.4f); z() }
+            p.seg(13.4f, 12f, 20.4f, 12f, a, 1.2f)
+        }
+        IconId.GATEO -> {
+            // Silueta a cuatro patas avanzando.
+            p.dot(6.4f, 11.4f, 2f, m)
+            p.line(m, 1.9f) { m(8.2f, 12.4f); l(13.4f, 13.4f); l(18.4f, 12.4f) }
+            p.line(m, 1.9f) { m(9.6f, 12.8f); l(9.4f, 18.4f) }
+            p.line(m, 1.9f) { m(13.4f, 13.4f); l(13.4f, 18.4f) }
+            p.line(m, 1.9f) { m(17.8f, 12.6f); l(19.4f, 18.4f) }
+            p.line(a, 1.4f) { m(2.6f, 20.6f); l(21.4f, 20.6f) }
+            p.line(a, 1.3f) { m(19.4f, 6.6f); l(21.4f, 8.6f); l(19.4f, 10.6f) }
+        }
+        IconId.PEZUNA -> {
+            // Huella hendida de cabra con lineas de impulso.
+            p.fill(m) { m(9.4f, 5.4f); c(11.4f, 4.4f, 11.4f, 9.4f, 11f, 13.4f); c(10.8f, 16.4f, 8.4f, 16.4f, 8.2f, 13.4f); c(7.8f, 9.4f, 7.4f, 6.4f, 9.4f, 5.4f); z() }
+            p.fill(m) { m(15.4f, 5.4f); c(17.4f, 6.4f, 17f, 9.4f, 16.6f, 13.4f); c(16.4f, 16.4f, 14f, 16.4f, 13.8f, 13.4f); c(13.4f, 9.4f, 13.4f, 4.4f, 15.4f, 5.4f); z() }
+            p.line(a, 1.4f) { m(6.4f, 19.4f); l(10.4f, 19.4f) }
+            p.line(a, 1.4f) { m(13.6f, 19.4f); l(17.6f, 19.4f) }
+            p.line(a, 1.3f) { m(4.4f, 21.6f); l(19.6f, 21.6f) }
+        }
+        IconId.VETA_DORADA -> {
+            // Ojo con una veta de mineral en lugar de pupila.
+            p.line(m, 1.6f) { m(2.6f, 12f); c(6.4f, 6.4f, 17.6f, 6.4f, 21.4f, 12f); c(17.6f, 17.6f, 6.4f, 17.6f, 2.6f, 12f); z() }
+            p.dot(12f, 12f, 4.2f, dim)
+            p.fill(a) { m(10f, 15.4f); l(12.4f, 10.4f); l(13.4f, 12.4f); l(15f, 9f); l(14f, 12.6f); l(12.6f, 11.4f); z() }
+            p.dot(10.2f, 10.4f, 1.05f, a)
+        }
+        IconId.PICO_ETERNO -> {
+            // Pico con un anillo de "no se gasta nunca".
+            p.line(m, 1.9f) { m(4.4f, 8.4f); c(9.4f, 4.4f, 14.6f, 4.4f, 19.6f, 8.4f) }
+            p.seg(12f, 6.4f, 12f, 19.4f, m, 2f)
+            p.line(a, 1.5f) { m(6.4f, 15.4f); c(6.4f, 12.4f, 10.4f, 12.4f, 10.4f, 15.4f); c(10.4f, 18.4f, 6.4f, 18.4f, 6.4f, 15.4f); z() }
+            p.line(a, 1.5f) { m(13.6f, 15.4f); c(13.6f, 12.4f, 17.6f, 12.4f, 17.6f, 15.4f); c(17.6f, 18.4f, 13.6f, 18.4f, 13.6f, 15.4f); z() }
+        }
+        IconId.MAPA_GRABADO -> {
+            // Tablilla de piedra con el plano grabado.
+            p.fill(dim) { m(4.4f, 3.6f); l(19.6f, 3.6f); l(19.6f, 20.4f); l(4.4f, 20.4f); z() }
+            p.line(m, 1.5f) { rect(4.4f, 3.6f, 15.2f, 16.8f) }
+            p.line(a, 1.5f) { m(7.4f, 17.4f); l(7.4f, 11.4f); l(12f, 11.4f); l(12f, 7f); l(16.6f, 7f) }
+            p.dot(7.4f, 17.4f, 1.2f, a)
+            p.dot(16.6f, 7f, 1.2f, a)
+        }
+        IconId.LATIDO -> {
+            // Corazon de roca con la linea del pulso.
+            p.fill(dim) { m(12f, 20.4f); c(4.4f, 14.4f, 3.4f, 10.4f, 5.4f, 7.4f); c(7.4f, 4.4f, 11f, 5.4f, 12f, 8.4f); c(13f, 5.4f, 16.6f, 4.4f, 18.6f, 7.4f); c(20.6f, 10.4f, 19.6f, 14.4f, 12f, 20.4f); z() }
+            p.line(m, 1.4f) { m(12f, 20.4f); c(4.4f, 14.4f, 3.4f, 10.4f, 5.4f, 7.4f); c(7.4f, 4.4f, 11f, 5.4f, 12f, 8.4f); c(13f, 5.4f, 16.6f, 4.4f, 18.6f, 7.4f); c(20.6f, 10.4f, 19.6f, 14.4f, 12f, 20.4f); z() }
+            p.line(a, 1.7f) { m(4.6f, 12.4f); l(8.4f, 12.4f); l(10f, 9.4f); l(12.4f, 15.4f); l(14.4f, 12.4f); l(19.4f, 12.4f) }
+        }
+        IconId.SIGILO -> {
+            // Silueta encapuchada difuminandose en la sombra.
+            p.fill(dim) { m(12f, 3.6f); c(16f, 3.6f, 17.6f, 7.4f, 17f, 11.4f); l(18.4f, 20.4f); l(5.6f, 20.4f); l(7f, 11.4f); c(6.4f, 7.4f, 8f, 3.6f, 12f, 3.6f); z() }
+            p.line(m, 1.4f) { m(12f, 3.6f); c(16f, 3.6f, 17.6f, 7.4f, 17f, 11.4f); l(18.4f, 20.4f); l(5.6f, 20.4f); l(7f, 11.4f); c(6.4f, 7.4f, 8f, 3.6f, 12f, 3.6f); z() }
+            p.dot(10.2f, 9.6f, 0.95f, a)
+            p.dot(13.8f, 9.6f, 0.95f, a)
+            p.seg(2.6f, 15.4f, 5.4f, 15.4f, dim, 1.3f)
+            p.seg(18.6f, 15.4f, 21.4f, 15.4f, dim, 1.3f)
+        }
+
         IconId.TINTE_ROJO -> drawTint(p, Color(0xFFFF6A5E))
 
         else -> return false

@@ -62,6 +62,12 @@ uniform int uQuality;
 // Sonar: dibuja el contorno de las paredes cercanas
 uniform float uSonarRange;
 uniform vec3 uSonarColor;
+// Linterna de carburo: un haz que sale del ojo hacia donde mira la camara.
+// Con uSpotPower en 0 no cambia absolutamente nada.
+uniform vec3 uSpotDir;
+uniform float uSpotPower;
+uniform float uSpotRange;
+uniform float uSpotCos;
 
 out vec4 fragColor;
 
@@ -112,6 +118,17 @@ void main() {
 
     float ndl = max(dot(n, L), 0.0);
     vec3 diffuse = uLightColor * ndl * atten;
+
+    // Haz de la linterna: mismo origen que la antorcha, pero con cono y mucho
+    // mas alcance. El borde se suaviza para que no quede un circulo recortado.
+    if (uSpotPower > 0.0) {
+        float cd = dot(-L, uSpotDir);
+        float cono = smoothstep(uSpotCos, mix(uSpotCos, 1.0, 0.42), cd);
+        float ax = clamp(1.0 - dist / max(uSpotRange, 0.001), 0.0, 1.0);
+        float spotAtt = ax * ax * uSpotPower * cono;
+        diffuse += uLightColor * ndl * spotAtt * 1.55;
+        atten += spotAtt;
+    }
 
     // La antorcha va pegada al ojo, asi que el vector medio del especular es la
     // propia luz. Las hondonadas de la roca juntan humedad y brillan mas que
@@ -170,13 +187,26 @@ out float vEmissive;
 out float vAlpha;
 
 void main() {
-    float ang = iParams.x + uTime * (iParams.z > 0.5 ? 1.15 : 0.0);
+    // iParams.z = tipo: 0 quieto, 1 gema que gira y flota, 2 ala de murcielago,
+    // 3 bicho que repta. Solo el tipo 1 gira solo.
+    float tipo = iParams.z;
+    bool gema = tipo > 0.5 && tipo < 1.5;
+    float ang = iParams.x + uTime * (gema ? 1.15 : 0.0);
     float s = sin(ang), c = cos(ang);
     vec3 p = aPos * iPosScale.w;
+
+    if (tipo > 1.5 && tipo < 2.5) {
+        // Aleteo: la punta del ala sube y baja, la raiz casi no se mueve.
+        p.y += sin(uTime * 9.0 + iParams.y) * abs(p.x) * 1.25;
+    } else if (tipo > 2.5) {
+        // Reptar: ondula de costado a lo largo del cuerpo.
+        p.x += sin(uTime * 6.0 + iParams.y + p.z * 2.4) * 0.055;
+    }
+
     vec3 rp = vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c);
     vec3 rn = vec3(aNormal.x * c + aNormal.z * s, aNormal.y, -aNormal.x * s + aNormal.z * c);
 
-    float bob = iParams.z > 0.5 ? sin(uTime * 2.1 + iParams.y) * 0.11 : 0.0;
+    float bob = gema ? sin(uTime * 2.1 + iParams.y) * 0.11 : 0.0;
     vec3 world = iPosScale.xyz + rp + vec3(0.0, bob, 0.0);
 
     vWorld = world;
@@ -205,6 +235,10 @@ uniform vec3 uAmbient;
 uniform vec3 uFogColor;
 uniform float uFogDensity;
 uniform float uBrightness;
+uniform vec3 uSpotDir;
+uniform float uSpotPower;
+uniform float uSpotRange;
+uniform float uSpotCos;
 
 out vec4 fragColor;
 
@@ -216,6 +250,12 @@ void main() {
 
     float x = clamp(1.0 - dist / max(uLightRadius, 0.001), 0.0, 1.0);
     float atten = x * x * uLightIntensity;
+    if (uSpotPower > 0.0) {
+        float cd = dot(-L, uSpotDir);
+        float cono = smoothstep(uSpotCos, mix(uSpotCos, 1.0, 0.42), cd);
+        float ax = clamp(1.0 - dist / max(uSpotRange, 0.001), 0.0, 1.0);
+        atten += ax * ax * uSpotPower * cono * 1.55;
+    }
     float ndl = max(dot(n, L), 0.0);
 
     vec3 color = vColor.rgb * (uAmbient + uLightColor * ndl * atten);

@@ -3,7 +3,7 @@ package com.mggx.laberinto.game
 import com.mggx.laberinto.ui.icons.IconId
 
 /**
- * Catalogo completo de la tienda: 61 objetos, todos con un efecto propio.
+ * Catalogo completo de la tienda: 69 objetos, todos con un efecto propio.
  * No hay dos entradas que compartan (EffectType, magnitud, duracion).
  * La consistencia se verifica en los tests unitarios.
  */
@@ -273,6 +273,49 @@ object ItemCatalog {
             "Cada 60 segundos podes lanzar un Grito de Eco sin gastar nada.",
             ItemKind.RELIQUIA, Rarity.LEGENDARIO, Currency.VETAGRIS, 7,
             ItemEffect(EffectType.REL_SONAR_GRATIS, 60f), IconId.DIAPASON, unlockLevel = 22))
+
+        // ============================= PODERES (8) ===============================
+        // Se compran una sola vez, cuestan Vetagris (la moneda dificil) y
+        // cambian como se juega, no cuanto rinde un numero.
+        add(ShopItem("pod_linterna", "Linterna de Carburo",
+            "Un haz de luz que apunta a donde mires. Gasta carburo y se recarga en las estaciones de la mina.",
+            ItemKind.PODER, Rarity.LEGENDARIO, Currency.VETAGRIS, 10,
+            ItemEffect(EffectType.POD_LINTERNA, 1f), IconId.LINTERNA, unlockLevel = 6))
+
+        add(ShopItem("pod_reptador", "Reptador",
+            "Te movas agachado y arrastrandote igual de rapido que de pie. Las gateras dejan de ser un castigo.",
+            ItemKind.PODER, Rarity.EPICO, Currency.VETAGRIS, 12,
+            ItemEffect(EffectType.POD_POSTURA_LIBRE, 1f), IconId.GATEO, unlockLevel = 8))
+
+        add(ShopItem("pod_cabra", "Pies de Cabra",
+            "Saltas un 60% mas alto y ninguna caida te lastima, por hondo que sea el pozo.",
+            ItemKind.PODER, Rarity.EPICO, Currency.VETAGRIS, 14,
+            ItemEffect(EffectType.POD_SALTO_ALTO, 1.6f), IconId.PEZUNA, unlockLevel = 10))
+
+        add(ShopItem("pod_veta", "Ojo de la Veta",
+            "Los cristales de vetagris y los cofres del nivel aparecen marcados en el mapa desde que entras.",
+            ItemKind.PODER, Rarity.EPICO, Currency.VETAGRIS, 9,
+            ItemEffect(EffectType.POD_VER_TESOROS, 1f), IconId.VETA_DORADA, unlockLevel = 7))
+
+        add(ShopItem("pod_pico_eterno", "Pico Eterno",
+            "Un golpe de pico gratis en cada nivel, sin gastar ningun objeto. Se repone al bajar de nuevo.",
+            ItemKind.PODER, Rarity.LEGENDARIO, Currency.VETAGRIS, 16,
+            ItemEffect(EffectType.POD_PICO_ETERNO, 1f), IconId.PICO_ETERNO, unlockLevel = 12))
+
+        add(ShopItem("pod_memoria_sima", "Memoria de la Sima",
+            "Lo que exploraste de un nivel no se borra: si volves a intentarlo, el mapa te espera dibujado.",
+            ItemKind.PODER, Rarity.EPICO, Currency.VETAGRIS, 11,
+            ItemEffect(EffectType.POD_MAPA_PERSISTENTE, 1f), IconId.MAPA_GRABADO, unlockLevel = 9))
+
+        add(ShopItem("pod_corazon_cueva", "Corazon de la Cueva",
+            "La roca te devuelve el aire: recuperas 1,6 de vida por segundo mientras nada te lastime.",
+            ItemKind.PODER, Rarity.LEGENDARIO, Currency.VETAGRIS, 18,
+            ItemEffect(EffectType.POD_REGENERACION, 1.6f), IconId.LATIDO, unlockLevel = 14))
+
+        add(ShopItem("pod_sombra", "Paso de Sombra",
+            "Los bichos de la mina te notan recien a la mitad de distancia, y arrastrandote no te ven nunca.",
+            ItemKind.PODER, Rarity.LEGENDARIO, Currency.VETAGRIS, 15,
+            ItemEffect(EffectType.POD_SIGILO, 0.5f), IconId.SIGILO, unlockLevel = 11))
 
         // =========================== COSMETICOS (9) ==============================
         add(ShopItem("cos_guantes_cuero", "Guantes de Cuero Curtido",

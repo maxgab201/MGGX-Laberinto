@@ -28,12 +28,54 @@ object MazeGenerator {
         val traps: List<Trap>,
         val chests: List<Int>,
         val torches: List<Int>,
-        val stalagmites: List<Int>
+        val stalagmites: List<Int>,
+        /** Estaciones de carburo: recargan la linterna. */
+        val carbide: List<Int>,
+        /** Racimos de cristal que brillan solos. */
+        val crystalClusters: List<Int>,
+        /** Rocas sueltas del derrumbe. */
+        val rocks: List<Int>,
+        /** Hongos luminosos de cueva. */
+        val mushrooms: List<Int>,
+        /** Marcos de madera de la mina vieja. */
+        val beams: List<Int>,
+        /** Bichos que viven en el nivel. */
+        val enemies: List<EnemySpawn>
     )
 
     data class Trap(val gx: Int, val gy: Int, val kind: TrapKind)
 
     enum class TrapKind { SPIKES, PITFALL, STEAM, ROCKFALL }
+
+    /** Bicho puesto en el nivel: donde nace y de que clase es. */
+    data class EnemySpawn(val gx: Int, val gy: Int, val kind: EnemyKind)
+
+    /**
+     * Los tres bichos de la mina. Cada uno se juega distinto:
+     * el murcielago te encuentra rapido pero pega poco, el rastrero solo te
+     * escucha si corres, y el guardian no te persigue pero pega durisimo.
+     */
+    enum class EnemyKind(
+        val etiqueta: String,
+        /** Distancia a la que te detecta, en metros. */
+        val alcance: Float,
+        /** Velocidad de persecucion, en m/s. */
+        val velocidad: Float,
+        /** Dano por mordisco. */
+        val dano: Float,
+        /** Segundos entre mordiscos. */
+        val recarga: Float,
+        /** Radio de su cuerpo, en metros. */
+        val radio: Float,
+        /** Solo detecta al que corre (murcielago no, rastrero si). */
+        val soloOye: Boolean,
+        /** No persigue: se queda cuidando su pedazo de cueva. */
+        val guardian: Boolean
+    ) {
+        MURCIELAGO("Murcielago de sima", 9.5f, 4.1f, 7f, 1.5f, 0.34f, false, false),
+        RASTRERO("Rastrero ciego", 13f, 3.4f, 16f, 2.0f, 0.44f, true, false),
+        GUARDIAN("Guardian de roca", 6.5f, 1.9f, 30f, 2.6f, 0.62f, false, true)
+    }
 
     /** Dimensiones logicas del nivel. Crece de forma sostenida pero acotada. */
     fun cellsForLevel(level: Int): Pair<Int, Int> {
@@ -363,6 +405,32 @@ object MazeGenerator {
         // Estalagmitas decorativas: en casillas libres que no bloqueen (son delgadas).
         val stalag = take(stalagCount)
 
+        // --- ambientacion y estaciones
+        // Las estaciones de carburo se reparten por el nivel: siempre hay al
+        // menos una, y mas cuanto mas largo es el nivel, asi la linterna nunca
+        // te deja tirado.
+        val carbideCount = (1 + area / 260).coerceIn(1, 8)
+        val carbide = take(carbideCount)
+        val crystalClusters = take((area * 0.030f).toInt().coerceIn(3, 70))
+        val rocks = take((area * 0.045f).toInt().coerceIn(4, 90))
+        val mushrooms = take((area * 0.025f).toInt().coerceIn(3, 60))
+        // Los marcos de madera solo entran en pasillos rectos: si no, quedan
+        // clavados en el aire.
+        val pasillos = open.filter { gi ->
+            val x = gi % maze.gw
+            val y = gi / maze.gw
+            val horizontal = maze.isSolid(x, y - 1) && maze.isSolid(x, y + 1) &&
+                maze.isOpen(x - 1, y) && maze.isOpen(x + 1, y)
+            val vertical = maze.isSolid(x - 1, y) && maze.isSolid(x + 1, y) &&
+                maze.isOpen(x, y - 1) && maze.isOpen(x, y + 1)
+            (horizontal || vertical) && gi != startI && gi != exitI
+        }.toMutableList()
+        pasillos.shuffle(rnd)
+        val beams = pasillos.take((area * 0.02f).toInt().coerceIn(2, 40))
+
+        // --- bichos
+        val enemies = spawnEnemies(maze, level, rnd, distFromStart, take((3 + level / 2).coerceAtMost(26)))
+
         return Blueprint(
             maze = maze,
             level = level,
@@ -374,8 +442,55 @@ object MazeGenerator {
             traps = traps,
             chests = chests,
             torches = torches,
-            stalagmites = stalag
+            stalagmites = stalag,
+            carbide = carbide,
+            crystalClusters = crystalClusters,
+            rocks = rocks,
+            mushrooms = mushrooms,
+            beams = beams,
+            enemies = enemies
         )
+    }
+
+    /**
+     * Reparte los bichos. Nunca cerca del inicio (por eso el filtro de
+     * distancia), y la mezcla se va poniendo mas fea con el nivel: primero
+     * solo murcielagos, despues rastreros y al final guardianes.
+     */
+    private fun spawnEnemies(
+        maze: Maze,
+        level: Int,
+        rnd: Random,
+        distFromStart: IntArray,
+        lugares: List<Int>
+    ): List<EnemySpawn> {
+        if (level < 3) return emptyList()
+        val cuantos = when {
+            level < 6 -> 1 + level / 3
+            level < 14 -> 2 + level / 3
+            else -> (3 + level / 3).coerceAtMost(18)
+        }
+        val libres = lugares.filter { distFromStart[it] >= 10 }
+        val out = ArrayList<EnemySpawn>()
+        for (gi in libres.take(cuantos)) {
+            val r = rnd.nextFloat()
+            val kind = when {
+                level < 6 -> EnemyKind.MURCIELAGO
+                level < 12 -> if (r < 0.62f) EnemyKind.MURCIELAGO else EnemyKind.RASTRERO
+                level < 20 -> when {
+                    r < 0.42f -> EnemyKind.MURCIELAGO
+                    r < 0.86f -> EnemyKind.RASTRERO
+                    else -> EnemyKind.GUARDIAN
+                }
+                else -> when {
+                    r < 0.30f -> EnemyKind.MURCIELAGO
+                    r < 0.70f -> EnemyKind.RASTRERO
+                    else -> EnemyKind.GUARDIAN
+                }
+            }
+            out.add(EnemySpawn(gi % maze.gw, gi / maze.gw, kind))
+        }
+        return out
     }
 
     private val DX = intArrayOf(1, -1, 0, 0)

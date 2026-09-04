@@ -116,6 +116,20 @@ class CaveRenderer(
     private var shapeBox: InstancedShape? = null
     private var shapeCylinder: InstancedShape? = null
     private var shapeArrow: InstancedShape? = null
+    /** Vigas y travesanos de madera. */
+    /** Direccion en la que mira la camara este frame (para la linterna). */
+    private var camDirX = 0f
+    private var camDirY = 0f
+    private var camDirZ = 1f
+    private var shapeSlab: InstancedShape? = null
+    /** Ala de murcielago: chapa fina que aletea. */
+    private var shapeWing: InstancedShape? = null
+    /** Pincho de trampa. */
+    private var shapeSpike: InstancedShape? = null
+    /** Roca suelta / cuerpo de bicho de piedra. */
+    private var shapeBoulder: InstancedShape? = null
+    /** Poste fino: los parantes de los marcos de la mina. */
+    private var shapePost: InstancedShape? = null
 
     // ------------------------------------------------------------ brazos
     private val armsVao = IntArray(1)
@@ -295,6 +309,8 @@ class CaveRenderer(
         val fx = (sin(yaw) * cp).toFloat()
         val fy = sin(pitch).toFloat()
         val fz = (cos(yaw) * cp).toFloat()
+        // El haz de la linterna sale por donde mira la camara.
+        camDirX = fx; camDirY = fy; camDirZ = fz
 
         Matrix.setLookAtM(
             view, 0,
@@ -393,12 +409,19 @@ class CaveRenderer(
     private fun buildShapes() {
         shapeGem?.release(); shapeCone?.release(); shapeConeDown?.release()
         shapeBox?.release(); shapeCylinder?.release(); shapeArrow?.release()
-        shapeGem = InstancedShape(PropMeshes.octahedron(1.5f), 420)
+        shapeSlab?.release(); shapeWing?.release(); shapeSpike?.release()
+        shapeBoulder?.release(); shapePost?.release()
+        shapeGem = InstancedShape(PropMeshes.octahedron(1.5f), 900)
         shapeCone = InstancedShape(PropMeshes.cone(7, 1f, 0.42f, false), 340)
         shapeConeDown = InstancedShape(PropMeshes.cone(7, 1f, 0.36f, true), 340)
-        shapeBox = InstancedShape(PropMeshes.box(1f, 1f, 1f), 220)
-        shapeCylinder = InstancedShape(PropMeshes.cylinder(7, 1f, 0.1f), 220)
+        shapeBox = InstancedShape(PropMeshes.box(1f, 1f, 1f), 480)
+        shapeCylinder = InstancedShape(PropMeshes.cylinder(7, 1f, 0.1f), 520)
         shapeArrow = InstancedShape(PropMeshes.arrow(), 4)
+        shapeSlab = InstancedShape(PropMeshes.box(1f, 0.13f, 0.13f), 400)
+        shapeWing = InstancedShape(PropMeshes.box(1f, 0.035f, 0.62f), 80)
+        shapeSpike = InstancedShape(PropMeshes.cone(6, 1f, 0.17f, false), 300)
+        shapeBoulder = InstancedShape(PropMeshes.octahedron(0.72f), 700)
+        shapePost = InstancedShape(PropMeshes.cylinder(6, 1f, 0.042f), 160)
     }
 
     private fun buildArms() {
@@ -481,6 +504,12 @@ class CaveRenderer(
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uNormalStrength"), if (save.settings.quality >= 2) 1.35f else 0.7f)
         GLES30.glUniform1i(GLES30.glGetUniformLocation(p, "uQuality"), save.settings.quality)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSonarRange"), if (s.isSonarOn()) s.sonarRange() else 0f)
+        // Linterna de carburo: con fuerza 0 el shader la ignora entera.
+        val fuerza = s.linternaFuerza()
+        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uSpotDir"), camDirX, camDirY, camDirZ)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotPower"), fuerza * 2.6f)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotRange"), radius * 2.6f)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotCos"), 0.90f)
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uSonarColor"), 0.35f, 0.85f, 1.0f)
 
         GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
@@ -505,6 +534,11 @@ class CaveRenderer(
         val boxS = shapeBox ?: return
         val cyl = shapeCylinder ?: return
         val arrow = shapeArrow ?: return
+        val slab = shapeSlab ?: return
+        val wing = shapeWing ?: return
+        val spike = shapeSpike ?: return
+        val boulder = shapeBoulder ?: return
+        val post = shapePost ?: return
 
         val cull = when (save.settings.quality) { 0 -> 22f; 1 -> 28f; 2 -> 34f; else -> 42f }
         val cull2 = cull * cull
@@ -515,6 +549,7 @@ class CaveRenderer(
         }
 
         gem.begin(); cone.begin(); coneD.begin(); boxS.begin(); cyl.begin(); arrow.begin()
+        slab.begin(); wing.begin(); spike.begin(); boulder.begin(); post.begin()
         val C = GameSession.CELL
         val m = s.maze
 
@@ -574,14 +609,203 @@ class CaveRenderer(
             gem.add(tx, baseY + 0.50f, tz, 0.17f * fl, 1.0f, 0.62f, 0.22f, 1.35f, time * 2.1f + ph, ph, 1f, 1f)
         }
 
-        // --- trampas descubiertas
+        // --- ambientacion: cristales, rocas, hongos y marcos de madera
+        val th = s.theme
+        for (gi in s.crystalClusters) {
+            val gx = gi % m.gw; val gy = gi / m.gw
+            val x = (gx + 0.5f) * C; val z = (gy + 0.5f) * C
+            if (!near(x, z)) continue
+            val fy = WorldMesh.floorHeight(s.maze, gx, gy)
+            val h = ((gx * 17 + gy * 5) % 11) * 0.031f
+            val ph = ((gx * 23 + gy * 11) % 40) * 0.157f
+            val latido = 0.72f + 0.28f * sin((time * 0.9f + ph).toDouble()).toFloat()
+            // Un racimo: uno grande y dos chicos apoyados al costado.
+            gem.add(x, fy + 0.30f + h, z, 0.30f + h, th.veinR, th.veinG, th.veinB, 0.95f * latido, ph, ph, 0f, 1f)
+            gem.add(x + 0.30f, fy + 0.18f, z - 0.16f, 0.17f, th.veinR, th.veinG, th.veinB, 0.70f * latido, ph + 1f, ph, 0f, 1f)
+            gem.add(x - 0.24f, fy + 0.15f, z + 0.22f, 0.13f, th.veinR, th.veinG, th.veinB, 0.60f * latido, ph + 2f, ph, 0f, 1f)
+        }
+        for (gi in s.rocks) {
+            val gx = gi % m.gw; val gy = gi / m.gw
+            val x = (gx + 0.5f) * C; val z = (gy + 0.5f) * C
+            if (!near(x, z)) continue
+            val fy = WorldMesh.floorHeight(s.maze, gx, gy)
+            val r = ((gx * 13 + gy * 29) % 20) * 0.31f
+            val e = ((gx * 7 + gy * 3) % 5) * 0.045f
+            boulder.add(x + 0.24f, fy + 0.19f + e, z - 0.18f, 0.33f + e,
+                th.rockR * 0.92f, th.rockG * 0.92f, th.rockB * 0.92f, 0f, r, 0f, 0f, 1f)
+            boulder.add(x - 0.30f, fy + 0.13f, z + 0.26f, 0.22f,
+                th.rockR * 1.06f, th.rockG * 1.06f, th.rockB * 1.06f, 0f, r + 1.7f, 0f, 0f, 1f)
+        }
+        for (gi in s.mushrooms) {
+            val gx = gi % m.gw; val gy = gi / m.gw
+            val x = (gx + 0.5f) * C; val z = (gy + 0.5f) * C
+            if (!near(x, z)) continue
+            val fy = WorldMesh.floorHeight(s.maze, gx, gy)
+            // Tres hongos de distinto porte, siempre pegados a un costado.
+            for (k in 0 until 3) {
+                val ang = ((gx * 5 + gy * 11 + k * 7) % 20) * 0.314f
+                val rr = 0.34f + k * 0.16f
+                val hx = x + cos(ang.toDouble()).toFloat() * rr
+                val hz = z + sin(ang.toDouble()).toFloat() * rr
+                val alto = 0.16f + ((gx + gy + k) % 4) * 0.05f
+                cyl.add(hx, fy, hz, alto * 2.2f, 0.72f, 0.68f, 0.58f, 0.02f, 0f, 0f, 0f, 1f)
+                gem.add(hx, fy + alto * 2.1f, hz, 0.11f + k * 0.02f,
+                    0.52f, 0.95f, 0.72f, 0.85f, 0f, ang, 0f, 1f)
+            }
+        }
+        for (gi in s.beams) {
+            val gx = gi % m.gw; val gy = gi / m.gw
+            val x = (gx + 0.5f) * C; val z = (gy + 0.5f) * C
+            if (!near(x, z)) continue
+            val fy = WorldMesh.floorHeight(s.maze, gx, gy)
+            val alto = (m.ceilY(gx, gy) - fy).coerceIn(1.4f, 3.4f)
+            // El marco cruza el pasillo, asi que se orienta segun por donde se pasa.
+            val horizontal = m.isSolid(gx, gy - 1)
+            val ang = if (horizontal) 1.5708f else 0f
+            val dx = if (horizontal) 0f else C * 0.34f
+            val dz = if (horizontal) C * 0.34f else 0f
+            val madera = floatArrayOf(0.34f, 0.24f, 0.15f)
+            post.add(x - dx, fy, z - dz, alto, madera[0], madera[1], madera[2], 0.02f, 0f, 0f, 0f, 1f)
+            post.add(x + dx, fy, z + dz, alto, madera[0], madera[1], madera[2], 0.02f, 0f, 0f, 0f, 1f)
+            slab.add(x, fy + alto - 0.06f, z, C * 0.78f, madera[0] * 1.1f, madera[1] * 1.1f, madera[2] * 1.1f,
+                0.02f, ang, 0f, 0f, 1f)
+        }
+
+        // --- estaciones de carburo (recargan la linterna)
+        for (gi in s.carbideStations) {
+            val gx = gi % m.gw; val gy = gi / m.gw
+            val x = (gx + 0.5f) * C; val z = (gy + 0.5f) * C
+            if (!near(x, z)) continue
+            val fy = WorldMesh.floorHeight(s.maze, gx, gy)
+            val usada = s.estacionUsada(gi)
+            val brillo = if (usada) 0.06f else 1.15f + 0.35f * sin((time * 2.2f + gx).toDouble()).toFloat()
+            // Poste de hierro con el bidon y el piloto encendido.
+            cyl.add(x, fy, z, 1.10f, 0.30f, 0.31f, 0.34f, 0.02f, 0f, 0f, 0f, 1f)
+            boxS.add(x, fy + 0.72f, z, 0.46f, 0.42f, 0.38f, 0.28f, 0.03f, 0f, 0f, 0f, 1f)
+            gem.add(
+                x, fy + 1.08f, z, 0.15f,
+                if (usada) 0.45f else 1.0f, if (usada) 0.48f else 0.86f, if (usada) 0.5f else 0.40f,
+                brillo, time * 0.9f, gx.toFloat(), 1f, 1f
+            )
+        }
+
+        // --- trampas descubiertas: cada una con su forma, no un cuadrado rojo
         for (tr in s.traps) {
             if (!tr.revealed) continue
             val x = (tr.gx + 0.5f) * C; val z = (tr.gy + 0.5f) * C
             if (!near(x, z)) continue
             val fy = WorldMesh.floorHeight(s.maze, tr.gx, tr.gy)
             val pulse = 0.55f + 0.45f * sin((time * 3.4f + tr.gx + tr.gy).toDouble()).toFloat()
-            boxS.add(x, fy + 0.045f, z, 1.55f, 0.85f, 0.14f, 0.10f, 0.30f * pulse, 0f, 0f, 0f, 1f)
+            val aviso = if (tr.armed) 0.22f * pulse else 0.02f
+            when (tr.kind) {
+                com.mggx.laberinto.maze.MazeGenerator.TrapKind.SPIKES -> {
+                    // Corona de pinches de hierro asomando del piso.
+                    for (k in 0 until 7) {
+                        val a = k * 0.8976f + tr.gx
+                        val rr = if (k == 0) 0f else 0.52f
+                        spike.add(
+                            x + cos(a.toDouble()).toFloat() * rr, fy, z + sin(a.toDouble()).toFloat() * rr,
+                            0.40f + (k % 3) * 0.09f,
+                            0.62f, 0.58f, 0.55f, aviso, a, 0f, 0f, 1f
+                        )
+                    }
+                    slab.add(x, fy + 0.03f, z, 1.5f, 0.30f, 0.26f, 0.23f, aviso, 0f, 0f, 0f, 1f)
+                    slab.add(x, fy + 0.03f, z, 1.5f, 0.30f, 0.26f, 0.23f, aviso, 1.5708f, 0f, 0f, 1f)
+                }
+                com.mggx.laberinto.maze.MazeGenerator.TrapKind.PITFALL -> {
+                    // Boca de pozo con las tablas podridas partidas al medio.
+                    boxS.add(x, fy - 0.28f, z, 1.35f, 0.03f, 0.03f, 0.04f, 0f, 0f, 0f, 0f, 1f)
+                    slab.add(x - 0.42f, fy + 0.04f, z, 1.30f, 0.30f, 0.21f, 0.13f, aviso, 0.25f, 0f, 0f, 1f)
+                    slab.add(x + 0.46f, fy + 0.04f, z, 1.10f, 0.28f, 0.19f, 0.12f, aviso, -0.3f, 0f, 0f, 1f)
+                    slab.add(x, fy + 0.04f, z + 0.5f, 1.20f, 0.32f, 0.22f, 0.14f, aviso, 1.5708f, 0f, 0f, 1f)
+                }
+                com.mggx.laberinto.maze.MazeGenerator.TrapKind.STEAM -> {
+                    // Fisura con la valvula y el vapor saliendo a chorros.
+                    cyl.add(x, fy, z, 0.42f, 0.44f, 0.40f, 0.36f, 0.02f, 0f, 0f, 0f, 1f)
+                    boxS.add(x, fy + 0.05f, z, 0.72f, 0.26f, 0.24f, 0.22f, aviso, 0f, 0f, 0f, 1f)
+                    for (k in 0 until 4) {
+                        val t2 = ((time * 0.8f + k * 0.25f) % 1f)
+                        gem.add(
+                            x, fy + 0.42f + t2 * 1.5f, z, 0.10f + t2 * 0.26f,
+                            0.86f, 0.90f, 0.94f, (1f - t2) * 0.55f,
+                            t2 * 5f, k.toFloat(), 0f, (1f - t2) * 0.7f
+                        )
+                    }
+                }
+                com.mggx.laberinto.maze.MazeGenerator.TrapKind.ROCKFALL -> {
+                    // Rocas colgando del techo y escombro abajo.
+                    val techo = m.ceilY(tr.gx, tr.gy)
+                    boulder.add(x - 0.22f, techo - 0.34f, z + 0.12f, 0.44f,
+                        th.rockR * 0.9f, th.rockG * 0.9f, th.rockB * 0.9f, aviso, 0.6f, 0f, 0f, 1f)
+                    boulder.add(x + 0.28f, techo - 0.26f, z - 0.20f, 0.32f,
+                        th.rockR * 0.85f, th.rockG * 0.85f, th.rockB * 0.85f, aviso, 2.1f, 0f, 0f, 1f)
+                    boulder.add(x + 0.10f, fy + 0.16f, z + 0.30f, 0.28f,
+                        th.rockR, th.rockG, th.rockB, aviso, 1.2f, 0f, 0f, 1f)
+                    boulder.add(x - 0.34f, fy + 0.12f, z - 0.26f, 0.21f,
+                        th.rockR, th.rockG, th.rockB, aviso, 3.0f, 0f, 0f, 1f)
+                }
+            }
+        }
+
+        // --- bichos
+        for (e in s.enemies) {
+            if (!near(e.x, e.z)) continue
+            val ex2 = e.x; val ez2 = e.z; val ey = e.altura
+            val r = e.rumbo
+            val fwdX = sin(r.toDouble()).toFloat(); val fwdZ = cos(r.toDouble()).toFloat()
+            val rgtX = cos(r.toDouble()).toFloat(); val rgtZ = -sin(r.toDouble()).toFloat()
+            // Los ojos se prenden cuando te vieron.
+            val ojo = if (e.alerta) 1.45f else 0.30f
+            when (e.kind) {
+                com.mggx.laberinto.maze.MazeGenerator.EnemyKind.MURCIELAGO -> {
+                    boulder.add(ex2, ey, ez2, 0.24f, 0.20f, 0.16f, 0.19f, 0f, r, e.fase, 0f, 1f)
+                    wing.add(ex2 - rgtX * 0.26f, ey + 0.03f, ez2 - rgtZ * 0.26f, 0.62f,
+                        0.26f, 0.19f, 0.22f, 0f, r, e.fase, 2f, 1f)
+                    wing.add(ex2 + rgtX * 0.26f, ey + 0.03f, ez2 + rgtZ * 0.26f, 0.62f,
+                        0.26f, 0.19f, 0.22f, 0f, r, e.fase + 3.14f, 2f, 1f)
+                    gem.add(ex2 + fwdX * 0.14f - rgtX * 0.06f, ey + 0.05f, ez2 + fwdZ * 0.14f - rgtZ * 0.06f,
+                        0.035f, 1f, 0.42f, 0.30f, ojo, 0f, 0f, 0f, 1f)
+                    gem.add(ex2 + fwdX * 0.14f + rgtX * 0.06f, ey + 0.05f, ez2 + fwdZ * 0.14f + rgtZ * 0.06f,
+                        0.035f, 1f, 0.42f, 0.30f, ojo, 0f, 0f, 0f, 1f)
+                }
+                com.mggx.laberinto.maze.MazeGenerator.EnemyKind.RASTRERO -> {
+                    // Cuerpo largo de tres tramos que ondula al avanzar.
+                    for (k in 0 until 3) {
+                        val off = 0.30f - k * 0.30f
+                        boxS.add(
+                            ex2 + fwdX * off, ey + 0.24f - k * 0.03f, ez2 + fwdZ * off,
+                            0.46f - k * 0.08f,
+                            0.74f, 0.71f, 0.62f, 0f, r, e.fase + k * 0.8f, 3f, 1f
+                        )
+                    }
+                    for (k in 0 until 4) {
+                        val a = if (k < 2) 0.22f else -0.16f
+                        val lado = if (k % 2 == 0) -1f else 1f
+                        cyl.add(
+                            ex2 + fwdX * a + rgtX * 0.24f * lado, ey,
+                            ez2 + fwdZ * a + rgtZ * 0.24f * lado,
+                            0.26f, 0.62f, 0.60f, 0.52f, 0f, r, e.fase, 0f, 1f
+                        )
+                    }
+                    // Es ciego: en vez de ojos tiene dos antenas que tantean.
+                    gem.add(ex2 + fwdX * 0.44f - rgtX * 0.08f, ey + 0.30f, ez2 + fwdZ * 0.44f - rgtZ * 0.08f,
+                        0.05f, 0.95f, 0.86f, 0.52f, ojo * 0.6f, 0f, 0f, 0f, 1f)
+                    gem.add(ex2 + fwdX * 0.44f + rgtX * 0.08f, ey + 0.30f, ez2 + fwdZ * 0.44f + rgtZ * 0.08f,
+                        0.05f, 0.95f, 0.86f, 0.52f, ojo * 0.6f, 0f, 0f, 0f, 1f)
+                }
+                com.mggx.laberinto.maze.MazeGenerator.EnemyKind.GUARDIAN -> {
+                    boulder.add(ex2, ey + 0.42f, ez2, 0.86f, th.rockR * 0.8f, th.rockG * 0.8f, th.rockB * 0.82f, 0f, r, 0f, 0f, 1f)
+                    boulder.add(ex2, ey + 1.02f, ez2, 0.52f, th.rockR * 0.9f, th.rockG * 0.9f, th.rockB * 0.92f, 0f, r + 0.8f, 0f, 0f, 1f)
+                    boulder.add(ex2 - rgtX * 0.42f, ey + 0.62f, ez2 - rgtZ * 0.42f, 0.34f,
+                        th.rockR * 0.75f, th.rockG * 0.75f, th.rockB * 0.78f, 0f, r + 2f, 0f, 0f, 1f)
+                    boulder.add(ex2 + rgtX * 0.42f, ey + 0.62f, ez2 + rgtZ * 0.42f, 0.34f,
+                        th.rockR * 0.75f, th.rockG * 0.75f, th.rockB * 0.78f, 0f, r + 3f, 0f, 0f, 1f)
+                    gem.add(ex2 + fwdX * 0.24f - rgtX * 0.11f, ey + 1.10f, ez2 + fwdZ * 0.24f - rgtZ * 0.11f,
+                        0.055f, 1f, 0.62f, 0.22f, ojo, 0f, 0f, 0f, 1f)
+                    gem.add(ex2 + fwdX * 0.24f + rgtX * 0.11f, ey + 1.10f, ez2 + fwdZ * 0.24f + rgtZ * 0.11f,
+                        0.055f, 1f, 0.62f, 0.22f, ojo, 0f, 0f, 0f, 1f)
+                }
+            }
         }
 
         // --- salida: columna de cristal que se ve de lejos
@@ -639,7 +863,15 @@ class CaveRenderer(
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uFogDensity"), fogDensity)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uBrightness"), brightness)
 
+        val fuerza = s.linternaFuerza()
+        val spotDir = GLES30.glGetUniformLocation(p, "uSpotDir")
+        GLES30.glUniform3f(spotDir, camDirX, camDirY, camDirZ)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotPower"), fuerza * 2.6f)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotRange"), radius * 2.6f)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotCos"), 0.90f)
+
         gem.draw(); cone.draw(); coneD.draw(); boxS.draw(); cyl.draw(); arrow.draw()
+        slab.draw(); wing.draw(); spike.draw(); boulder.draw(); post.draw()
     }
 
     private fun drawDecals(s: GameSession, fogDensity: Float, brightness: Float) {

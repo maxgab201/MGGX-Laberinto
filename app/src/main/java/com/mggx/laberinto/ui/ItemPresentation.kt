@@ -79,6 +79,15 @@ object ItemText {
             EffectType.REL_INMUNE_CALOR -> "Inmune al calor de la roca"
             EffectType.REL_SONAR_GRATIS -> "Grito de Eco gratis cada ${secs(e.magnitude)}"
 
+            EffectType.POD_LINTERNA -> "Haz de luz dirigido, con carburo"
+            EffectType.POD_POSTURA_LIBRE -> "Agachado vas igual de rapido"
+            EffectType.POD_SALTO_ALTO -> "+${pctMore(e.magnitude)} de salto y sin dano de caida"
+            EffectType.POD_VER_TESOROS -> "Cristales y cofres marcados"
+            EffectType.POD_PICO_ETERNO -> "Un golpe de pico gratis por nivel"
+            EffectType.POD_MAPA_PERSISTENTE -> "El mapa explorado no se borra"
+            EffectType.POD_REGENERACION -> "+${e.magnitude} de vida por segundo"
+            EffectType.POD_SIGILO -> "Los bichos te ven a la mitad"
+
             EffectType.COS_GUANTES -> "Cambia como se ven tus manos"
             EffectType.COS_TINTE_LUZ -> "Cambia el color de tu luz"
         }
@@ -89,6 +98,7 @@ object ItemText {
         ItemKind.CONSUMIBLE -> "Se usa desde las ranuras rapidas durante la partida."
         ItemKind.MEJORA -> "Se aplica sola, para siempre, apenas la compras."
         ItemKind.RELIQUIA -> "Equipala en una de las 3 ranuras de reliquia."
+        ItemKind.PODER -> "Se compra una sola vez y ya queda activo para siempre."
         ItemKind.COSMETICO -> "Se equipa al comprarla. No cambia como se juega."
     }
 

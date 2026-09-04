@@ -14,6 +14,7 @@ enum class ItemKind(val label: String, val blurb: String) {
     CONSUMIBLE("Consumibles", "Se usan durante la partida y se gastan."),
     MEJORA("Mejoras", "Suben de nivel y son para siempre."),
     RELIQUIA("Reliquias", "Se equipan y actuan solas. Tenes 3 ranuras."),
+    PODER("Poderes", "Carisimos y para siempre. Cambian como se juega."),
     COSMETICO("Aspecto", "Cambian como se ven tus manos y tu luz.")
 }
 
@@ -84,6 +85,16 @@ enum class EffectType {
     REL_RENTA_VETAGRIS,
     REL_INMUNE_CALOR,
     REL_SONAR_GRATIS,
+
+    // --- poderes permanentes (carisimos, se compran una sola vez)
+    POD_LINTERNA,           // linterna de carburo con bateria y estaciones de carga
+    POD_POSTURA_LIBRE,      // agachado y arrastrandose vas a velocidad normal
+    POD_SALTO_ALTO,         // saltas mucho mas y no te lastimas al caer
+    POD_VER_TESOROS,        // cristales y cofres marcados desde el arranque
+    POD_PICO_ETERNO,        // un golpe de pico gratis en cada nivel
+    POD_MAPA_PERSISTENTE,   // el mapa explorado no se borra al reintentar
+    POD_REGENERACION,       // la vida se recupera sola de a poco
+    POD_SIGILO,             // los bichos te ven de mucho mas cerca
 
     // --- cosmeticos
     COS_GUANTES,

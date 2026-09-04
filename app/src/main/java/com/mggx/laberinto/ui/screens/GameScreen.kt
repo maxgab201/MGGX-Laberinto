@@ -128,12 +128,41 @@ fun GameHud(
                         Spacer(Modifier.width(6.dp))
                         CaveBar(session.staminaFraction(), Cave.Stamina, Modifier.weight(1f), height = 6.dp)
                     }
+                    if (session.stats.tieneLinterna) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val enc = session.linternaEncendida
+                            CaveIcon(
+                                IconId.LINTERNA, size = 14.dp,
+                                tint = if (enc) Cave.Amber else Cave.TextFaint,
+                                accent = Cave.AmberSoft
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            CaveBar(
+                                session.carburo,
+                                if (session.carburo > 0.2f) Cave.AmberSoft else sem.bad,
+                                Modifier.weight(1f), height = 6.dp
+                            )
+                        }
+                    }
                     if (session.livesLeft > 0) {
                         Spacer(Modifier.height(6.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CaveIcon(IconId.CUERDA, size = 13.dp, tint = sem.good, accent = sem.good)
                             Spacer(Modifier.width(6.dp))
                             Text("${session.livesLeft} vida(s) extra", fontSize = 10.sp, color = sem.good)
+                        }
+                    }
+                    val acechan = session.enemigosAlerta()
+                    if (acechan > 0) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CaveIcon(IconId.CALAVERA, size = 13.dp, tint = sem.bad, accent = sem.bad)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (acechan == 1) "Algo te sigue" else "$acechan te siguen",
+                                fontSize = 10.sp, color = sem.bad
+                            )
                         }
                     }
                 }
@@ -496,6 +525,21 @@ private fun ActionButtons(
                         diameter = (50 * scale).dp,
                         enabled = session.freeSonarTimer <= 0f,
                         badge = if (session.freeSonarTimer > 0f) "${session.freeSonarTimer.roundToInt()}" else null
+                    )
+                }
+            }
+
+            // Linterna: solo aparece si compraste el poder.
+            if (session.stats.tieneLinterna) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    RoundActionButton(
+                        IconId.LINTERNA,
+                        onClick = { session.toggleLinterna() },
+                        diameter = (50 * scale).dp,
+                        tint = if (session.linternaEncendida) Cave.Amber else Cave.Text,
+                        enabled = session.carburo > 0f || session.linternaEncendida,
+                        badge = "${(session.carburo * 100).roundToInt()}%"
                     )
                 }
             }

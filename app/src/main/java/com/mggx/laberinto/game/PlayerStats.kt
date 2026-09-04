@@ -14,6 +14,11 @@ class PlayerStats(private val save: SaveData) {
         return item.effect.magnitude * up(id)
     }
 
+    /** Los poderes se compran una sola vez: o los tenes o no. */
+    private fun poder(id: String): Boolean = save.ownedLevel(id) > 0
+    private fun poderMag(id: String): Float =
+        if (poder(id)) ItemCatalog.get(id)?.effect?.magnitude ?: 0f else 0f
+
     private val relicSet: Set<String> = save.relics().toSet()
     fun hasRelic(id: String): Boolean = relicSet.contains(id)
     private fun relicMag(id: String): Float =
@@ -66,7 +71,8 @@ class PlayerStats(private val save: SaveData) {
     val criticalArmor: Float = relicMag("rel_colmillo")           // dano evitado con vida baja
     val ecoCritChance: Float = relicMag("rel_ambar")              // prob. de eco x10
     val exitPingSeconds: Float = relicMag("rel_rosa")             // 0 = sin ping
-    val regenPerSecond: Float = relicMag("rel_lagrima")
+    /** Regeneracion por segundo: la Lagrima suma con el Corazon de la Cueva. */
+    val regenPerSecond: Float = relicMag("rel_lagrima") + poderMag("pod_corazon_cueva")
     val threadMultiplier: Float = if (hasRelic("rel_nudo")) 2f else 1f
     val minAmbient: Float = relicMag("rel_craneo")
     val startBurstSpeed: Float = relicMag("rel_runa")
@@ -75,6 +81,28 @@ class PlayerStats(private val save: SaveData) {
     val vetagrisIncome: Boolean = hasRelic("rel_ojo_vetagris")
     val heatImmune: Boolean = hasRelic("rel_escama")
     val freeSonarSeconds: Float = relicMag("rel_diapason")
+
+    // ------------------------------------------------------------- poderes
+
+    /** Linterna de carburo: haz dirigido con bateria. */
+    val tieneLinterna: Boolean = poder("pod_linterna")
+    /** Reptador: agachado y arrastrandose no perdes velocidad. */
+    val posturaLibre: Boolean = poder("pod_reptador")
+    /** Pies de Cabra: saltas mas alto y no te lastima ninguna caida. */
+    val saltoExtra: Float = if (poder("pod_cabra")) poderMag("pod_cabra") else 1f
+    val sinDanoDeCaida: Boolean = poder("pod_cabra")
+    /** Ojo de la Veta: cristales y cofres marcados desde el arranque. */
+    val verTesoros: Boolean = poder("pod_veta")
+    /** Pico Eterno: golpes de pico gratis al empezar cada nivel. */
+    val picosGratis: Int = if (poder("pod_pico_eterno")) 1 else 0
+    /** Memoria de la Sima: el mapa explorado sobrevive al reintento. */
+    val mapaPersistente: Boolean = poder("pod_memoria_sima")
+    /**
+     * Paso de Sombra: los bichos te notan a la mitad de distancia, y
+     * arrastrandote directamente no te ven.
+     */
+    val sigilo: Float = if (poder("pod_sombra")) poderMag("pod_sombra") else 1f
+    val invisibleArrastrandose: Boolean = poder("pod_sombra")
 
     /** Indice de guantes cosmeticos (0..4). */
     val gloveStyle: Int = (ItemCatalog.get(save.cosmeticGloves)?.effect?.magnitude ?: 0f).toInt()

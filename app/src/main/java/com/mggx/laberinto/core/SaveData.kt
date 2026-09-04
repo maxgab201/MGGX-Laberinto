@@ -278,6 +278,47 @@ class SaveData private constructor(private val store: Store) {
         save()
     }
 
+    // ------------------------------------------ mapa explorado (Memoria de la Sima)
+
+    /** Nivel del que se guardo el mapa explorado, y el mapa en si. */
+    private var exploredLevel: Int = 0
+    private var exploredMask: String = ""
+
+    /**
+     * Guarda que casillas viste de un nivel. Se comprime a hexadecimal, un bit
+     * por casilla: un nivel grande entra en unos pocos cientos de caracteres.
+     */
+    fun rememberExplored(level: Int, revealed: BooleanArray) {
+        val sb = StringBuilder((revealed.size + 3) / 4)
+        var i = 0
+        while (i < revealed.size) {
+            var nib = 0
+            for (b in 0 until 4) {
+                if (i + b < revealed.size && revealed[i + b]) nib = nib or (1 shl b)
+            }
+            sb.append("0123456789abcdef"[nib])
+            i += 4
+        }
+        exploredLevel = level
+        exploredMask = sb.toString()
+        save()
+    }
+
+    /** Vuelca el mapa guardado sobre [revealed] si es de este mismo nivel. */
+    fun restoreExplored(level: Int, revealed: BooleanArray): Boolean {
+        if (level != exploredLevel || exploredMask.isEmpty()) return false
+        if (exploredMask.length != (revealed.size + 3) / 4) return false
+        for (k in exploredMask.indices) {
+            val nib = Character.digit(exploredMask[k], 16)
+            if (nib < 0) return false
+            for (b in 0 until 4) {
+                val i = k * 4 + b
+                if (i < revealed.size && (nib shr b) and 1 == 1) revealed[i] = true
+            }
+        }
+        return true
+    }
+
     fun consumeVetagrisCounter(): Boolean {
         if (levelsSinceVetagris >= 5) { levelsSinceVetagris = 0; save(); return true }
         return false
@@ -289,6 +330,7 @@ class SaveData private constructor(private val store: Store) {
         cosmeticGloves = "cos_guantes_cuero"; cosmeticLight = "cos_luz_calida"
         totalRuns = 0; totalWins = 0; totalDeaths = 0; totalEcosGanados = 0
         bestTimeMs = 0; totalPlayMs = 0; totalSteps = 0; levelsSinceVetagris = 0
+        exploredLevel = 0; exploredMask = ""
         ItemCatalog.defaultsOwned.forEach { owned[it] = 1 }
         save()
     }
@@ -316,6 +358,8 @@ class SaveData private constructor(private val store: Store) {
         root.put("playMs", totalPlayMs)
         root.put("steps", totalSteps)
         root.put("sinceVtg", levelsSinceVetagris)
+        root.put("expLevel", exploredLevel)
+        root.put("expMask", exploredMask)
 
         val s = JSONObject()
         with(settings) {
@@ -348,6 +392,8 @@ class SaveData private constructor(private val store: Store) {
             currentLevel = root.optInt("curLevel", 1).coerceIn(1, maxLevel)
             cosmeticGloves = root.optString("gloves", "cos_guantes_cuero")
             cosmeticLight = root.optString("light", "cos_luz_calida")
+            exploredLevel = root.optInt("expLevel", 0)
+            exploredMask = root.optString("expMask", "")
 
             root.optJSONObject("owned")?.let { o ->
                 o.keys().forEach { k -> if (ItemCatalog.get(k) != null) owned[k] = o.optInt(k, 0) }
