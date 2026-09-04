@@ -14,8 +14,10 @@ android {
         applicationId = "com.mggx.laberinto"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        // El versionCode tiene que subir en cada publicacion: Android no deja
+        // instalar encima de una version con el mismo numero o mayor.
+        versionCode = 2
+        versionName = "1.1.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
