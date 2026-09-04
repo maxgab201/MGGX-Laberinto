@@ -190,6 +190,47 @@ fun drawUiIcon(p: Pen, id: IconId) {
             p.line(m, 1.2f) { m(9.4f, 20.4f); l(14.6f, 20.4f); l(14.6f, 9.4f); l(9.4f, 9.4f); z() }
             p.line(m, 1.2f) { m(16f, 20.4f); l(21.4f, 20.4f); l(21.4f, 4.4f); l(16f, 4.4f); z() }
         }
+        IconId.AGACHARSE -> {
+            // Silueta agachada bajo un techo bajo.
+            p.seg(3.4f, 5.4f, 20.6f, 5.4f, a, 1.8f)
+            p.seg(5.4f, 5.4f, 5.4f, 7.4f, a.copy(alpha = 0.5f), 1.2f)
+            p.seg(18.6f, 5.4f, 18.6f, 7.4f, a.copy(alpha = 0.5f), 1.2f)
+            p.dot(9.6f, 10.6f, 2.1f, m)
+            p.line(m, 1.9f) { m(9.6f, 12.9f); l(13.4f, 14.6f); l(16.4f, 12.4f) }
+            p.line(m, 1.9f) { m(13.4f, 14.6f); l(12.4f, 18.4f); l(16f, 20.6f) }
+            p.line(m, 1.9f) { m(12.4f, 18.4f); l(7.4f, 19.4f); l(6.4f, 20.6f) }
+        }
+        IconId.ARRASTRARSE -> {
+            // Silueta tirada en el piso pasando por una gatera.
+            p.seg(3.4f, 7.4f, 20.6f, 7.4f, a, 1.8f)
+            p.seg(3.4f, 20.6f, 20.6f, 20.6f, m.copy(alpha = 0.55f), 1.5f)
+            p.dot(7.4f, 15.4f, 2f, m)
+            p.line(m, 1.9f) { m(9.2f, 16.4f); l(14.4f, 17.4f); l(19.4f, 16.2f) }
+            p.line(m, 1.7f) { m(11.4f, 17f); l(11.4f, 19.6f) }
+            p.line(m, 1.7f) { m(16.4f, 17f); l(17.4f, 19.6f) }
+            p.line(m, 1.7f) { m(9f, 14.4f); l(12.4f, 12.6f) }
+        }
+        IconId.SALTAR -> {
+            // Silueta en el aire con una flecha de impulso.
+            p.dot(13.4f, 5.6f, 2.15f, m)
+            p.line(m, 1.9f) { m(13.4f, 8.2f); l(11.4f, 13.4f); l(14.6f, 16.4f) }
+            p.line(m, 1.9f) { m(11.4f, 13.4f); l(7.4f, 15.4f) }
+            p.line(m, 1.9f) { m(13.4f, 9.6f); l(17.6f, 11.4f) }
+            p.line(m, 1.9f) { m(14.6f, 16.4f); l(13.4f, 19.6f) }
+            p.line(a, 1.6f) { m(4.4f, 20.6f); l(4.4f, 14.4f) }
+            p.fill(a) { m(4.4f, 11.6f); l(6.8f, 15.4f); l(2f, 15.4f); z() }
+        }
+        IconId.DE_PIE -> {
+            // Silueta erguida con una flecha de levantarse.
+            p.dot(13.4f, 4.8f, 2.15f, m)
+            p.line(m, 1.9f) { m(13.4f, 7.4f); l(13.4f, 14.4f) }
+            p.line(m, 1.9f) { m(13.4f, 9.4f); l(9.4f, 11.6f) }
+            p.line(m, 1.9f) { m(13.4f, 9.4f); l(17.6f, 11.6f) }
+            p.line(m, 1.9f) { m(13.4f, 14.4f); l(11f, 20.6f) }
+            p.line(m, 1.9f) { m(13.4f, 14.4f); l(16.4f, 20.6f) }
+            p.line(a, 1.6f) { m(4.4f, 20.6f); l(4.4f, 9.4f) }
+            p.fill(a) { m(4.4f, 6.4f); l(6.8f, 10.4f); l(2f, 10.4f); z() }
+        }
         else -> {
             // Marcador visible si alguna vez faltara un icono: nunca deberia verse.
             p.ring(12f, 12f, 8.4f, m, 1.5f)

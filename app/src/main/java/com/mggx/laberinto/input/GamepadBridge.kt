@@ -64,11 +64,18 @@ class GamepadBridge(
 
         if (inGame) {
             when (keyCode) {
-                KeyEvent.KEYCODE_BUTTON_A -> { onUseItem(); return true }
-                KeyEvent.KEYCODE_BUTTON_X -> { onChalk(); return true }
+                // A = saltar, que es lo que espera cualquiera que agarre un mando.
+                KeyEvent.KEYCODE_BUTTON_A -> { input.jumpPending = true; return true }
+                KeyEvent.KEYCODE_BUTTON_X -> { onUseItem(); return true }
+                KeyEvent.KEYCODE_BUTTON_L2 -> { onChalk(); return true }
                 KeyEvent.KEYCODE_BUTTON_Y -> { onCycleItem(1); return true }
                 KeyEvent.KEYCODE_BUTTON_R1 -> { onCycleItem(1); return true }
                 KeyEvent.KEYCODE_BUTTON_L1 -> { onCycleItem(-1); return true }
+                KeyEvent.KEYCODE_BUTTON_THUMBR -> {
+                    // R3 cicla de pie -> agachado -> arrastrandose -> de pie.
+                    input.crouchLevel = (input.crouchLevel + 1) % 3
+                    return true
+                }
                 KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_MENU -> { onPause(); return true }
                 KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK -> { onPause(); return true }
                 KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_R2 -> {
@@ -172,5 +179,6 @@ class GamepadBridge(
         input.moveX = 0f; input.moveY = 0f
         input.padLookX = 0f; input.padLookY = 0f
         input.runPad = false
+        input.jumpPending = false
     }
 }

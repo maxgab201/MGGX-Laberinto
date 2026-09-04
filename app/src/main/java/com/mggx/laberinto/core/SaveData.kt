@@ -146,6 +146,11 @@ class SaveData private constructor(private val store: Store) {
             if (!spend(item.currency, item.priceAt(0))) return BuyResult.SIN_FONDOS
             stock[id] = stockOf(id) + 1
             owned[id] = 1
+            // Va solo a una ranura rapida si hay lugar. Sin esto, el jugador
+            // compraba algo y no lo podia usar nunca: solo se puede usar lo que
+            // esta en una ranura, y eso habia que hacerlo a mano en otra
+            // pantalla que nadie encontraba.
+            autoEquipar(id)
             save()
             return BuyResult.OK
         }
@@ -229,8 +234,25 @@ class SaveData private constructor(private val store: Store) {
         if (ItemCatalog.get(id) == null || amount <= 0) return
         stock[id] = (stockOf(id) + amount).coerceAtMost(MAX_STACK)
         owned[id] = 1
+        autoEquipar(id)
         save()
     }
+
+    /**
+     * Mete el consumible en una ranura rapida si queda alguna libre.
+     * Si estan todas ocupadas no pisa nada: el jugador ya eligio que llevar.
+     */
+    private fun autoEquipar(id: String) {
+        if (loadout.contains(id)) return
+        if (loadout.size >= loadoutSlots()) return
+        loadout.add(id)
+    }
+
+    /** true si al comprar [id] entro solo en una ranura rapida. */
+    fun estaEnRanuraRapida(id: String): Boolean = loadout.contains(id)
+
+    /** true si no queda ninguna ranura rapida libre. */
+    fun ranurasLlenas(): Boolean = loadout.size >= loadoutSlots()
 
     fun setCurrentLevel(level: Int) {
         currentLevel = level.coerceIn(1, maxLevel)

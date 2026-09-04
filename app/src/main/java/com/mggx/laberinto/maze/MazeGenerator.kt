@@ -75,6 +75,16 @@ object MazeGenerator {
         }
         maze.refreshSolution()
 
+        // Relieve: terrazas, pozos con escalera y tramos bajos. Por como se
+        // arma no puede cortar el paso, pero se controla igual: si algo saliera
+        // mal, el nivel queda plano antes que imposible.
+        ReliefGenerator.apply(maze, level, rnd)
+        if (!ReliefGenerator.esTransitable(maze)) {
+            maze.floorLevel.fill(0)
+            maze.ceilClearance.fill(Maze.ALTO_NORMAL)
+            maze.ladder.fill(false)
+        }
+
         val populated = populate(maze, level, rnd, theme)
         return populated.copy(seed = seed)
     }

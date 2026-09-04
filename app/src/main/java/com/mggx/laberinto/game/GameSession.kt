@@ -43,6 +43,18 @@ class GameSession(
         const val EXIT_RADIUS = 1.25f
         /** Vueltas por segundo del giro con mando, en grados. */
         const val PAD_LOOK_DEG = 165f
+
+        /** Gravedad, en m/s^2. */
+        const val GRAVEDAD = -18f
+        /**
+         * Impulso del salto. Da unos 0,59 m de altura: alcanza para un escalon
+         * y medio, y a proposito NO alcanza para saltear una escalera.
+         */
+        const val VEL_SALTO = 4.6f
+        /** Velocidad de subida y de bajada por escalera, en m/s. */
+        const val VEL_ESCALERA = 2.4f
+        /** Caida a partir de la cual empieza a doler, en m/s. */
+        const val CAIDA_SEGURA = 11f
     }
 
     enum class Phase { JUGANDO, PAUSA, GANADO, PERDIDO }
@@ -88,6 +100,20 @@ class GameSession(
     var pitchDeg: Float = 0f
     var velX: Float = 0f
     var velZ: Float = 0f
+
+    /** Altura de los pies. La cueva tiene relieve, asi que no siempre es cero. */
+    var posY: Float = maze.floorY(maze.startGx, maze.startGy)
+    var velY: Float = 0f
+    /** Como va parado: lo pide el jugador, pero el techo tiene la ultima palabra. */
+    var postura: Postura = Postura.DE_PIE
+        private set
+    var enSuelo: Boolean = true
+        private set
+    /** Esta parado en una casilla con escalera: puede subir y baja despacio. */
+    var enEscalera: Boolean = false
+        private set
+    /** Altura del ojo suavizada, para que agacharse no sea un tiron de camara. */
+    private var alturaOjoSuave: Float = Postura.DE_PIE.alturaOjo
 
     var health: Float = stats.maxHealth
     var stamina: Float = stats.maxStamina
@@ -263,7 +289,10 @@ class GameSession(
         var moveY: Float = 0f,      // -1 atras .. 1 adelante
         var lookX: Float = 0f,      // grados a aplicar este frame
         var lookY: Float = 0f,
-        var running: Boolean = false
+        var running: Boolean = false,
+        /** 0 de pie, 1 agachado, 2 arrastrandose. */
+        var agacharse: Int = 0,
+        var saltar: Boolean = false
     )
 
     fun pause() { if (phase == Phase.JUGANDO) phase = Phase.PAUSA }
@@ -331,11 +360,16 @@ class GameSession(
     }
 
     private fun moveStep(dt: Float, input: Input) {
+        // La postura y la altura se resuelven primero: definen por donde entra
+        // el jugador y a que velocidad puede ir.
+        pasoVertical(dt, input)
+
         var speed = stats.walkSpeed
         speed *= effects.multiplier(EffectType.VELOCIDAD)
         if (runBurstLeft > 0f) speed *= (1f + stats.startBurstSpeed)
+        speed *= postura.velocidad
 
-        val wantsRun = (input.running || save.settings.autoRun) && stamina > 1f
+        val wantsRun = (input.running || save.settings.autoRun) && stamina > 1f && postura.puedeCorrer
         val moving = abs(input.moveX) > 0.02f || abs(input.moveY) > 0.02f
 
         if (wantsRun && moving) {
@@ -376,8 +410,8 @@ class GameSession(
             clampToWorld()
         } else {
             // Colision por eje: permite deslizarse contra la pared.
-            if (!collides(posX + stepX, posZ)) posX += stepX else velX = 0f
-            if (!collides(posX, posZ + stepZ)) posZ += stepZ else velZ = 0f
+            if (!bloqueado(posX + stepX, posZ)) posX += stepX else velX = 0f
+            if (!bloqueado(posX, posZ + stepZ)) posZ += stepZ else velZ = 0f
         }
 
         // Cabeceo y pasos
@@ -395,6 +429,120 @@ class GameSession(
 
         revealAround(gridX(), gridY(), 2)
         rememberJunction()
+    }
+
+    /**
+     * Alto libre en un punto, mirando todas las casillas que toca el cuerpo del
+     * jugador. Al tomar el minimo, el jugador se agacha un poquito ANTES de
+     * meterse en la gatera y no despues.
+     */
+    fun alturaLibreEn(x: Float, z: Float): Float {
+        val r = PLAYER_RADIUS
+        var libre = Maze.ALTO_NORMAL
+        val gx0 = ((x - r) / CELL).toInt()
+        val gx1 = ((x + r) / CELL).toInt()
+        val gy0 = ((z - r) / CELL).toInt()
+        val gy1 = ((z + r) / CELL).toInt()
+        for (gy in gy0..gy1) {
+            for (gx in gx0..gx1) {
+                if (!maze.inBounds(gx, gy) || maze.isSolid(gx, gy)) continue
+                val c = maze.ceilClearance[maze.index(gx, gy)]
+                if (c < libre) libre = c
+            }
+        }
+        return libre
+    }
+
+    /**
+     * Postura y movimiento vertical: agacharse, saltar, caer y escaleras.
+     *
+     * Agacharse no gasta aguante a proposito: es una forma de avanzar, no un
+     * esfuerzo. Lo unico que consume aguante es correr.
+     */
+    private fun pasoVertical(dt: Float, input: Input) {
+        val gx = gridX(); val gy = gridY()
+        val i = maze.index(gx, gy)
+        val suelo = maze.floorY(gx, gy)
+        val libre = alturaLibreEn(posX, posZ)
+        enEscalera = maze.hasLadder(gx, gy)
+
+        // La postura la pide el jugador, pero si el techo esta bajo se agacha
+        // solo. Es a proposito: la cueva nunca te frena en seco por no haber
+        // apretado un boton, agacharse no cuesta aguante y el boton sigue
+        // sirviendo para agacharte donde vos quieras.
+        val pedida = when {
+            input.agacharse >= 2 -> Postura.ARRASTRANDOSE
+            input.agacharse == 1 -> Postura.AGACHADO
+            else -> Postura.DE_PIE
+        }
+        val cabe = Postura.paraAltura(libre) ?: Postura.ARRASTRANDOSE
+        postura = if (pedida.alturaCuerpo <= cabe.alturaCuerpo) pedida else cabe
+
+        // --- salto: solo de pie, con suelo bajo los pies y techo arriba.
+        if (input.saltar && enSuelo && postura.puedeSaltar && libre >= Postura.DE_PIE.alturaCuerpo) {
+            velY = VEL_SALTO
+            enSuelo = false
+        }
+
+        if (!enSuelo || posY > suelo + 0.001f) {
+            velY += GRAVEDAD * dt
+            // Agarrado a la escalera la caida es un descenso controlado.
+            if (enEscalera && velY < -VEL_ESCALERA) velY = -VEL_ESCALERA
+            posY += velY * dt
+            if (velY <= 0f && posY <= suelo) {
+                val golpe = -velY
+                posY = suelo
+                velY = 0f
+                enSuelo = true
+                if (golpe > CAIDA_SEGURA) {
+                    applyDamage((golpe - CAIDA_SEGURA) * 3.2f)
+                    toast("Mala caida")
+                }
+            } else {
+                enSuelo = false
+            }
+        } else if (posY < suelo - 0.001f) {
+            // Subiendo. Un escalon se sube caminando; un desnivel grande solo se
+            // sube por escalera, y lleva su tiempo.
+            val falta = suelo - posY
+            posY += if (falta <= Maze.SUBIDA_CAMINANDO) falta else min(falta, VEL_ESCALERA * dt)
+            if (posY > suelo - 0.001f) posY = suelo
+            velY = 0f
+            enSuelo = true
+        } else {
+            posY = suelo
+            velY = 0f
+            enSuelo = true
+        }
+
+        // La camara acompana el cambio de postura sin pegar el tiron.
+        val k = (10f * dt).coerceIn(0f, 1f)
+        alturaOjoSuave += (postura.alturaOjo - alturaOjoSuave) * k
+    }
+
+    /**
+     * Colision de verdad: la roca, mas el relieve.
+     *
+     * [collides] sigue significando "el circulo del jugador toca roca" porque
+     * lo usan las trampas y los objetos. Esto ademas frena cuando el escalon es
+     * demasiado alto para subirlo caminando (y no hay escalera) o cuando el
+     * techo no deja pasar con la postura actual.
+     */
+    fun bloqueado(x: Float, z: Float): Boolean {
+        if (collides(x, z)) return true
+        val gx = (x / CELL).toInt()
+        val gy = (z / CELL).toInt()
+        if (!maze.inBounds(gx, gy)) return true
+        // El techo solo frena si no entra ni arrastrandose: eso no deberia
+        // pasar nunca (lo garantiza el generador), pero si pasara el jugador
+        // quedaria encerrado, asi que el chequeo se queda de red.
+        if (alturaLibreEn(x, z) < Postura.ARRASTRANDOSE.alturaCuerpo) return true
+        val destino = maze.floorY(gx, gy)
+        if (destino - posY > Maze.SUBIDA_CAMINANDO) {
+            // Escalon grande: solo con escalera en alguna de las dos puntas.
+            if (!maze.hasLadder(gx, gy) && !maze.hasLadder(gridX(), gridY())) return true
+        }
+        return false
     }
 
     private fun clampToWorld() {
@@ -808,6 +956,9 @@ class GameSession(
             Reward(ecosCollected, 0, 0, 1f, half, 0)
         }
     }
+
+    /** Altura del ojo en el mundo: relieve + postura + cabeceo. */
+    fun alturaCamara(): Float = posY + alturaOjoSuave + headBobOffset()
 
     fun headBobOffset(): Float =
         sin(bobPhase.toDouble()).toFloat() * 0.045f * save.settings.headBob

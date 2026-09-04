@@ -50,11 +50,23 @@ class CaveRenderer(
         @Volatile var padLookY = 0f
         @Volatile var padSensitivity = 1f
 
+        /** Postura pedida: 0 de pie, 1 agachado, 2 arrastrandose. */
+        @Volatile var crouchLevel = 0
+        /** Se pone en true al tocar saltar y lo consume el frame siguiente. */
+        @Volatile var jumpPending = false
+
         val running: Boolean get() = runStick || runButton || runPad || autoRun
 
         fun releaseAll() {
             moveX = 0f; moveY = 0f; lookDX = 0f; lookDY = 0f
             runStick = false; runButton = false; runPad = false
+            jumpPending = false
+        }
+
+        fun consumeJump(): Boolean {
+            val j = jumpPending
+            jumpPending = false
+            return j
         }
 
         fun consumeLook(): Pair<Float, Float> {
@@ -254,7 +266,8 @@ class CaveRenderer(
             ly += input.padLookY * padSpeed
             val gi = GameSession.Input(
                 moveX = input.moveX, moveY = input.moveY,
-                lookX = lx, lookY = ly, running = input.running
+                lookX = lx, lookY = ly, running = input.running,
+                agacharse = input.crouchLevel, saltar = input.consumeJump()
             )
             s.update(dt, gi)
         } else {
@@ -275,7 +288,7 @@ class CaveRenderer(
         val aspect = width.toFloat() / height.toFloat()
         Matrix.perspectiveM(proj, 0, fov, aspect, 0.045f, 120f)
 
-        val eyeY = GameSession.EYE_HEIGHT + s.headBobOffset()
+        val eyeY = s.alturaCamara()
         val yaw = Math.toRadians(s.yawDeg.toDouble())
         val pitch = Math.toRadians(s.pitchDeg.toDouble())
         val cp = cos(pitch).toFloat()
@@ -450,7 +463,7 @@ class CaveRenderer(
         val p = worldProg
         GLES30.glUseProgram(p)
         GLES30.glUniformMatrix4fv(GLES30.glGetUniformLocation(p, "uViewProj"), 1, false, viewProj, 0)
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uCamPos"), s.posX, GameSession.EYE_HEIGHT, s.posZ)
+        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uCamPos"), s.posX, s.alturaCamara(), s.posZ)
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uLightColor"), lr, lg, lb)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightRadius"), radius)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightIntensity"), 2.45f * flicker)
@@ -511,7 +524,7 @@ class CaveRenderer(
             val x = (pk.gx + 0.5f) * C + pk.flyX
             val z = (pk.gy + 0.5f) * C + pk.flyZ
             if (!near(x, z)) continue
-            val fy = WorldMesh.floorHeight(pk.gx, pk.gy)
+            val fy = WorldMesh.floorHeight(s.maze, pk.gx, pk.gy)
             when (pk.kind) {
                 GameSession.PickupKind.ECO ->
                     gem.add(x, fy + 0.62f, z, 0.155f, 0.98f, 0.78f, 0.36f, 0.55f, pk.bob * 1.4f, pk.bob, 1f, 1f)
@@ -534,10 +547,10 @@ class CaveRenderer(
             val h = 0.42f + ((gx * 7 + gy * 13) % 7) * 0.13f
             val t = s.theme
             if ((gx + gy) % 2 == 0) {
-                cone.add(x, WorldMesh.floorHeight(gx, gy), z, h, t.rockR * 1.15f, t.rockG * 1.15f, t.rockB * 1.15f, 0f,
+                cone.add(x, WorldMesh.floorHeight(s.maze, gx, gy), z, h, t.rockR * 1.15f, t.rockG * 1.15f, t.rockB * 1.15f, 0f,
                     ((gx * 31 + gy * 17) % 20) * 0.31f, 0f, 0f, 1f)
             } else {
-                coneD.add(x, WorldMesh.ceilHeight(gx, gy), z, h * 0.78f, t.rockR * 0.95f, t.rockG * 0.95f, t.rockB * 0.95f, 0f,
+                coneD.add(x, WorldMesh.ceilHeight(s.maze, gx, gy), z, h * 0.78f, t.rockR * 0.95f, t.rockG * 0.95f, t.rockB * 0.95f, 0f,
                     ((gx * 13 + gy * 29) % 20) * 0.31f, 0f, 0f, 1f)
             }
         }
@@ -554,7 +567,7 @@ class CaveRenderer(
             else if (m.isSolid(gx, gy - 1)) oz = -C * 0.38f
             else if (m.isSolid(gx, gy + 1)) oz = C * 0.38f
             val tx = x + ox; val tz = z + oz
-            val baseY = WorldMesh.floorHeight(gx, gy) + 1.75f
+            val baseY = WorldMesh.floorHeight(s.maze, gx, gy) + 1.75f
             cyl.add(tx, baseY, tz, 0.42f, 0.28f, 0.19f, 0.12f, 0.02f, 0f, 0f, 0f, 1f)
             val ph = ((gx * 41 + gy * 7) % 30) * 0.21f
             val fl = 0.86f + 0.14f * sin((time * 7f + ph).toDouble()).toFloat()
@@ -566,7 +579,7 @@ class CaveRenderer(
             if (!tr.revealed) continue
             val x = (tr.gx + 0.5f) * C; val z = (tr.gy + 0.5f) * C
             if (!near(x, z)) continue
-            val fy = WorldMesh.floorHeight(tr.gx, tr.gy)
+            val fy = WorldMesh.floorHeight(s.maze, tr.gx, tr.gy)
             val pulse = 0.55f + 0.45f * sin((time * 3.4f + tr.gx + tr.gy).toDouble()).toFloat()
             boxS.add(x, fy + 0.045f, z, 1.55f, 0.85f, 0.14f, 0.10f, 0.30f * pulse, 0f, 0f, 0f, 1f)
         }
@@ -574,7 +587,7 @@ class CaveRenderer(
         // --- salida: columna de cristal que se ve de lejos
         run {
             val ex = s.exitWorldX; val ez = s.exitWorldZ
-            val fy = WorldMesh.floorHeight(s.maze.exitGx, s.maze.exitGy)
+            val fy = WorldMesh.floorHeight(s.maze, s.maze.exitGx, s.maze.exitGy)
             val d = hypot(ex - px, ez - pz)
             val visible = d < cull * 1.9f
             if (visible) {
@@ -602,7 +615,7 @@ class CaveRenderer(
             // El shader gira la malla (que mira a +Z) con: dir = (sin a, cos a)
             val ang = Math.atan2((s.exitWorldX - px).toDouble(), (s.exitWorldZ - pz).toDouble()).toFloat()
             arrow.add(
-                ax, GameSession.EYE_HEIGHT - 0.40f, az, 0.22f,
+                ax, s.alturaCamara() - 0.40f, az, 0.22f,
                 1.0f, 0.84f, 0.36f, 1.05f,
                 ang, 0f, 0f, 1f
             )
@@ -613,7 +626,7 @@ class CaveRenderer(
         GLES30.glUseProgram(p)
         GLES30.glUniformMatrix4fv(GLES30.glGetUniformLocation(p, "uViewProj"), 1, false, viewProj, 0)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uTime"), time)
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uCamPos"), px, GameSession.EYE_HEIGHT, pz)
+        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uCamPos"), px, s.alturaCamara(), pz)
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uLightColor"), lr, lg, lb)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightRadius"), radius)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightIntensity"), 2.45f * flicker)
@@ -636,7 +649,7 @@ class CaveRenderer(
 
         fun quad(x: Float, z: Float, gx: Int, gy: Int, size: Float, r: Float, g: Float, b: Float, a: Float) {
             if (quads >= decalCapacity) return
-            val y = WorldMesh.floorHeight(gx, gy) + 0.022f
+            val y = WorldMesh.floorHeight(s.maze, gx, gy) + 0.022f
             val h = size * 0.5f
             val v = floatArrayOf(
                 x - h, y, z - h, 0f, 0f,
@@ -677,7 +690,7 @@ class CaveRenderer(
         val p = decalProg
         GLES30.glUseProgram(p)
         GLES30.glUniformMatrix4fv(GLES30.glGetUniformLocation(p, "uViewProj"), 1, false, viewProj, 0)
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uCamPos"), s.posX, GameSession.EYE_HEIGHT, s.posZ)
+        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uCamPos"), s.posX, s.alturaCamara(), s.posZ)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uFogDensity"), fogDensity)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uBrightness"), brightness)
 

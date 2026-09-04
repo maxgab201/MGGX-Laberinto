@@ -15,6 +15,35 @@ class Maze(val cols: Int, val rows: Int) {
     /** Mapa de solidez en coordenadas de grilla expandida. */
     val solid = BooleanArray(gw * gh) { true }
 
+    // ------------------------------------------------------------- relieve
+    //
+    // La cueva tiene alturas. Para que el nivel SIEMPRE se pueda pasar, el
+    // relieve se arma de forma que ninguna transicion pueda bloquear:
+    //  - entre casillas vecinas el piso cambia como mucho un escalon, que se
+    //    sube caminando;
+    //  - donde hay un desnivel grande siempre hay una escalera;
+    //  - el techo puede bajar hasta obligar a agacharse o arrastrarse, pero
+    //    nunca por debajo de lo que entra arrastrandose.
+    // Asi la conectividad sigue siendo exactamente la del mapa de solidez.
+
+    /** Altura del piso de cada casilla, en escalones. */
+    val floorLevel = IntArray(gw * gh)
+
+    /** Metros libres entre el piso y el techo de cada casilla. */
+    val ceilClearance = FloatArray(gw * gh) { ALTO_NORMAL }
+
+    /** Casillas con escalera: se puede subir y bajar por ellas. */
+    val ladder = BooleanArray(gw * gh)
+
+    fun floorY(gx: Int, gy: Int): Float =
+        if (inBounds(gx, gy)) floorLevel[index(gx, gy)] * ESCALON else 0f
+
+    fun ceilY(gx: Int, gy: Int): Float =
+        floorY(gx, gy) + if (inBounds(gx, gy)) ceilClearance[index(gx, gy)] else ALTO_NORMAL
+
+    fun hasLadder(gx: Int, gy: Int): Boolean =
+        inBounds(gx, gy) && ladder[index(gx, gy)]
+
     /** Celda logica de inicio y de salida. */
     var startCol = 0
     var startRow = 0
@@ -47,6 +76,20 @@ class Maze(val cols: Int, val rows: Int) {
         // El borde exterior nunca se abre: mantiene la cueva cerrada.
         if (gx == 0 || gy == 0 || gx == gw - 1 || gy == gh - 1) return
         solid[index(gx, gy)] = value
+    }
+
+    companion object {
+        /** Cuanto sube un escalon de piso, en metros. */
+        const val ESCALON = 0.42f
+
+        /** Alto libre de un tramo normal, donde se camina de pie. */
+        const val ALTO_NORMAL = 3.4f
+
+        /**
+         * Un escalon se sube caminando. Mas que esto ya necesita escalera, y
+         * el generador se encarga de que siempre haya una.
+         */
+        const val SUBIDA_CAMINANDO = ESCALON + 0.06f
     }
 
     val startGx: Int get() = startCol * 2 + 1

@@ -50,6 +50,7 @@ import com.mggx.laberinto.ui.RoundActionButton
 import com.mggx.laberinto.ui.StonePanel
 import com.mggx.laberinto.ui.formatNumber
 import com.mggx.laberinto.ui.formatTime
+import com.mggx.laberinto.game.Postura
 import com.mggx.laberinto.ui.icons.CaveIcon
 import com.mggx.laberinto.ui.icons.IconId
 import com.mggx.laberinto.ui.theme.Cave
@@ -497,6 +498,33 @@ private fun ActionButtons(
                         badge = if (session.freeSonarTimer > 0f) "${session.freeSonarTimer.roundToInt()}" else null
                     )
                 }
+            }
+
+            // Saltar y agacharse. El agacharse cicla de pie -> agachado ->
+            // arrastrandose -> de pie, asi es un solo boton y no dos.
+            Column(horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                RoundActionButton(
+                    IconId.SALTAR,
+                    onClick = { input.jumpPending = true },
+                    diameter = (54 * scale).dp,
+                    enabled = session.enSuelo && session.postura.puedeSaltar
+                )
+                RoundActionButton(
+                    when (input.crouchLevel) {
+                        0 -> IconId.AGACHARSE
+                        1 -> IconId.ARRASTRARSE
+                        else -> IconId.DE_PIE
+                    },
+                    onClick = { input.crouchLevel = (input.crouchLevel + 1) % 3 },
+                    diameter = (54 * scale).dp,
+                    tint = if (input.crouchLevel == 0) Cave.Text else Cave.Amber,
+                    badge = when (session.postura) {
+                        Postura.DE_PIE -> null
+                        Postura.AGACHADO -> "bajo"
+                        Postura.ARRASTRANDOSE -> "raso"
+                    }
+                )
             }
 
             // Correr: no es un boton de toque sino de mantener apretado, asi que

@@ -100,8 +100,9 @@ class SaveDataTest {
     @Test
     fun consumirGastaYVaciaLaRanura() {
         val s = nuevo()
+        // grantConsumable ya lo deja cargado en una ranura rapida.
         s.grantConsumable("pan_cueva", 2)
-        assertTrue(s.toggleLoadout("pan_cueva"))
+        assertTrue("no quedo cargado solo", s.loadoutList().contains("pan_cueva"))
         assertTrue(s.consume("pan_cueva"))
         assertEquals(1, s.stockOf("pan_cueva"))
         assertTrue(s.loadoutList().contains("pan_cueva"))

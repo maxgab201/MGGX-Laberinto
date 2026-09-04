@@ -382,7 +382,15 @@ private fun ItemDetail(
                             onClick = {
                                 val r = save.buy(item.id)
                                 onMessage(
-                                    if (r == SaveData.BuyResult.OK) "Listo: ${item.name}" else r.message
+                                    when {
+                                        r != SaveData.BuyResult.OK -> r.message
+                                        item.kind != ItemKind.CONSUMIBLE -> "Listo: ${item.name}"
+                                        save.estaEnRanuraRapida(item.id) ->
+                                            "${item.name} listo para usar en la partida"
+                                        else ->
+                                            "${item.name} comprado. Tenes las ranuras llenas: " +
+                                                "cambialas en Equipo"
+                                    }
                                 )
                                 onChanged()
                             },
