@@ -23,9 +23,15 @@ ZONAS=(
   "Grieta del Eco" "Pozo sin Fondo" "Sala de las Mil Columnas" "Rio Subterraneo"
 )
 
-api() { curl -sS -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" "$@"; }
+api() {
+  curl -sS \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Accept: application/vnd.github+json" \
+    -H "Content-Type: application/json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" "$@"
+}
 
-USADOS="$(api "$API/repos/$REPO/releases?per_page=100" | grep -o '"name": *"[^"]*"' | cut -d'"' -f4 || true)"
+USADOS="$(api "$API/repos/$REPO/releases?per_page=100" | grep -o '"name":"[^"]*"' | cut -d'"' -f4 || true)"
 
 if [ -z "$NOMBRE" ]; then
   for z in "${ZONAS[@]}"; do
@@ -44,17 +50,18 @@ APK="app/build/outputs/apk/release/app-release.apk"
 DESTINO="MGGX-Laberinto-$VERSION.apk"
 cp "$APK" "/tmp/$DESTINO"
 
-HUELLA="$("${ANDROID_HOME:-$HOME/android-sdk}/build-tools/34.0.0/apksigner" verify --print-certs "$APK" 2>/dev/null \
-  | grep -i "SHA-256 digest" | head -1 | awk '{print $NF}')"
+SIGNER="${ANDROID_HOME:-$HOME/android-sdk}/build-tools/34.0.0/apksigner"
+HUELLA="$("$SIGNER" verify --print-certs "$APK" 2>/dev/null | grep -i "SHA-256 digest" | head -1 | awk '{print $NF}')"
+PESO="$(du -h "$APK" | cut -f1)"
 
-CUERPO=$(cat <<EOF
-## MGGX Laberinto $VERSION - $NOMBRE
+CUERPO="## MGGX Laberinto $VERSION - $NOMBRE
 
 Juego de laberintos en 3D, primera persona, para Android. Nativo, sin motores
-de terceros y sin archivos de arte ni de audio: todo se genera por codigo.
+de terceros y sin archivos de arte ni de audio: la roca, los brazos, los
+iconos, la musica y los efectos se generan por codigo.
 
 ### Para instalarlo
-1. Bajate el APK de aca abajo al celular.
+1. Bajate el APK de aca abajo directo al celular.
 2. Abrilo. Android te va a pedir permiso para instalar apps de origen
    desconocido: dale que si.
 3. Listo. No hace falta desinstalar la version anterior: todas las
@@ -63,37 +70,36 @@ de terceros y sin archivos de arte ni de audio: todo se genera por codigo.
 ### Datos
 - Android 7.0 (API 24) o superior
 - Necesita OpenGL ES 3.0 (lo tiene practicamente cualquier celular de 2014 en adelante)
-- Pesa poco mas de 1 MB
-- Firma SHA-256: \`$HUELLA\`
-EOF
-)
+- Pesa $PESO
+- Firma SHA-256: \`$HUELLA\`"
+
+python3 tools/release_json.py "$VERSION" "$NOMBRE" "$CUERPO" /tmp/release_body.json
 
 echo "Creando release $VERSION - $NOMBRE ..."
-RESP="$(api -X POST "$API/repos/$REPO/releases" -d "$(python3 - "$VERSION" "$NOMBRE" "$CUERPO" <<'PY'
-import json,sys
-print(json.dumps({
-  "tag_name": "v"+sys.argv[1],
-  "name": f"MGGX Laberinto {sys.argv[1]} - {sys.argv[2]}",
-  "body": sys.argv[3],
-  "draft": False,
-  "prerelease": False
-}))
-PY
-)")"
+api -X POST "$API/repos/$REPO/releases" --data-binary @/tmp/release_body.json > /tmp/release_resp.json
 
-ID="$(python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" <<<"$RESP")"
-[ -n "$ID" ] || { echo "No se pudo crear la release:"; echo "$RESP" | head -20; exit 1; }
+ID="$(python3 -c "
+import json
+d = json.load(open('/tmp/release_resp.json'))
+print(d.get('id', ''))
+")"
+if [ -z "$ID" ]; then
+  echo "No se pudo crear la release:"; head -c 600 /tmp/release_resp.json; echo; exit 1
+fi
 
 echo "Subiendo el APK ..."
 curl -sS -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/vnd.android.package-archive" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
   --data-binary @"/tmp/$DESTINO" \
-  "$UP/repos/$REPO/releases/$ID/assets?name=$DESTINO" > /tmp/asset.json
+  "$UP/repos/$REPO/releases/$ID/assets?name=$DESTINO" > /tmp/asset_resp.json
 
 python3 -c "
 import json
-d=json.load(open('/tmp/asset.json'))
-print('APK subido:', d.get('name'), str(round(d.get('size',0)/1048576,2))+' MB')
+a = json.load(open('/tmp/asset_resp.json'))
+r = json.load(open('/tmp/release_resp.json'))
+print('APK subido:', a.get('name'), str(round(a.get('size', 0) / 1048576, 2)) + ' MB')
+print('Descarga:', a.get('browser_download_url'))
+print('Release:', r.get('html_url'))
 "
-python3 -c "import json,sys; print('Release:', json.loads(sys.stdin.read())['html_url'])" <<<"$RESP"
