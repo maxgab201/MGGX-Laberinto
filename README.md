@@ -19,17 +19,40 @@ proximo descenso.
 - **Laberintos infinitos y siempre pasables**: se parte de un laberinto perfecto
   (recursive backtracker) y todo lo que se hace despues solo abre roca, nunca la
   cierra. Ademas se verifica con BFS antes de entregarlo.
-- **8 ambientes de cueva** (caliza, musgo, cuarzo, hielo, azufre, magma,
-  obsidiana y Vetagris), cada uno con su roca, su niebla y su luz.
-- **61 objetos unicos** en la tienda: 25 consumibles, 15 mejoras permanentes,
-  12 reliquias pasivas y 9 aspectos. Ninguno repite efecto.
+- **Cueva de verdad, no cajas**: cada cara del mundo se subdivide y se abolla
+  con un ruido continuo, asi la roca queda redondeada y sin costuras.
+- **Relieve que se juega**: la cueva tiene alturas. Te agachas (dos niveles),
+  saltas, y subis y bajas por escaleras de madera. Agacharse no gasta aguante,
+  y en los tramos bajos el personaje se agacha solo, asi que el nivel nunca te
+  frena en seco.
+- **12 ambientes** y no todos son cueva: ademas de caliza, musgo, cuarzo,
+  hielo, azufre, magma, obsidiana y Vetagris hay una mina abandonada entibada
+  en madera, cisternas de sillares tallados, un bosque de hongos gigantes y un
+  templo sepultado. Cada uno con su propia piedra, su relleno y su luz.
+- **Bichos con cabeza propia**: murcielagos que vuelan, rastreros ciegos que
+  solo te oyen si corres y guardianes de roca que cuidan su pedazo de cueva.
+  Persiguen por campo de distancias, asi que doblan las esquinas.
+- **Trampas y ambientacion con modelos**: pinches de hierro, bocas de pozo con
+  tablas partidas, valvulas de vapor, rocas colgando, racimos de cristal,
+  hongos luminosos y marcos de madera de la mina vieja.
+- **8 poderes permanentes** carisimos que cambian como se juega: linterna de
+  carburo con estaciones de recarga, reptador, pies de cabra, ojo de la veta,
+  pico eterno, memoria de la sima, corazon de la cueva y paso de sombra.
+- **75 objetos unicos** en la tienda: 25 consumibles, 15 mejoras permanentes,
+  12 reliquias pasivas, 8 poderes y 15 aspectos (entre ellos 6 skins del
+  personaje). Ninguno repite efecto.
+- **Lobby en 3D**: detras de los paneles se ve, en vivo, la cueva a la que vas
+  a bajar.
+- **Multijugador preparado**: el protocolo y el estado de sala estan escritos y
+  probados; falta la conexion. La guia para terminarlo esta en
+  `docs/MULTIJUGADOR.md`.
 - **Dos monedas propias**: Ecos (comunes) y Vetagris (raros).
 - **Musica y efectos sintetizados en vivo**: drone, pad, melodia pentatonica,
   goteras y un eco largo de caverna. Ni un mp3.
 - **Controles tactiles y mando**: joystick flotante, camara por arrastre y
   soporte completo de gamepad, tambien para navegar los menus.
 - **Ajustes extensos y en criollo**: seis secciones, sin jerga tecnica.
-- **Iconos propios**: los 94 iconos estan dibujados con vectores en el codigo.
+- **Iconos propios**: los 113 iconos estan dibujados con vectores en el codigo.
   No hay ni un emoji.
 
 ## Como se compila
