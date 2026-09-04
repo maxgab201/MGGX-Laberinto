@@ -499,7 +499,8 @@ private fun ActionButtons(
                 }
             }
 
-            // Correr
+            // Correr: no es un boton de toque sino de mantener apretado, asi que
+            // el trabajo lo hace el pointerInput de abajo y no el onClick.
             RoundActionButton(
                 IconId.CORRER,
                 onClick = { },

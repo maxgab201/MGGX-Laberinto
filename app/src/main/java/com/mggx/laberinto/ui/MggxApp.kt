@@ -3,14 +3,22 @@ package com.mggx.laberinto.ui
 import android.opengl.GLSurfaceView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -397,8 +405,28 @@ private fun LoadingOverlay(level: Int) {
                 Text("Excavando la roca...", style = MaterialTheme.typography.bodyMedium, color = Cave.TextDim)
             }
             Spacer(Modifier.height(10.dp))
-            Box(Modifier.width(240.dp)) {
-                CaveBar(1f, Cave.AmberDeep, Modifier.fillMaxSize(), height = 4.dp)
+            // Barra indeterminada: va y viene mientras se arma el nivel.
+            val t = rememberInfiniteTransition(label = "carga")
+            val p by t.animateFloat(
+                0f, 1f,
+                infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Reverse),
+                label = "avance"
+            )
+            Box(
+                Modifier
+                    .width(240.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Cave.Void)
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(0.32f)
+                        .offset(x = (208 * p).dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Cave.Amber)
+                )
             }
         }
     }

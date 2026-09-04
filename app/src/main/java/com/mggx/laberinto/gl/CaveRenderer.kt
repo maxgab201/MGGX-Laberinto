@@ -169,10 +169,16 @@ class CaveRenderer(
         buildOverlay()
         buildShapes()
 
+        // El contexto de GL se puede perder (pantalla apagada, cambio de app).
+        // Cuando vuelve hay que rehacer texturas y malla desde cero, si no
+        // queda todo en negro.
+        albedoTex = 0
+        normalTex = 0
         texturedTheme = null
         worldIndexCount = 0
         lastFrameNs = 0L
         ready = false
+        session?.let { pending.add(it) }
     }
 
     override fun onSurfaceChanged(unused: GL10?, w: Int, h: Int) {
