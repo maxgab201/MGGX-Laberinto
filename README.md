@@ -67,14 +67,30 @@ GITHUB_TOKEN=<tu token> tools/publicar_release.sh 1.0.1
 ## Como se prueba
 
 ```bash
-./gradlew :app:testDebugUnitTest     # 67 tests de logica
-python3 tools/check_shaders.py       # valida los 10 shaders GLSL
+./gradlew :app:testDebugUnitTest        # 88 tests de logica
+python3 tools/check_shaders.py          # valida los 10 shaders GLSL
+tools/probar_en_emulador.sh             # lo instala y lo juega de verdad
 ```
+
+La validacion de los shaders tambien corre sola en cada build (tarea
+`checkShaders`): un shader roto no da error al compilar, revienta recien al
+abrir el nivel en el telefono.
 
 Los tests cubren, entre otras cosas: que todos los niveles del 1 al 120 tengan
 solucion, que el recorrido se alargue con el nivel, que la economia no se rompa,
 que se pueda llegar caminando hasta la salida, que ningun objeto repita efecto
 y que no queden iconos, ajustes ni efectos declarados que no hagan nada.
+
+Hay tres grupos que existen por bugs que ya se comieron una version:
+
+- **Ejes** (`EjesTest`): la derecha de la pantalla es "frente x arriba", que es
+  el vector lateral que arma `Matrix.setLookAtM`. Si se invierte un signo, el
+  juego se maneja al reves y nada avisa.
+- **Orientacion de caras** (`MeshWindingTest`): si el orden de los vertices no
+  coincide con su normal, OpenGL descarta la cara y se ve a traves de la pared.
+- **Texturas** (`TexturasTest`): contraste, relieve, vetas finas y, sobre todo,
+  que la baldosa cierre sin costura. La textura se repite cada 3 metros: si el
+  ruido no cierra, queda una reja a lo largo de todo el pasillo.
 
 ## Como esta armado
 
