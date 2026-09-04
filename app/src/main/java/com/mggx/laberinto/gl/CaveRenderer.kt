@@ -82,6 +82,13 @@ class CaveRenderer(
     private val pending = ConcurrentLinkedQueue<GameSession>()
     /** Se perdio el contexto de GL y hay que rearmar el nivel que ya estaba. */
     @Volatile private var needsRebuild = false
+    /**
+     * Modo vitrina del lobby: la cueva se dibuja de verdad, pero nadie la
+     * juega. La camara pasea sola por la sala de entrada y no hay brazos,
+     * ni sonidos, ni logica de partida.
+     */
+    @Volatile var vitrina: Boolean = false
+    private var paseo: Float = 0f
     @Volatile var ready = false
         private set
     @Volatile var fps = 0f
@@ -290,7 +297,9 @@ class CaveRenderer(
         }
 
         // ------------------------------------------------------- logica
-        if (!input.paused && s.phase == GameSession.Phase.JUGANDO) {
+        if (vitrina) {
+            paseoDelLobby(s, dt)
+        } else if (!input.paused && s.phase == GameSession.Phase.JUGANDO) {
             var (lx, ly) = input.consumeLook()
             // El stick del mando gira de forma continua mientras se mantiene.
             val padSpeed = GameSession.PAD_LOOK_DEG * input.padSensitivity * dt
@@ -360,10 +369,29 @@ class CaveRenderer(
         drawWorld(s, lr, lg, lb, lightRadius, amb, fogDensity, brightness)
         drawProps(s, lr, lg, lb, lightRadius, amb, fogDensity, brightness)
         drawDecals(s, fogDensity, brightness)
-        if (save.settings.showArms) drawArms(s, lr, lg, lb, amb, brightness, aspect, dt)
-        drawOverlay(s, theme, brightness)
+        if (save.settings.showArms && !vitrina) drawArms(s, lr, lg, lb, amb, brightness, aspect, dt)
+        if (!vitrina) drawOverlay(s, theme, brightness)
 
         limitFrameRate()
+    }
+
+    /**
+     * Paseo del lobby: la camara gira despacio en la sala de entrada del nivel
+     * que te espera, mirando siempre hacia el pasillo por donde vas a salir.
+     * No toca el estado de la partida: solo mueve la camara.
+     */
+    private fun paseoDelLobby(s: GameSession, dt: Float) {
+        paseo += dt
+        val cx = (s.maze.startGx + 0.5f) * GameSession.CELL
+        val cz = (s.maze.startGy + 0.5f) * GameSession.CELL
+        // Un circulito chico para no salirse de la casilla ni entrar en la roca.
+        val r = GameSession.CELL * 0.16f
+        s.posX = cx + cos((paseo * 0.22f).toDouble()).toFloat() * r
+        s.posZ = cz + sin((paseo * 0.22f).toDouble()).toFloat() * r
+        s.posY = s.maze.floorY(s.maze.startGx, s.maze.startGy)
+        // Barrido lento alrededor de la direccion de salida.
+        s.yawDeg = s.initialYawPublic() + sin((paseo * 0.17f).toDouble()).toFloat() * 26f
+        s.pitchDeg = -4f + sin((paseo * 0.13f + 1.1f).toDouble()).toFloat() * 5f
     }
 
     /**

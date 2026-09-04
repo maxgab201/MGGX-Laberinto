@@ -46,7 +46,6 @@ import com.mggx.laberinto.core.SaveData
 import com.mggx.laberinto.game.Currency
 import com.mggx.laberinto.maze.CaveTheme
 import com.mggx.laberinto.maze.MazeGenerator
-import com.mggx.laberinto.ui.CaveBackdrop
 import com.mggx.laberinto.ui.CaveButton
 import com.mggx.laberinto.ui.CaveButtonStyle
 import com.mggx.laberinto.ui.CurrencyChip
@@ -64,7 +63,8 @@ fun LobbyScreen(
     onShop: () -> Unit,
     onLoadout: () -> Unit,
     onSettings: () -> Unit,
-    onStats: () -> Unit
+    onStats: () -> Unit,
+    onMultiplayer: () -> Unit
 ) {
     val trans = rememberInfiniteTransition(label = "lobby")
     val pulse by trans.animateFloat(
@@ -77,7 +77,21 @@ fun LobbyScreen(
         val k = (maxWidth / 860.dp).coerceIn(0.58f, 1f)
         val compacto = maxWidth < 660.dp
 
-        CaveBackdrop(seed = 11)
+        // Detras del lobby se ve la cueva de verdad, en 3D. Encima va un velo
+        // oscuro para que el texto se lea sin pelear con la roca.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Cave.Void.copy(alpha = 0.82f),
+                            Cave.Void.copy(alpha = 0.58f),
+                            Cave.Void.copy(alpha = 0.86f)
+                        )
+                    )
+                )
+        )
 
         Row(
             Modifier
@@ -202,7 +216,7 @@ fun LobbyScreen(
                         CaveButton(
                             "Tienda", onShop, icon = IconId.TIENDA,
                             modifier = Modifier.fillMaxWidth(),
-                            subtitle = if (compacto) null else "61 objetos para el descenso"
+                            subtitle = if (compacto) null else "${com.mggx.laberinto.game.ItemCatalog.all.size} objetos para el descenso"
                         )
                         CaveButton(
                             "Equipo", onLoadout, icon = IconId.MOCHILA,
@@ -218,6 +232,11 @@ fun LobbyScreen(
                             "Registro", onStats, icon = IconId.ESTADISTICA,
                             modifier = Modifier.fillMaxWidth(),
                             subtitle = if (compacto) null else "Todo lo que llevas hecho"
+                        )
+                        CaveButton(
+                            "Bajar acompañado", onMultiplayer, icon = IconId.MULTIJUGADOR,
+                            modifier = Modifier.fillMaxWidth(),
+                            subtitle = if (compacto) null else "Multijugador · proximamente"
                         )
                     }
                 }

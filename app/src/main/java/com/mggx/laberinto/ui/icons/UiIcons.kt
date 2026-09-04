@@ -231,6 +231,22 @@ fun drawUiIcon(p: Pen, id: IconId) {
             p.line(a, 1.6f) { m(4.4f, 20.6f); l(4.4f, 9.4f) }
             p.fill(a) { m(4.4f, 6.4f); l(6.8f, 10.4f); l(2f, 10.4f); z() }
         }
+        IconId.MULTIJUGADOR -> {
+            // Dos siluetas, una adelante de la otra.
+            p.dot(8.4f, 8.4f, 3.1f, m)
+            p.fill(m) { m(2.6f, 20.4f); c(2.6f, 15.4f, 6f, 13.6f, 8.4f, 13.6f); c(10.8f, 13.6f, 14.2f, 15.4f, 14.2f, 20.4f); z() }
+            p.dot(16.4f, 7.4f, 2.5f, a)
+            p.fill(a.copy(alpha = 0.85f)) { m(11.4f, 20.4f); c(11.4f, 16.2f, 14f, 14.6f, 16.4f, 14.6f); c(18.8f, 14.6f, 21.4f, 16.2f, 21.4f, 20.4f); z() }
+        }
+        IconId.RELOJ_ARENA -> {
+            // Reloj de arena: lo que todavia no llego.
+            p.line(m, 1.6f) { m(6.4f, 3.6f); l(17.6f, 3.6f) }
+            p.line(m, 1.6f) { m(6.4f, 20.4f); l(17.6f, 20.4f) }
+            p.line(m, 1.5f) { m(7.6f, 3.6f); l(7.6f, 7.4f); l(12f, 12f); l(7.6f, 16.6f); l(7.6f, 20.4f) }
+            p.line(m, 1.5f) { m(16.4f, 3.6f); l(16.4f, 7.4f); l(12f, 12f); l(16.4f, 16.6f); l(16.4f, 20.4f) }
+            p.fill(a) { m(9.2f, 5.4f); l(14.8f, 5.4f); l(12f, 9.6f); z() }
+            p.fill(a) { m(9.6f, 18.6f); l(14.4f, 18.6f); l(12f, 15.4f); z() }
+        }
         else -> {
             // Marcador visible si alguna vez faltara un icono: nunca deberia verse.
             p.ring(12f, 12f, 8.4f, m, 1.5f)

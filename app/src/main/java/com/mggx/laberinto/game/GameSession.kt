@@ -275,6 +275,9 @@ class GameSession(
         }
     }
 
+    /** Angulo de arranque, para que el paseo del lobby mire al lugar correcto. */
+    fun initialYawPublic(): Float = initialYaw()
+
     // ------------------------------------------------------------ consultas
 
     val exitWorldX: Float get() = (maze.exitGx + 0.5f) * CELL

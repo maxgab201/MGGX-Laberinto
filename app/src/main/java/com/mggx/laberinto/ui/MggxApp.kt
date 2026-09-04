@@ -47,6 +47,7 @@ import com.mggx.laberinto.input.GamepadBridge
 import com.mggx.laberinto.maze.CaveTheme
 import com.mggx.laberinto.ui.screens.GameHud
 import com.mggx.laberinto.ui.screens.LobbyScreen
+import com.mggx.laberinto.ui.screens.MultiplayerScreen
 import com.mggx.laberinto.ui.screens.LoadoutScreen
 import com.mggx.laberinto.ui.screens.ResultScreen
 import com.mggx.laberinto.ui.screens.SettingsScreen
@@ -61,7 +62,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.unit.dp
 
-enum class Screen { LOBBY, TIENDA, EQUIPO, AJUSTES, REGISTRO, JUEGO, RESULTADO }
+enum class Screen { LOBBY, TIENDA, EQUIPO, AJUSTES, REGISTRO, MULTIJUGADOR, JUEGO, RESULTADO }
 
 /**
  * Raiz de la aplicacion: maneja en que pantalla estamos, arma la partida,
@@ -99,11 +100,27 @@ fun MggxApp(
             renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
         }
     }
-    // El hilo de OpenGL solo corre mientras se esta jugando. Sin esto seguia
-    // dibujando (y gastando bateria) en el lobby y en la tienda.
+    // El hilo de OpenGL corre mientras se juega y tambien en el lobby, que es
+    // una vitrina 3D de la cueva que te espera. En las demas pantallas se
+    // apaga para no gastar bateria al pedo.
     DisposableEffect(screen) {
-        if (screen == Screen.JUEGO) glView.onResume() else glView.onPause()
+        val vivo = screen == Screen.JUEGO || screen == Screen.LOBBY
+        renderer.vitrina = screen == Screen.LOBBY
+        if (vivo) glView.onResume() else glView.onPause()
         onDispose { }
+    }
+
+    // Vitrina del lobby: se arma una sesion aparte, solo para mirar, del nivel
+    // al que vas a bajar. Se rehace solo cuando cambia el nivel elegido.
+    var vitrinaLevel by remember { mutableIntStateOf(0) }
+    LaunchedEffect(screen, refresh) {
+        if (screen != Screen.LOBBY) return@LaunchedEffect
+        val lvl = save.currentLevel
+        if (vitrinaLevel == lvl) return@LaunchedEffect
+        val s = withContext(Dispatchers.Default) { GameSession(save, lvl) }
+        s.pause()
+        renderer.setSession(s)
+        vitrinaLevel = lvl
     }
 
     // Resolucion interna: dibujar a menos pixeles y estirar es la forma mas
@@ -263,8 +280,8 @@ fun MggxApp(
     MggxTheme(textScale = save.settings.uiScale) {
         Box(Modifier.fillMaxSize().background(Cave.Void)) {
 
-            // La superficie 3D solo existe mientras se juega.
-            if (screen == Screen.JUEGO) {
+            // La superficie 3D vive mientras se juega y detras del lobby.
+            if (screen == Screen.JUEGO || screen == Screen.LOBBY) {
                 AndroidView(
                     factory = { glView },
                     modifier = Modifier.fillMaxSize()
@@ -278,7 +295,11 @@ fun MggxApp(
                     onShop = { screen = Screen.TIENDA },
                     onLoadout = { screen = Screen.EQUIPO },
                     onSettings = { screen = Screen.AJUSTES },
-                    onStats = { screen = Screen.REGISTRO }
+                    onStats = { screen = Screen.REGISTRO },
+                    onMultiplayer = { screen = Screen.MULTIJUGADOR }
+                )
+                Screen.MULTIJUGADOR -> MultiplayerScreen(
+                    onBack = { screen = Screen.LOBBY; refresh++ }
                 )
                 Screen.TIENDA -> ShopScreen(
                     save = save, refreshKey = refresh,
