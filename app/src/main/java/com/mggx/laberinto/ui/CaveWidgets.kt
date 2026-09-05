@@ -7,7 +7,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -30,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -448,17 +448,21 @@ fun CaveTabs(
                     .padding(vertical = 9.dp),
                 contentAlignment = Alignment.Center
             ) {
+                val baseFontSize = MaterialTheme.typography.labelMedium.fontSize
+                var fontSize by remember(t, baseFontSize) { mutableStateOf(baseFontSize) }
                 Text(
                     t.uppercase(),
-                    style = MaterialTheme.typography.labelMedium,
+                    fontSize = fontSize,
                     color = if (on) Cave.AmberSoft else Cave.TextDim,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     // Con cinco categorias las etiquetas ya no entran en un
-                    // telefono angosto: se achican solas antes de recortarse.
+                    // telefono angosto: se achican de verdad hasta entrar.
                     softWrap = false,
-                    overflow = TextOverflow.Visible,
-                    modifier = Modifier.basicMarquee()
+                    overflow = TextOverflow.Clip,
+                    onTextLayout = { r ->
+                        if (r.hasVisualOverflow && fontSize > 9.sp) fontSize *= 0.92f
+                    }
                 )
             }
         }

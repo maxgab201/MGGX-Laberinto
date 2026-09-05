@@ -109,7 +109,7 @@ private fun Armas(save: SaveData, refreshKey: Int, onChanged: () -> Unit, onMess
             Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 CaveIcon(
                     ItemCatalog.get(save.armaEquipada)?.icon ?: IconId.PUNO,
-                    size = 34.dp, tint = Cave.Text, accent = Cave.Bad
+                    size = 34.dp, tint = Cave.Text, accent = Cave.Good
                 )
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
@@ -124,21 +124,24 @@ private fun Armas(save: SaveData, refreshKey: Int, onChanged: () -> Unit, onMess
             }
         }
         Spacer(Modifier.height(12.dp))
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            ArmaRow(
-                icon = IconId.PUNO,
-                nombre = "A mano limpia",
-                detalle = "${PlayerStats.GOLPE_BASE_DANO.toInt()} de dano. Siempre disponible, " +
-                    "no hay que comprarla.",
-                tuya = true,
-                activa = save.armaEquipada.isEmpty()
-            ) {
-                save.equipArma("")
-                onMessage("Peleas a mano limpia")
-                onChanged()
+        LazyColumn(Modifier.fillMaxSize()) {
+            item {
+                ArmaRow(
+                    icon = IconId.PUNO,
+                    nombre = "A mano limpia",
+                    detalle = "${PlayerStats.GOLPE_BASE_DANO.toInt()} de dano. Siempre disponible, " +
+                        "no hay que comprarla.",
+                    tuya = true,
+                    activa = save.armaEquipada.isEmpty(),
+                    accent = Cave.TextDim
+                ) {
+                    save.equipArma("")
+                    onMessage("Peleas a mano limpia")
+                    onChanged()
+                }
+                Spacer(Modifier.height(8.dp))
             }
-            Spacer(Modifier.height(8.dp))
-            armas.forEach { item ->
+            items(armas, key = { it.id }) { item ->
                 val tuya = save.isOwned(item.id)
                 ArmaRow(
                     icon = item.icon,
@@ -146,7 +149,8 @@ private fun Armas(save: SaveData, refreshKey: Int, onChanged: () -> Unit, onMess
                     detalle = if (tuya) ItemText.shortEffect(item)
                     else "Se compra en la Tienda por ${item.basePrice} ${item.currency.code}",
                     tuya = tuya,
-                    activa = save.armaEquipada == item.id
+                    activa = save.armaEquipada == item.id,
+                    accent = ItemText.rarityAccent(item.rarity)
                 ) {
                     save.equipArma(item.id)
                     onMessage("Agarraste: ${item.name}")
@@ -158,6 +162,12 @@ private fun Armas(save: SaveData, refreshKey: Int, onChanged: () -> Unit, onMess
     }
 }
 
+/**
+ * Misma convencion que [CosmeticRow] y [EquipRow]: verde = lo que llevas
+ * puesto, con un tilde; candado = todavia no lo compraste. Antes esta fila
+ * marcaba "lo equipado" en rojo (color de peligro/dano en el resto de la
+ * app), y eso se leia como una advertencia en vez de una confirmacion.
+ */
 @Composable
 private fun ArmaRow(
     icon: IconId,
@@ -165,29 +175,29 @@ private fun ArmaRow(
     detalle: String,
     tuya: Boolean,
     activa: Boolean,
+    accent: Color,
     onClick: () -> Unit
 ) {
-    val accent = if (activa) Cave.Bad else Cave.StoneEdge
     Box(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(13.dp))
-            .background(if (activa) Cave.Bad.copy(alpha = 0.13f) else Cave.Stone)
+            .background(if (activa) accent.copy(alpha = 0.15f) else Cave.Stone)
             .clickable(enabled = tuya) { onClick() }
             .padding(12.dp)
     ) {
         Canvas(Modifier.matchParentSize()) {
             drawRoundRect(
-                color = accent,
+                color = if (activa) accent.copy(alpha = 0.9f) else Cave.StoneEdge,
                 cornerRadius = CornerRadius(13.dp.toPx(), 13.dp.toPx()),
                 style = Stroke(1.3f * density)
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             CaveIcon(
-                icon, size = 32.dp,
+                icon, size = 30.dp,
                 tint = if (tuya) Cave.Text else Cave.TextFaint,
-                accent = if (tuya) Cave.Bad else Cave.TextFaint
+                accent = accent
             )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -197,7 +207,12 @@ private fun ArmaRow(
                 )
                 Text(detalle, style = MaterialTheme.typography.bodyMedium, color = Cave.TextDim)
             }
-            if (activa) Text("EN LA MANO", fontSize = 10.sp, color = Cave.Bad)
+            Spacer(Modifier.width(10.dp))
+            when {
+                activa -> CaveIcon(IconId.TILDE, size = 20.dp, tint = Cave.Good, accent = Cave.Good)
+                tuya -> Text("Agarrar", fontSize = 11.sp, color = Cave.AmberSoft)
+                else -> CaveIcon(IconId.CANDADO, size = 20.dp, tint = Cave.TextFaint, accent = Cave.TextFaint)
+            }
         }
     }
 }

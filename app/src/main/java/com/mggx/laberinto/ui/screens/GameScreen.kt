@@ -119,7 +119,7 @@ fun GameHud(
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.Top
         ) {
-            StonePanel(Modifier.width(178.dp), corner = 12.dp) {
+            StonePanel(Modifier.width((150 * s.buttonScale).dp), corner = 12.dp) {
                 Column(Modifier.padding(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CaveIcon(IconId.VIDA, size = 14.dp, tint = sem.health, accent = sem.health)
@@ -237,7 +237,7 @@ fun GameHud(
                 )
             }
             RoundActionButton(
-                IconId.PAUSA, onPause, diameter = 42.dp, opacity = 0.55f
+                IconId.PAUSA, onPause, diameter = (36 * s.buttonScale).dp, opacity = 0.55f
             )
         }
 
@@ -498,7 +498,7 @@ private fun ActionButtons(
                 val on = i == selectedSlot
                 Box(
                     Modifier
-                        .size((46 * scale).dp)
+                        .size((42 * scale).dp)
                         .clip(RoundedCornerShape(11.dp))
                         .background(
                             if (on) Cave.Amber.copy(alpha = 0.24f) else Cave.Void.copy(alpha = 0.55f)
@@ -535,27 +535,27 @@ private fun ActionButtons(
                 if (session.chalkCharges > 0) {
                     RoundActionButton(
                         IconId.TIZA, { session.dropChalk() },
-                        diameter = (50 * scale).dp, badge = "${session.chalkCharges}"
+                        diameter = (44 * scale).dp, badge = "${session.chalkCharges}"
                     )
                 }
                 if (session.pickCharges > 0) {
                     RoundActionButton(
                         IconId.PICO, { session.breakWall() },
-                        diameter = (50 * scale).dp,
+                        diameter = (44 * scale).dp,
                         enabled = session.canBreakWall(), badge = "${session.pickCharges}"
                     )
                 }
                 if (session.phaseCharges > 0) {
                     RoundActionButton(
                         IconId.FANTASMA, { session.phaseThrough() },
-                        diameter = (50 * scale).dp,
+                        diameter = (44 * scale).dp,
                         enabled = session.canPhase(), badge = "${session.phaseCharges}"
                     )
                 }
                 if (session.stats.freeSonarSeconds > 0f) {
                     RoundActionButton(
                         IconId.DIAPASON, { session.useFreeSonar() },
-                        diameter = (50 * scale).dp,
+                        diameter = (44 * scale).dp,
                         enabled = session.freeSonarTimer <= 0f,
                         badge = if (session.freeSonarTimer > 0f) "${session.freeSonarTimer.roundToInt()}" else null
                     )
@@ -569,7 +569,7 @@ private fun ActionButtons(
                     RoundActionButton(
                         IconId.LINTERNA,
                         onClick = { session.toggleLinterna() },
-                        diameter = (50 * scale).dp,
+                        diameter = (44 * scale).dp,
                         tint = if (session.linternaEncendida) Cave.Amber else Cave.Text,
                         enabled = session.carburo > 0f || session.linternaEncendida,
                         badge = "${(session.carburo * 100).roundToInt()}%"
@@ -584,7 +584,7 @@ private fun ActionButtons(
                 RoundActionButton(
                     IconId.SALTAR,
                     onClick = { input.jumpPending = true },
-                    diameter = (54 * scale).dp,
+                    diameter = (48 * scale).dp,
                     enabled = session.enSuelo && session.postura.puedeSaltar
                 )
                 RoundActionButton(
@@ -594,7 +594,7 @@ private fun ActionButtons(
                         else -> IconId.DE_PIE
                     },
                     onClick = { input.crouchLevel = (input.crouchLevel + 1) % 3 },
-                    diameter = (54 * scale).dp,
+                    diameter = (48 * scale).dp,
                     tint = if (input.crouchLevel == 0) Cave.Text else Cave.Amber,
                     badge = when (session.postura) {
                         Postura.DE_PIE -> null
@@ -609,7 +609,7 @@ private fun ActionButtons(
             RoundActionButton(
                 IconId.CORRER,
                 onClick = { },
-                diameter = (58 * scale).dp,
+                diameter = (52 * scale).dp,
                 modifier = Modifier.pointerInput(Unit) {
                     // Boton sostenido: corre mientras el dedo este apoyado.
                     awaitPointerEventScope {
@@ -628,7 +628,7 @@ private fun ActionButtons(
             RoundActionButton(
                 ItemCatalog.get(save.armaEquipada)?.icon ?: IconId.PUNO,
                 onClick = { session.golpear() },
-                diameter = (62 * scale).dp,
+                diameter = (56 * scale).dp,
                 enabled = session.puedeGolpear(),
                 tint = if (session.puedeGolpear()) Cave.Text else Cave.TextFaint,
                 accent = Cave.Bad
@@ -638,7 +638,7 @@ private fun ActionButtons(
             RoundActionButton(
                 currentItem?.icon ?: IconId.MOCHILA,
                 onClick = { currentId?.let { session.useItem(it) } },
-                diameter = (74 * scale).dp,
+                diameter = (66 * scale).dp,
                 enabled = currentItem != null,
                 badge = currentId?.let { "${save.stockOf(it)}" }
             )
