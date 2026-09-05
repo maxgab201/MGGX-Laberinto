@@ -12,6 +12,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -471,11 +475,16 @@ private fun LoadingOverlay(level: Int) {
 /** Cartel de bienvenida la primera vez que se baja a la cueva. */
 @Composable
 private fun TutorialOverlay(onClose: () -> Unit) {
-    Box(
+    BoxWithConstraints(
         Modifier.fillMaxSize().background(Cave.Void.copy(alpha = 0.88f)),
         contentAlignment = Alignment.Center
     ) {
-        StonePanel(Modifier.width(560.dp), glow = Cave.Amber) {
+        // El cartel crecio a siete puntos y en una pantalla chica (el juego va
+        // apaisado) no entraba entero: el boton de cerrar quedaba fuera de
+        // vista y parecia que no se podia sacar. Ahora el texto scrollea y el
+        // boton de cerrar queda siempre fijo abajo, visible.
+        val altoMax = maxHeight * 0.86f
+        StonePanel(Modifier.width(560.dp).heightIn(max = altoMax), glow = Cave.Amber) {
             Column(Modifier.padding(24.dp)) {
                 Text("Primeros pasos", style = MaterialTheme.typography.headlineLarge)
                 Spacer(Modifier.height(4.dp))
@@ -483,25 +492,29 @@ private fun TutorialOverlay(onClose: () -> Unit) {
                     "Siete cosas y arrancamos.",
                     style = MaterialTheme.typography.bodyMedium, color = Cave.TextFaint
                 )
-                Spacer(Modifier.height(18.dp))
-                TutorialLine(IconId.DEDO, "Caminar",
-                    "Arrastra en la mitad izquierda de la pantalla. Empuja el joystick a fondo para correr.")
-                TutorialLine(IconId.OJO, "Mirar",
-                    "Arrastra en la mitad derecha para girar la cabeza.")
-                TutorialLine(IconId.AGACHARSE, "Agacharte y saltar",
-                    "El boton de agacharse cicla de pie, agachado y bien raso. En los tramos " +
-                        "bajos te agachas solo, y agacharte no gasta aguante.")
-                TutorialLine(IconId.CALAVERA, "Cuidado",
-                    "Hay trampas y bichos. Los pinches y los pozos se ven; los bichos hacen " +
-                        "ruido antes de encontrarte.")
-                TutorialLine(IconId.PUNO, "Pelear",
-                    "Al bicho que se te viene encima le pegas con el boton del puno. Sin arma " +
-                        "pegas flojo pero pegas; en la Tienda hay palos, picos y hachas.")
-                TutorialLine(IconId.SALIDA, "Salir",
-                    "Busca la columna de cristal que brilla. Esa es la salida del nivel.")
-                TutorialLine(IconId.MOCHILA, "Objetos",
-                    "Los que cargaste en Equipo aparecen abajo a la derecha. Un toque y se usan.")
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(10.dp))
+                Column(
+                    Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
+                ) {
+                    TutorialLine(IconId.DEDO, "Caminar",
+                        "Arrastra en la mitad izquierda de la pantalla. Empuja el joystick a fondo para correr.")
+                    TutorialLine(IconId.OJO, "Mirar",
+                        "Arrastra en la mitad derecha para girar la cabeza.")
+                    TutorialLine(IconId.AGACHARSE, "Agacharte y saltar",
+                        "El boton de agacharse cicla de pie, agachado y bien raso. En los tramos " +
+                            "bajos te agachas solo, y agacharte no gasta aguante.")
+                    TutorialLine(IconId.CALAVERA, "Cuidado",
+                        "Hay trampas y bichos. Los pinches y los pozos se ven; los bichos hacen " +
+                            "ruido antes de encontrarte.")
+                    TutorialLine(IconId.PUNO, "Pelear",
+                        "Al bicho que se te viene encima le pegas con el boton del puno. Sin arma " +
+                            "pegas flojo pero pegas; en la Tienda hay palos, picos y hachas.")
+                    TutorialLine(IconId.SALIDA, "Salir",
+                        "Busca la columna de cristal que brilla. Esa es la salida del nivel.")
+                    TutorialLine(IconId.MOCHILA, "Objetos",
+                        "Los que cargaste en Equipo aparecen abajo a la derecha. Un toque y se usan.")
+                }
+                Spacer(Modifier.height(14.dp))
                 CaveButton(
                     "Entendido, a bajar", onClose,
                     icon = IconId.TILDE, style = CaveButtonStyle.PRIMARIO,
