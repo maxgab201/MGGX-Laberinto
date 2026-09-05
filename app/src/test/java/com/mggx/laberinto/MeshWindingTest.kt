@@ -3,6 +3,7 @@ package com.mggx.laberinto
 import com.mggx.laberinto.gl.ArmsMesh
 import com.mggx.laberinto.gl.EnemyMeshes
 import com.mggx.laberinto.gl.PropMeshes
+import com.mggx.laberinto.gl.StructureMeshes
 import com.mggx.laberinto.gl.WorldMesh
 import com.mggx.laberinto.maze.MazeGenerator
 import org.junit.Assert.assertTrue
@@ -116,6 +117,25 @@ class MeshWindingTest {
             "torso de guardian" to EnemyMeshes.guardianTorso(),
             "cabeza de guardian" to EnemyMeshes.guardianCabeza(),
             "brazo de guardian" to EnemyMeshes.guardianBrazo()
+        )
+        for ((nombre, g) in formas) {
+            assertTrue("$nombre esta vacio", g.indices.size > 30)
+            val malas = contarInvertidos(g.vertices, g.indices, 6, 3)
+            assertTrue("$nombre tiene $malas triangulos dados vuelta", malas == 0)
+        }
+    }
+
+    @Test
+    fun lasEstructurasMiranParaAfuera() {
+        val formas = mapOf(
+            "antorcha" to StructureMeshes.antorcha(),
+            "llama" to StructureMeshes.llama(),
+            "cristal" to StructureMeshes.cristal(),
+            "cofre" to StructureMeshes.cofre(),
+            "hongo" to StructureMeshes.hongo(),
+            "pincho" to StructureMeshes.pincho(),
+            "estacion de carburo" to StructureMeshes.estacionCarburo(),
+            "obelisco de salida" to StructureMeshes.obeliscoSalida()
         )
         for ((nombre, g) in formas) {
             assertTrue("$nombre esta vacio", g.indices.size > 30)

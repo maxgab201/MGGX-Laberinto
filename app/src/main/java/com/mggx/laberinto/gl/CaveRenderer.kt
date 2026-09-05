@@ -44,10 +44,26 @@ class CaveRenderer(
         /** Radio de la punta de una estalactita/estalagmita de bioma cueva. */
         const val RADIO_ESTALACTITA = 0.13f
 
-        /** Escala base de la llama de una antorcha (antes de multiplicar por fl). */
-        const val ESCALA_LLAMA = 0.085f
-        /** Altura del poste de la antorcha (coincide con el cyl.add de abajo). */
-        const val ALTO_POSTE_ANTORCHA = 0.42f
+        /**
+         * Alto total de la antorcha en metros. Como el modelo de
+         * [StructureMeshes.antorcha] mide 1 de alto, la escala de instancia ES
+         * su altura.
+         */
+        const val ALTO_ANTORCHA = 0.48f
+
+        /**
+         * Alto de la llama en metros, antes del parpadeo. El modelo tiene la
+         * base en y=0, asi que apoyada en el cuenco no puede hundirse en el
+         * poste (que era el problema con el octaedro, que tenia el centro en
+         * su posicion y quedaba media figura adentro).
+         */
+        const val ESCALA_LLAMA = 0.22f
+
+        /** Que tan lejos del centro de la casilla se cuelga, hacia la pared. */
+        const val SEPARACION_ANTORCHA = 0.46f
+
+        /** A que altura del piso se clava la base de la antorcha, en metros. */
+        const val ALTURA_ANTORCHA = 1.75f
     }
 
     /** Estado de entrada compartido con la vista (se escribe desde el hilo de UI). */
@@ -139,7 +155,6 @@ class CaveRenderer(
     // ------------------------------------------------------------ props
     private var shapeGem: InstancedShape? = null
     private var shapeCone: InstancedShape? = null
-    private var shapeConeDown: InstancedShape? = null
     private var shapeBox: InstancedShape? = null
     private var shapeCylinder: InstancedShape? = null
     private var shapeArrow: InstancedShape? = null
@@ -240,13 +255,17 @@ class CaveRenderer(
         for (gi in s.torches) {
             val gx = gi % m.gw; val gy = gi / m.gw
             var ox = 0f; var oz = 0f
-            if (m.isSolid(gx - 1, gy)) ox = -C * 0.38f
-            else if (m.isSolid(gx + 1, gy)) ox = C * 0.38f
-            else if (m.isSolid(gx, gy - 1)) oz = -C * 0.38f
-            else if (m.isSolid(gx, gy + 1)) oz = C * 0.38f
+            if (m.isSolid(gx - 1, gy)) ox = -C * SEPARACION_ANTORCHA
+            else if (m.isSolid(gx + 1, gy)) ox = C * SEPARACION_ANTORCHA
+            else if (m.isSolid(gx, gy - 1)) oz = -C * SEPARACION_ANTORCHA
+            else if (m.isSolid(gx, gy + 1)) oz = C * SEPARACION_ANTORCHA
             lista.add(
                 Farol(
-                    (gx + 0.5f) * C + ox, m.floorY(gx, gy) + 2.25f, (gy + 0.5f) * C + oz,
+                    // Justo en la llama: si fuera una altura suelta, al
+                    // mover la antorcha la luz quedaria colgada en otro lado.
+                    (gx + 0.5f) * C + ox,
+                    m.floorY(gx, gy) + ALTURA_ANTORCHA + ALTO_ANTORCHA * StructureMeshes.ALTURA_DEL_FUEGO,
+                    (gy + 0.5f) * C + oz,
                     1.00f, 0.58f, 0.22f, 7.0f, true
                 )
             )
@@ -296,7 +315,6 @@ class CaveRenderer(
     /** Ala de murcielago: membrana con los dedos festoneados, que aletea. */
     private var shapeWing: InstancedShape? = null
     /** Pincho de trampa. */
-    private var shapeSpike: InstancedShape? = null
     /** Roca suelta. */
     private var shapeBoulder: InstancedShape? = null
 
@@ -309,10 +327,20 @@ class CaveRenderer(
     private var shapeGuardianTorso: InstancedShape? = null
     private var shapeGuardianCabeza: InstancedShape? = null
     private var shapeGuardianBrazo: InstancedShape? = null
+
+    // ------------------------------------------------ modelos de estructuras
+    // Ver StructureMeshes: antes casi todas reusaban las mismas primitivas.
+    private var shapeAntorcha: InstancedShape? = null
+    private var shapeLlama: InstancedShape? = null
+    private var shapeCristal: InstancedShape? = null
+    private var shapeCofre: InstancedShape? = null
+    private var shapeHongo: InstancedShape? = null
+    private var shapePincho: InstancedShape? = null
+    private var shapeEstacion: InstancedShape? = null
+    private var shapeObelisco: InstancedShape? = null
     /** Poste fino: los parantes de los marcos de la mina. */
     private var shapePost: InstancedShape? = null
-    /** Estalactita: punta fina colgando del techo (no confundir con shapeConeDown,
-     * que sigue siendo el sombrero corto y ancho de los hongos gigantes). */
+    /** Estalactita: punta fina colgando del techo. */
     private var shapeStalactite: InstancedShape? = null
 
     // ------------------------------------------------------------ brazos
@@ -615,26 +643,25 @@ class CaveRenderer(
     }
 
     private fun buildShapes() {
-        shapeGem?.release(); shapeCone?.release(); shapeConeDown?.release()
+        shapeGem?.release(); shapeCone?.release()
         shapeBox?.release(); shapeCylinder?.release(); shapeArrow?.release()
-        shapeSlab?.release(); shapeWing?.release(); shapeSpike?.release()
+        shapeSlab?.release(); shapeWing?.release()
         shapeBoulder?.release(); shapePost?.release(); shapeStalactite?.release()
         shapeMurcielago?.release(); shapeRastreroCuerpo?.release(); shapeRastreroPata?.release()
         shapeGuardianTorso?.release(); shapeGuardianCabeza?.release(); shapeGuardianBrazo?.release()
+        shapeAntorcha?.release(); shapeLlama?.release(); shapeCristal?.release()
+        shapeCofre?.release(); shapeHongo?.release(); shapePincho?.release()
+        shapeEstacion?.release(); shapeObelisco?.release()
         shapeGem = InstancedShape(PropMeshes.octahedron(1.5f), 1400)
         // Estalagmita (hacia arriba): antes radio 0.42 con altura 1, una
         // relacion de "gorro de fiesta" (2.4:1). Ahora una punta de verdad.
         shapeCone = InstancedShape(PropMeshes.cone(8, 1f, RADIO_ESTALACTITA, false), 340)
-        // El sombrero corto y ancho del hongo gigante SIGUE usando esta malla
-        // (queda igual). La estalactita de bioma cueva pasa a shapeStalactite.
-        shapeConeDown = InstancedShape(PropMeshes.cone(7, 1f, 0.36f, true), 340)
         shapeStalactite = InstancedShape(PropMeshes.cone(8, 1f, RADIO_ESTALACTITA, true), 340)
         shapeBox = InstancedShape(PropMeshes.box(1f, 1f, 1f), 700)
         shapeCylinder = InstancedShape(PropMeshes.cylinder(7, 1f, 0.1f), 900)
         shapeArrow = InstancedShape(PropMeshes.arrow(), 4)
         shapeSlab = InstancedShape(PropMeshes.box(1f, 0.13f, 0.13f), 400)
         shapeWing = InstancedShape(EnemyMeshes.murcielagoAla(), 200)
-        shapeSpike = InstancedShape(PropMeshes.cone(6, 1f, 0.17f, false), 300)
         shapeBoulder = InstancedShape(PropMeshes.octahedron(0.72f), 900)
         shapePost = InstancedShape(PropMeshes.cylinder(6, 1f, 0.042f), 160)
         // Los bichos: pocos a la vez, asi que alcanza con cupos chicos.
@@ -644,6 +671,14 @@ class CaveRenderer(
         shapeGuardianTorso = InstancedShape(EnemyMeshes.guardianTorso(), 80)
         shapeGuardianCabeza = InstancedShape(EnemyMeshes.guardianCabeza(), 80)
         shapeGuardianBrazo = InstancedShape(EnemyMeshes.guardianBrazo(), 160)
+        shapeAntorcha = InstancedShape(StructureMeshes.antorcha(), 160)
+        shapeLlama = InstancedShape(StructureMeshes.llama(), 160)
+        shapeCristal = InstancedShape(StructureMeshes.cristal(), 900)
+        shapeCofre = InstancedShape(StructureMeshes.cofre(), 120)
+        shapeHongo = InstancedShape(StructureMeshes.hongo(), 700)
+        shapePincho = InstancedShape(StructureMeshes.pincho(), 300)
+        shapeEstacion = InstancedShape(StructureMeshes.estacionCarburo(), 60)
+        shapeObelisco = InstancedShape(StructureMeshes.obeliscoSalida(), 4)
     }
 
     private fun buildArms() {
@@ -753,12 +788,10 @@ class CaveRenderer(
     ) {
         val gem = shapeGem ?: return
         val cone = shapeCone ?: return
-        val coneD = shapeConeDown ?: return
         val boxS = shapeBox ?: return
         val cyl = shapeCylinder ?: return
         val arrow = shapeArrow ?: return
         val slab = shapeSlab ?: return
-        val spike = shapeSpike ?: return
         val boulder = shapeBoulder ?: return
         val post = shapePost ?: return
         val stalactite = shapeStalactite ?: return
@@ -769,6 +802,14 @@ class CaveRenderer(
         val torso = shapeGuardianTorso ?: return
         val cabeza = shapeGuardianCabeza ?: return
         val brazo = shapeGuardianBrazo ?: return
+        val antorcha = shapeAntorcha ?: return
+        val llama = shapeLlama ?: return
+        val cristal = shapeCristal ?: return
+        val cofre = shapeCofre ?: return
+        val hongo = shapeHongo ?: return
+        val pincho = shapePincho ?: return
+        val estacion = shapeEstacion ?: return
+        val obelisco = shapeObelisco ?: return
 
         val cull = when (save.settings.quality) { 0 -> 22f; 1 -> 28f; 2 -> 34f; else -> 42f }
         val cull2 = cull * cull
@@ -778,11 +819,13 @@ class CaveRenderer(
             return dx * dx + dz * dz < cull2
         }
 
-        gem.begin(); cone.begin(); coneD.begin(); boxS.begin(); cyl.begin(); arrow.begin()
-        slab.begin(); ala.begin(); spike.begin(); boulder.begin(); post.begin()
+        gem.begin(); cone.begin(); boxS.begin(); cyl.begin(); arrow.begin()
+        slab.begin(); ala.begin(); boulder.begin(); post.begin()
         stalactite.begin()
         murcielago.begin(); rastrero.begin(); pata.begin()
         torso.begin(); cabeza.begin(); brazo.begin()
+        antorcha.begin(); llama.begin(); cristal.begin(); cofre.begin()
+        hongo.begin(); pincho.begin(); estacion.begin(); obelisco.begin()
         val C = GameSession.CELL
         val m = s.maze
 
@@ -800,10 +843,9 @@ class CaveRenderer(
                     gem.add(x, fy + 0.72f, z, ESCALA_ECO_GRANDE, 1.0f, 0.86f, 0.42f, 0.85f, pk.bob * 1.1f, pk.bob, 1f, 1f)
                 GameSession.PickupKind.VETAGRIS ->
                     gem.add(x, fy + 0.80f, z, ESCALA_VETAGRIS, 0.80f, 0.92f, 1.0f, 1.05f, pk.bob * 0.8f, pk.bob, 1f, 1f)
-                GameSession.PickupKind.COFRE -> {
-                    boxS.add(x, fy + 0.30f, z, 0.62f, 0.36f, 0.24f, 0.14f, 0.04f, pk.bob * 0.15f, pk.bob, 0f, 1f)
-                    boxS.add(x, fy + 0.60f, z, 0.30f, 0.86f, 0.66f, 0.24f, 0.20f, pk.bob * 0.15f, pk.bob, 0f, 1f)
-                }
+                GameSession.PickupKind.COFRE ->
+                    // Apoyado en el piso: el modelo tiene su base en y=0.
+                    cofre.add(x, fy, z, 0.62f, 0.38f, 0.26f, 0.15f, 0.05f, pk.bob * 0.15f, pk.bob, 0f, 1f)
             }
         }
 
@@ -836,10 +878,10 @@ class CaveRenderer(
                 }
                 com.mggx.laberinto.maze.Biome.HONGOS -> {
                     // Hongo gigante: tronco grueso y sombrero que alumbra.
-                    val alto = 0.9f + ((gx * 11 + gy * 7) % 6) * 0.22f
-                    cyl.add(x, fy, z, alto * 2.2f, 0.66f, 0.62f, 0.52f, 0.02f, giro, 0f, 0f, 1f)
-                    coneD.add(x, fy + alto * 2.2f + 0.30f, z, 0.62f, 0.52f, 0.92f, 0.66f, 0.75f, giro, 0f, 0f, 1f)
-                    gem.add(x, fy + alto * 2.2f + 0.10f, z, 0.14f, 0.60f, 1.0f, 0.75f, 1.05f, giro, gx.toFloat(), 1f, 1f)
+                    val alto = 1.9f + ((gx * 11 + gy * 7) % 6) * 0.32f
+                    hongo.add(x, fy, z, alto, 0.60f, 0.94f, 0.70f, 0.55f, giro, 0f, 0f, 1f)
+                    // La luz que largan las laminas de abajo del sombrero.
+                    gem.add(x, fy + alto * 0.66f, z, 0.14f, 0.60f, 1.0f, 0.75f, 1.05f, giro, gx.toFloat(), 1f, 1f)
                 }
                 com.mggx.laberinto.maze.Biome.CUEVA -> {
                     if ((gx + gy) % 2 == 0) {
@@ -860,21 +902,27 @@ class CaveRenderer(
             if (!near(x, z)) continue
             // Se pega a la pared mas cercana
             var ox = 0f; var oz = 0f
-            if (m.isSolid(gx - 1, gy)) ox = -C * 0.38f
-            else if (m.isSolid(gx + 1, gy)) ox = C * 0.38f
-            else if (m.isSolid(gx, gy - 1)) oz = -C * 0.38f
-            else if (m.isSolid(gx, gy + 1)) oz = C * 0.38f
+            if (m.isSolid(gx - 1, gy)) ox = -C * SEPARACION_ANTORCHA
+            else if (m.isSolid(gx + 1, gy)) ox = C * SEPARACION_ANTORCHA
+            else if (m.isSolid(gx, gy - 1)) oz = -C * SEPARACION_ANTORCHA
+            else if (m.isSolid(gx, gy + 1)) oz = C * SEPARACION_ANTORCHA
             val tx = x + ox; val tz = z + oz
-            val baseY = WorldMesh.floorHeight(s.maze, gx, gy) + 1.75f
-            cyl.add(tx, baseY, tz, ALTO_POSTE_ANTORCHA, 0.28f, 0.19f, 0.12f, 0.02f, 0f, 0f, 0f, 1f)
+            val baseY = WorldMesh.floorHeight(s.maze, gx, gy) + ALTURA_ANTORCHA
+            // El brazo del soporte esta modelado hacia -Z, asi que se gira para
+            // que se clave en la pared contra la que quedo apoyada.
+            val haciaPared = Math.atan2(ox.toDouble(), oz.toDouble()).toFloat() + Math.PI.toFloat()
+            antorcha.add(
+                tx, baseY, tz, ALTO_ANTORCHA,
+                0.28f, 0.19f, 0.12f, 0.02f, haciaPared, 0f, 0f, 1f
+            )
             val ph = ((gx * 41 + gy * 7) % 30) * 0.21f
             val fl = 0.86f + 0.14f * sin((time * 7f + ph).toDouble()).toFloat()
-            // Apoyada en la punta del poste (ALTO_POSTE_ANTORCHA), no
-            // penetrandolo: antes la llama media 3.6x el ancho del poste y se
-            // le hundia adentro ~17cm.
-            gem.add(
-                tx, baseY + ALTO_POSTE_ANTORCHA + 0.13f, tz, ESCALA_LLAMA * fl,
-                1.0f, 0.62f, 0.22f, 1.35f, time * 2.1f + ph, ph, 1f, 1f
+            // La llama tiene la base en y=0, asi que se apoya justo en la boca
+            // del cuenco y no puede hundirse en el poste. Va con tipo 0 (quieta)
+            // a proposito: el tipo 1 la hacia flotar 11cm y se despegaba.
+            llama.add(
+                tx, baseY + ALTO_ANTORCHA * StructureMeshes.ALTURA_DEL_FUEGO, tz, ESCALA_LLAMA * fl,
+                1.0f, 0.62f, 0.22f, 1.35f, ph, ph, 0f, 1f
             )
         }
 
@@ -888,10 +936,12 @@ class CaveRenderer(
             val h = ((gx * 17 + gy * 5) % 11) * 0.031f
             val ph = ((gx * 23 + gy * 11) % 40) * 0.157f
             val latido = 0.72f + 0.28f * sin((time * 0.9f + ph).toDouble()).toFloat()
-            // Un racimo: uno grande y dos chicos apoyados al costado.
-            gem.add(x, fy + 0.30f + h, z, 0.30f + h, th.veinR, th.veinG, th.veinB, 0.95f * latido, ph, ph, 0f, 1f)
-            gem.add(x + 0.30f, fy + 0.18f, z - 0.16f, 0.17f, th.veinR, th.veinG, th.veinB, 0.70f * latido, ph + 1f, ph, 0f, 1f)
-            gem.add(x - 0.24f, fy + 0.15f, z + 0.22f, 0.13f, th.veinR, th.veinG, th.veinB, 0.60f * latido, ph + 2f, ph, 0f, 1f)
+            // Un racimo: uno grande y dos chicos apoyados al costado. Cada uno
+            // con otro giro, y como el cristal viene inclinado en la malla, eso
+            // solo alcanza para que caigan cada uno para su lado.
+            cristal.add(x, fy, z, 0.62f + h * 1.6f, th.veinR, th.veinG, th.veinB, 0.95f * latido, ph, ph, 0f, 1f)
+            cristal.add(x + 0.30f, fy, z - 0.16f, 0.38f, th.veinR, th.veinG, th.veinB, 0.70f * latido, ph + 1.9f, ph, 0f, 1f)
+            cristal.add(x - 0.24f, fy, z + 0.22f, 0.29f, th.veinR, th.veinG, th.veinB, 0.60f * latido, ph + 4.1f, ph, 0f, 1f)
         }
         for (gi in s.rocks) {
             val gx = gi % m.gw; val gy = gi / m.gw
@@ -917,10 +967,8 @@ class CaveRenderer(
                 val hx = x + cos(ang.toDouble()).toFloat() * rr
                 val hz = z + sin(ang.toDouble()).toFloat() * rr
                 val porte = if (th.biome == com.mggx.laberinto.maze.Biome.HONGOS) 2.2f else 1f
-                val alto = (0.16f + ((gx + gy + k) % 4) * 0.05f) * porte
-                cyl.add(hx, fy, hz, alto * 2.2f, 0.72f, 0.68f, 0.58f, 0.02f, 0f, 0f, 0f, 1f)
-                gem.add(hx, fy + alto * 2.1f, hz, 0.11f + k * 0.02f,
-                    0.52f, 0.95f, 0.72f, 0.85f, 0f, ang, 0f, 1f)
+                val alto = (0.36f + ((gx + gy + k) % 4) * 0.11f) * porte
+                hongo.add(hx, fy, hz, alto, 0.56f, 0.93f, 0.70f, 0.42f, ang, 0f, 0f, 1f)
             }
         }
         for (gi in s.beams) {
@@ -950,10 +998,9 @@ class CaveRenderer(
             val usada = s.estacionUsada(gi)
             val brillo = if (usada) 0.06f else 1.15f + 0.35f * sin((time * 2.2f + gx).toDouble()).toFloat()
             // Poste de hierro con el bidon y el piloto encendido.
-            cyl.add(x, fy, z, 1.10f, 0.30f, 0.31f, 0.34f, 0.02f, 0f, 0f, 0f, 1f)
-            boxS.add(x, fy + 0.72f, z, 0.46f, 0.42f, 0.38f, 0.28f, 0.03f, 0f, 0f, 0f, 1f)
+            estacion.add(x, fy, z, 1.10f, 0.34f, 0.33f, 0.35f, 0.02f, 0f, 0f, 0f, 1f)
             gem.add(
-                x, fy + 1.08f, z, 0.15f,
+                x, fy + 1.16f, z, 0.13f,
                 if (usada) 0.45f else 1.0f, if (usada) 0.48f else 0.86f, if (usada) 0.5f else 0.40f,
                 brillo, time * 0.9f, gx.toFloat(), 1f, 1f
             )
@@ -973,7 +1020,7 @@ class CaveRenderer(
                     for (k in 0 until 7) {
                         val a = k * 0.8976f + tr.gx
                         val rr = if (k == 0) 0f else 0.52f
-                        spike.add(
+                        pincho.add(
                             x + cos(a.toDouble()).toFloat() * rr, fy, z + sin(a.toDouble()).toFloat() * rr,
                             0.40f + (k % 3) * 0.09f,
                             0.62f, 0.58f, 0.55f, aviso, a, 0f, 0f, 1f
@@ -1110,7 +1157,7 @@ class CaveRenderer(
             val visible = d < cull * 1.9f
             if (visible) {
                 val ping = if (s.exitPingFlash > 0f) 0.6f else 0f
-                cyl.add(ex, fy, ez, 2.55f, 0.55f, 0.92f, 0.78f, 0.85f + ping, 0f, 0f, 0f, 1f)
+                obelisco.add(ex, fy, ez, 2.55f, 0.55f, 0.92f, 0.78f, 0.85f + ping, 0f, 0f, 0f, 1f)
                 for (i in 0 until 5) {
                     val a = time * 0.55f + i * (2f * Math.PI.toFloat() / 5f)
                     val rr = 0.85f
@@ -1165,11 +1212,13 @@ class CaveRenderer(
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotCos"), 0.90f)
         subirLuces(p)
 
-        gem.draw(); cone.draw(); coneD.draw(); boxS.draw(); cyl.draw(); arrow.draw()
-        slab.draw(); ala.draw(); spike.draw(); boulder.draw(); post.draw()
+        gem.draw(); cone.draw(); boxS.draw(); cyl.draw(); arrow.draw()
+        slab.draw(); ala.draw(); boulder.draw(); post.draw()
         stalactite.draw()
         murcielago.draw(); rastrero.draw(); pata.draw()
         torso.draw(); cabeza.draw(); brazo.draw()
+        antorcha.draw(); llama.draw(); cristal.draw(); cofre.draw()
+        hongo.draw(); pincho.draw(); estacion.draw(); obelisco.draw()
     }
 
     private fun drawDecals(s: GameSession, fogDensity: Float, brightness: Float) {

@@ -2,6 +2,9 @@ package com.mggx.laberinto
 
 import com.mggx.laberinto.game.GameSession
 import com.mggx.laberinto.gl.CaveRenderer
+import com.mggx.laberinto.gl.PropMeshes
+import com.mggx.laberinto.gl.StructureMeshes
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -51,29 +54,61 @@ class PropsProporcionesTest {
     // ------------------------------------------------------------ antorcha
 
     @Test
-    fun laLlamaNoEsMuchoMasAnchaQueElPosteYNoLoPenetra() {
-        // Diametro del poste real (ver el cyl.add de la antorcha): el
-        // PropMeshes.cylinder base tiene radio 0.1, multiplicado por el
-        // scale que ya usa CaveRenderer para el poste.
-        val radioPoste = 0.1f * 0.42f // 0.1 (radio base del cilindro) * scale del poste
-        val diametroPoste = radioPoste * 2f
-        val diametroLlamaMax = CaveRenderer.ESCALA_LLAMA * 2f // fl <= 1.0
-        assertTrue(
-            "la llama sigue siendo demasiado ancha comparada con el poste " +
-                "(llama=$diametroLlamaMax, poste=$diametroPoste)",
-            diametroLlamaMax <= diametroPoste * 2.5f
-        )
+    fun laLlamaSeApoyaEnElCuencoYNoSePuedeHundirEnElPoste() {
+        // El modelo de la llama tiene la base en y=0. Eso es lo que hace
+        // imposible que se hunda: se la apoya y listo. El octaedro de antes
+        // tenia el centro en su posicion, asi que media figura quedaba
+        // metida adentro del poste.
+        val llama = StructureMeshes.llama()
+        var minY = Float.MAX_VALUE
+        var i = 1
+        while (i < llama.vertices.size) {
+            if (llama.vertices[i] < minY) minY = llama.vertices[i]
+            i += 6
+        }
+        assertEquals("la llama ya no tiene la base en cero", 0f, minY, 1e-4f)
+    }
 
-        // La llama tiene que apoyarse en la punta del poste, no penetrarlo:
-        // con stretchY=1.5 (shapeGem), el semieje vertical maximo es
-        // 1.5 * ESCALA_LLAMA, y el centro esta a ALTO_POSTE_ANTORCHA + 0.13.
-        val semiejeMax = 1.5f * CaveRenderer.ESCALA_LLAMA
-        val centroY = CaveRenderer.ALTO_POSTE_ANTORCHA + 0.13f
-        val bordeInferior = centroY - semiejeMax
+    @Test
+    fun laLlamaEntraEnElCuencoDeLaAntorcha() {
+        // Se comparan anchos REALES en metros, sacados de las mallas mismas:
+        // asi el test sigue valiendo si maniana se retoca cualquiera de las
+        // dos formas, sin tener que acordarse de actualizar un numero.
+        val anchoLlama = anchoDe(StructureMeshes.llama()) * CaveRenderer.ESCALA_LLAMA
+        val anchoCuenco = StructureMeshes.RADIO_CUENCO * 2f * CaveRenderer.ALTO_ANTORCHA
         assertTrue(
-            "la llama penetra el poste (borde inferior=$bordeInferior, " +
-                "punta del poste=${CaveRenderer.ALTO_POSTE_ANTORCHA})",
-            bordeInferior >= CaveRenderer.ALTO_POSTE_ANTORCHA - 0.01f
+            "la llama (${anchoLlama}m) no entra en el cuenco (${anchoCuenco}m)",
+            anchoLlama <= anchoCuenco
         )
+        // Y que la llama se vea: mas alta que el propio cuenco.
+        assertTrue(
+            "la llama quedo mas baja que el cuenco que la contiene",
+            CaveRenderer.ESCALA_LLAMA > anchoCuenco * 0.5f
+        )
+    }
+
+    @Test
+    fun elBrazoDeLaAntorchaLlegaHastaLaPared() {
+        // La antorcha se cuelga a SEPARACION_ANTORCHA del centro de la
+        // casilla; lo que falta hasta la roca lo tiene que cubrir el brazo, si
+        // no queda flotando despegada de la pared.
+        val hastaLaPared = (0.5f - CaveRenderer.SEPARACION_ANTORCHA) * GameSession.CELL
+        val brazo = StructureMeshes.LARGO_BRAZO * CaveRenderer.ALTO_ANTORCHA
+        assertTrue(
+            "el brazo mide ${brazo}m y hasta la pared hay ${hastaLaPared}m: queda flotando",
+            brazo >= hastaLaPared
+        )
+    }
+
+    private fun anchoDe(g: PropMeshes.Geometry): Float {
+        var min = Float.MAX_VALUE
+        var max = -Float.MAX_VALUE
+        var i = 0
+        while (i < g.vertices.size) {
+            if (g.vertices[i] < min) min = g.vertices[i]
+            if (g.vertices[i] > max) max = g.vertices[i]
+            i += 6
+        }
+        return max - min
     }
 }

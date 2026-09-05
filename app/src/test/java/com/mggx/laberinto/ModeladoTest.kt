@@ -2,6 +2,7 @@ package com.mggx.laberinto
 
 import com.mggx.laberinto.gl.EnemyMeshes
 import com.mggx.laberinto.gl.PropMeshes
+import com.mggx.laberinto.gl.StructureMeshes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -107,7 +108,7 @@ class ModeladoTest {
     }
 
     @Test
-    fun cadaBichoEsUnSoloModeloDeUnTamanoRazonable() {
+    fun cadaModeloEsUnaSolaPiezaDeUnTamanoRazonable() {
         // Todos los modelos se disenan de mas o menos 1 unidad en su lado
         // largo: asi el `scale` que les pasa el renderer se lee directo como
         // metros y no hay que adivinar.
@@ -118,7 +119,15 @@ class ModeladoTest {
             "pata de rastrero" to EnemyMeshes.rastreroPata(),
             "torso de guardian" to EnemyMeshes.guardianTorso(),
             "cabeza de guardian" to EnemyMeshes.guardianCabeza(),
-            "brazo de guardian" to EnemyMeshes.guardianBrazo()
+            "brazo de guardian" to EnemyMeshes.guardianBrazo(),
+            "antorcha" to StructureMeshes.antorcha(),
+            "llama" to StructureMeshes.llama(),
+            "cristal" to StructureMeshes.cristal(),
+            "cofre" to StructureMeshes.cofre(),
+            "hongo" to StructureMeshes.hongo(),
+            "pincho" to StructureMeshes.pincho(),
+            "estacion de carburo" to StructureMeshes.estacionCarburo(),
+            "obelisco de salida" to StructureMeshes.obeliscoSalida()
         )
         for ((nombre, g) in modelos) {
             var lado = 0f
