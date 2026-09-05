@@ -16,8 +16,8 @@ android {
         targetSdk = 34
         // El versionCode tiene que subir en cada publicacion: Android no deja
         // instalar encima de una version con el mismo numero o mayor.
-        versionCode = 5
-        versionName = "1.3.1"
+        versionCode = 6
+        versionName = "1.3.2"
         vectorDrawables { useSupportLibrary = true }
     }
 
