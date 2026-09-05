@@ -130,7 +130,7 @@ fun MultiplayerScreen(onBack: () -> Unit) {
                             Paso(true, "El protocolo de mensajes", "Listo y probado")
                             Paso(true, "El estado de la sala", "Listo y probado")
                             Paso(true, "Cuevas identicas en los dos telefonos", "Listo y probado")
-                            Paso(false, "La conexion en si (el relay)", "Falta")
+                            Paso(true, "La conexion en si (el relay)", "Listo, con Firebase")
                             Paso(false, "La pantalla de sala y de invitar", "Falta")
                             Paso(false, "Dibujar al otro minero adentro de la cueva", "Falta")
                         }

@@ -13,6 +13,10 @@ captures/
 *.apk.idsig
 release/
 
+# Config de Firebase de cada uno (ver docs/MULTIJUGADOR.md, paso 1). No tiene
+# nada secreto, pero es la config de TU proyecto: cada quien pone la suya.
+app/google-services.json
+
 # Sistema
 .DS_Store
 *.log

@@ -6,6 +6,15 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// El plugin de Google Services necesita su google-services.json (la
+// configuracion del proyecto de Firebase) para poder correr. Todavia no lo
+// creaste (ver docs/MULTIJUGADOR.md), asi que el plugin se aplica SOLO si el
+// archivo ya esta: mientras tanto el proyecto sigue compilando igual, nomas
+// que TransporteFirebase no tiene con que conectarse de verdad.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.mggx.laberinto"
     compileSdk = 34
@@ -89,6 +98,10 @@ dependencies {
     implementation(libs.androidx.foundation)
     implementation(libs.androidx.animation)
     implementation(libs.androidx.material3)
+    // El relay de multijugador (net/TransporteFirebase.kt). Con el BOM no
+    // hace falta poner version en cada libreria de Firebase por separado.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.database)
     testImplementation(libs.junit)
     // org.json real: en los tests de JVM el de Android es solo un stub vacio.
     testImplementation(libs.org.json)
