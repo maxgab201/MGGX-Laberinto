@@ -65,23 +65,26 @@ class PisoDecalTest {
     }
 
     @Test
-    fun enElBordeDeLaCasillaElRuidoSeApagaYCoincideConElTeorico() {
-        // cara() apaga el desplazamiento en los bordes (sin(PI*0)=0), y
-        // realFloorHeight tiene que respetar exactamente lo mismo, si no las
-        // marcas quedarian mal alineadas justo en el limite entre celdas.
+    fun contraLaParedElRuidoSeApagaYCoincideConElTeorico() {
+        // Ojo: esto NO vale en cualquier borde de casilla. Desde que el ruido
+        // corre continuo entre casillas (ver CuevaContinuaTest), el piso solo
+        // vuelve a la altura teorica donde se encuentra con la roca, que es
+        // donde arranca la cara de la pared. Ahi si tiene que coincidir clavado,
+        // porque si no la marca de tiza se metaria dentro de la pared.
         val m = MazeGenerator.generate(10, 5050L).maze
-        var encontrado = false
+        var comprobados = 0
         for (gy in 0 until m.gh) for (gx in 0 until m.gw) {
             if (m.isSolid(gx, gy)) continue
-            encontrado = true
+            if (!m.isSolid(gx - 1, gy)) continue
             val x0 = gx * GameSession.CELL
-            val z0 = gy * GameSession.CELL
+            val z = (gy + 0.5f) * GameSession.CELL
+            comprobados++
             assertEquals(
                 WorldMesh.floorHeight(m, gx, gy),
-                WorldMesh.realFloorHeight(m, x0, z0),
+                WorldMesh.realFloorHeight(m, x0, z),
                 1e-4f
             )
         }
-        assertTrue("el laberinto de prueba no tenia ninguna casilla abierta", encontrado)
+        assertTrue("el laberinto de prueba no tenia ninguna pared", comprobados > 20)
     }
 }

@@ -429,7 +429,7 @@ class CaveRenderer(
         }
         if (s.geometryDirty) {
             s.geometryDirty = false
-            uploadWorld(WorldMesh.build(s.maze))
+            uploadWorld(WorldMesh.build(s.maze, save.settings.quality))
         }
 
         // ------------------------------------------------------- tiempo
@@ -575,7 +575,7 @@ class CaveRenderer(
             normalTex = r.normalTex
             texturedTheme = s.theme
         }
-        uploadWorld(WorldMesh.build(s.maze))
+        uploadWorld(WorldMesh.build(s.maze, save.settings.quality))
     }
 
     private fun uploadWorld(mesh: WorldMesh.Mesh) {

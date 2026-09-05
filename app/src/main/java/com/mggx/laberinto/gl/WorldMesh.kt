@@ -12,9 +12,21 @@ import kotlin.math.sqrt
  *
  * No son cajas: cada cara (piso, techo y pared) se subdivide en una grilla y se
  * desplaza con un ruido continuo del mundo, asi la roca queda abollada y
- * redondeada. El desplazamiento se apaga con un seno en los dos bordes de la
- * cara, de modo que el contorno de cada cara queda EXACTAMENTE donde estaba:
- * por eso las caras vecinas siguen encajando y la cueva no tiene grietas.
+ * redondeada.
+ *
+ * La clave de que se vea como una cueva y no como un pasillo de cajas esta en
+ * DONDE se apaga ese desplazamiento (ver [mascaraCampo]). Antes se apagaba en
+ * los cuatro bordes de cada cara, y eso dejaba una arista dura cada [CELL]
+ * metros: el tunel quedaba como una fila de almohadones cuadrados. Ahora se
+ * apaga segun un campo de distancia a la roca, que al depender solo de la
+ * posicion del mundo da el mismo valor desde las dos casillas que comparten
+ * un borde: la roca corre larga e irregular sin una sola grieta.
+ *
+ * Encima del ruido va un perfil fijo que redondea la seccion del tunel: las
+ * paredes se abren hacia afuera a media altura ([ENSANCHE_PARED]) y el techo
+ * sube en el medio ([ARCO_TECHO]), los dos apagandose contra el piso y contra
+ * las paredes. El resultado es una seccion de tunel ovalada en vez de un
+ * rectangulo.
  *
  * Ademas respeta el relieve del laberinto: cada casilla tiene su altura de piso
  * y su alto libre, y entre casillas a distinta altura se levanta el escalon
@@ -33,6 +45,28 @@ object WorldMesh {
     private const val BULTO_PARED = 0.30f
     internal const val BULTO_PISO = 0.13f
     private const val BULTO_TECHO = 0.34f
+
+    /**
+     * Cuanto se abre la pared hacia AFUERA a media altura, en metros.
+     *
+     * Es un corrimiento fijo que se suma al ruido y usa la misma mascara, asi
+     * que vale cero contra el piso y contra el techo y es maximo en el medio:
+     * el tunel deja de ser un rectangulo y pasa a tener panza. Como siempre
+     * empuja hacia la roca, ademas achica el bulto que podia meterse hacia
+     * adentro (de 30cm a 8cm), que es justo lo que podia rozar al jugador.
+     */
+    private const val ENSANCHE_PARED = 0.22f
+
+    /**
+     * Cuanto sube el techo en el medio del tunel, en metros. Se apaga contra
+     * las paredes, asi que arma un arco en vez de una tapa plana.
+     *
+     * Va acotado por el alto libre de la casilla ([FACTOR_ARCO]) porque en una
+     * gatera el alto que se ve tiene que seguir pareciendo el que hay: el
+     * agacharse automatico mira `ceilClearance`, no la malla.
+     */
+    private const val ARCO_TECHO = 0.20f
+    private const val FACTOR_ARCO = 0.07f
 
     /** Capas del atlas de texturas. */
     private const val CAPA_PARED = 0f
@@ -77,6 +111,144 @@ object WorldMesh {
         ruido(x * 0.62f, y * 0.62f, z * 0.62f) * 0.72f +
             ruido(x * 1.7f + 11f, y * 1.7f, z * 1.7f - 7f) * 0.28f
 
+    // ------------------------------------------------------- continuidad
+    //
+    // Donde se apaga el desplazamiento es lo que decide si la cueva se ve
+    // organica o cuadrada, y es tambien el unico lugar donde se puede abrir
+    // una grieta. Antes se apagaba en los cuatro bordes de CADA cara: nunca
+    // habia grietas, pero quedaba una arista dura cada [CELL] metros.
+    //
+    // Lo obvio seria apagar solo contra los bordes donde la superficie no
+    // sigue, con una rampa por cada eje de la cara. NO ALCANZA, y el error es
+    // sutil: la mascara de un eje depende de los vecinos del OTRO eje, que no
+    // son los mismos para las dos casillas que comparten un borde. Con la
+    // casilla de la diagonal distinta, una desplaza y la otra no, y ahi se
+    // abre la grieta (lo agarro CuevaContinuaTest antes de que llegara a un
+    // telefono).
+    //
+    // Por eso la mascara no se arma por cara sino como un CAMPO DE DISTANCIA
+    // del mundo: cuanto falta hasta el borde mas cercano donde la superficie
+    // deja de continuar. Al depender solo de la posicion y del laberinto, dos
+    // caras vecinas calculan exactamente el mismo valor en el borde que
+    // comparten, sin importar como esten sus diagonales. Y de yapa se ve
+    // mejor: en un pasillo el bulto crece hacia el centro y corre parejo a lo
+    // largo, que es justo como es una cueva.
+
+    /** A que distancia de la roca la superficie ya llego a su bulto pleno. */
+    private const val RADIO_APAGADO = CELL * 0.5f
+
+    /** Cuantos rectangulos de borde puede tener una cara como mucho. */
+    private const val MAX_BORDES = 8
+
+    /**
+     * Distancia de (x,z) al rectangulo de la casilla que arranca en
+     * (minX,minZ). Cero si el punto esta adentro o justo en el canto.
+     */
+    private fun distanciaACasilla(x: Float, z: Float, minX: Float, minZ: Float): Float {
+        val ax = kotlin.math.max(0f, kotlin.math.max(minX - x, x - (minX + CELL)))
+        val az = kotlin.math.max(0f, kotlin.math.max(minZ - z, z - (minZ + CELL)))
+        if (ax == 0f) return az
+        if (az == 0f) return ax
+        return sqrt(ax * ax + az * az)
+    }
+
+    /**
+     * La mascara en si: 0 pegado al borde que corta, 1 a [RADIO_APAGADO] o
+     * mas. Va por [suave] para llegar con pendiente cero a los dos extremos y
+     * no dejar ninguna arista de sombreado.
+     */
+    private fun mascaraCampo(x: Float, z: Float, bordes: FloatArray, n: Int): Float {
+        var d = RADIO_APAGADO
+        for (k in 0 until n) {
+            val dd = distanciaACasilla(x, z, bordes[k * 2], bordes[k * 2 + 1])
+            if (dd < d) d = dd
+            if (d == 0f) return 0f
+        }
+        return suave(d / RADIO_APAGADO)
+    }
+
+    private fun abierta(maze: Maze, gx: Int, gy: Int): Boolean =
+        maze.inBounds(gx, gy) && !maze.isSolid(gx, gy)
+
+    /** El piso sigue hacia el vecino: casilla abierta y a la misma altura. */
+    internal fun pisoSigue(maze: Maze, gx: Int, gy: Int, vx: Int, vy: Int): Boolean =
+        abierta(maze, vx, vy) && abs(maze.floorY(vx, vy) - maze.floorY(gx, gy)) < 1e-4f
+
+    /**
+     * El techo sigue hacia el vecino. Se pide tambien el mismo alto libre
+     * porque de el dependen la amplitud del bulto y la del arco: si no
+     * coincidieran, el borde compartido no daria el mismo punto.
+     */
+    internal fun techoSigue(maze: Maze, gx: Int, gy: Int, vx: Int, vy: Int): Boolean {
+        if (!abierta(maze, vx, vy)) return false
+        val i = maze.index(gx, gy)
+        val j = maze.index(vx, vy)
+        return abs(maze.ceilY(vx, vy) - maze.ceilY(gx, gy)) < 1e-4f &&
+            abs(maze.ceilClearance[j] - maze.ceilClearance[i]) < 1e-4f
+    }
+
+    /**
+     * La pared del lado (sx,sy) sigue hacia el vecino (vx,vy): el vecino es
+     * casilla abierta, tiene roca del mismo lado, y comparte piso y techo (si
+     * no, el tramo vertical no seria el mismo y el borde no encajaria).
+     */
+    internal fun paredSigue(
+        maze: Maze, gx: Int, gy: Int, vx: Int, vy: Int, sx: Int, sy: Int
+    ): Boolean = abierta(maze, vx, vy) &&
+        maze.isSolid(vx + sx, vy + sy) &&
+        pisoSigue(maze, gx, gy, vx, vy) &&
+        techoSigue(maze, gx, gy, vx, vy)
+
+    /**
+     * Junta los rectangulos de las casillas del anillo de alrededor contra las
+     * que esta superficie tiene que volver a su plano teorico.
+     *
+     * Alcanza con el anillo de 1: una casilla mas lejos tiene su canto a
+     * [CELL] metros, que ya es mas que [RADIO_APAGADO], asi que no puede
+     * cambiar el resultado. Eso es justamente lo que hace que dos casillas
+     * vecinas coincidan: los unicos bordes que les pueden importar en el
+     * limite que comparten estan en el anillo de las dos.
+     */
+    private fun bordesDeCara(
+        maze: Maze, gx: Int, gy: Int, out: FloatArray, sigue: (Int, Int) -> Boolean
+    ): Int {
+        var k = 0
+        for (dy in -1..1) for (dx in -1..1) {
+            if (dx == 0 && dy == 0) continue
+            val vx = gx + dx
+            val vy = gy + dy
+            if (sigue(vx, vy)) continue
+            out[k * 2] = vx * CELL
+            out[k * 2 + 1] = vy * CELL
+            k++
+        }
+        return k
+    }
+
+    /**
+     * Lo mismo para una pared, pero mirando solo los dos vecinos a lo largo
+     * de ella: la casilla de enfrente es la roca misma y su rectangulo toca
+     * el plano de la pared, asi que si se la contara la mascara daria cero en
+     * todos lados. Como los rectangulos que quedan contienen ese plano, la
+     * distancia termina midiendose a lo largo de la pared, que es lo buscado.
+     */
+    private fun bordesDePared(
+        maze: Maze, gx: Int, gy: Int, sx: Int, sy: Int, out: FloatArray
+    ): Int {
+        val ax = if (sx != 0) 0 else 1
+        val ay = if (sx != 0) 1 else 0
+        var k = 0
+        for (signo in intArrayOf(-1, 1)) {
+            val vx = gx + ax * signo
+            val vy = gy + ay * signo
+            if (paredSigue(maze, gx, gy, vx, vy, sx, sy)) continue
+            out[k * 2] = vx * CELL
+            out[k * 2 + 1] = vy * CELL
+            k++
+        }
+        return k
+    }
+
     /** Altura del piso en el centro de una casilla (para apoyar objetos). */
     fun floorHeight(maze: Maze, gx: Int, gy: Int): Float = maze.floorY(gx, gy)
 
@@ -92,10 +264,11 @@ object WorldMesh {
         val gx = (x / CELL).toInt().coerceIn(0, maze.gw - 1)
         val gy = (z / CELL).toInt().coerceIn(0, maze.gh - 1)
         val fy = maze.floorY(gx, gy)
-        val s = ((x - gx * CELL) / CELL).coerceIn(0f, 1f)
-        val t = ((z - gy * CELL) / CELL).coerceIn(0f, 1f)
-        val apaga = sin(PI.toFloat() * s) * sin(PI.toFloat() * t)
-        return fy + roca(x, fy, z) * (-BULTO_PISO) * apaga
+        // La MISMA mascara que usa build() para el piso de esta casilla. Si se
+        // desincronizara, las marcas de tiza volverian a enterrarse.
+        val bordes = FloatArray(MAX_BORDES * 2)
+        val n = bordesDeCara(maze, gx, gy, bordes) { vx, vy -> pisoSigue(maze, gx, gy, vx, vy) }
+        return fy + roca(x, fy, z) * (-BULTO_PISO) * mascaraCampo(x, z, bordes, n)
     }
 
     /** Altura del techo en el centro de una casilla. */
@@ -141,13 +314,30 @@ object WorldMesh {
     }
 
     /**
+     * Como se apaga el desplazamiento de una cara contra sus bordes.
+     *
+     * [CONTORNO] es el modo viejo, que vuelve al plano teorico en los cuatro
+     * bordes de la cara: lo siguen usando los escalones y los travesanos, que
+     * son piezas sueltas y no tienen que empalmar con nadie.
+     *
+     * [CAMPO] y [PARED] usan el campo de distancia (ver arriba). La diferencia
+     * es que la pared, ademas, se apaga siempre contra el piso y contra el
+     * techo, que es donde se encuentra con caras de otra normal.
+     */
+    private object Modo {
+        const val CONTORNO = 0
+        const val CAMPO = 1
+        const val PARED = 2
+    }
+
+    /**
      * Una cara subdividida y abollada.
      *
      * Los cuatro puntos vienen en el orden del anillo HORARIO visto desde el
      * lado al que apunta la normal (la misma convencion que pide [Builder.quad]).
      * La superficie es la interpolacion bilineal de esas esquinas mas un
-     * desplazamiento a lo largo de la normal que vale cero en todo el contorno,
-     * asi que el borde de la cara no se mueve y las caras vecinas encajan.
+     * desplazamiento a lo largo de la normal, apagado segun [modo] para que
+     * las caras vecinas encajen sin grietas.
      */
     private fun cara(
         b: Builder,
@@ -155,9 +345,14 @@ object WorldMesh {
         p0: FloatArray, p1: FloatArray, p2: FloatArray, p3: FloatArray,
         nx: Float, ny: Float, nz: Float,
         amplitud: Float,
+        perfil: Float,
         layer: Float,
+        modo: Int,
+        bordes: FloatArray?, nBordes: Int,
         ao0: Float, ao1: Float, ao2: Float, ao3: Float
     ) {
+        val mueve = amplitud != 0f || perfil != 0f
+
         // p(s,t): s va de p0 a p1, t va de p0 a p3.
         fun base(s: Float, t: Float, out: FloatArray) {
             for (k in 0..2) {
@@ -169,9 +364,17 @@ object WorldMesh {
 
         fun desplazado(s: Float, t: Float, out: FloatArray) {
             base(s, t, out)
-            if (amplitud != 0f) {
-                val apaga = sin(PI * s.toDouble()).toFloat() * sin(PI * t.toDouble()).toFloat()
-                val d = roca(out[0], out[1], out[2]) * amplitud * apaga
+            if (mueve) {
+                val apaga = when (modo) {
+                    Modo.CAMPO -> mascaraCampo(out[0], out[2], bordes!!, nBordes)
+                    Modo.PARED -> mascaraCampo(out[0], out[2], bordes!!, nBordes) *
+                        sin(PI * t.toDouble()).toFloat()
+                    else -> sin(PI * s.toDouble()).toFloat() * sin(PI * t.toDouble()).toFloat()
+                }
+                // El perfil fijo (panza de la pared, arco del techo) va por la
+                // misma mascara que el ruido: asi se apaga exactamente en los
+                // mismos bordes y no puede abrir una grieta.
+                val d = (roca(out[0], out[1], out[2]) * amplitud + perfil) * apaga
                 out[0] += nx * d; out[1] += ny * d; out[2] += nz * d
             }
         }
@@ -195,7 +398,7 @@ object WorldMesh {
                 base(s, t, q)
 
                 var vnx = nx; var vny = ny; var vnz = nz
-                if (amplitud != 0f) {
+                if (mueve) {
                     val s0 = (s - h).coerceIn(0f, 1f); val s1 = (s + h).coerceIn(0f, 1f)
                     val t0 = (t - h).coerceIn(0f, 1f); val t1 = (t + h).coerceIn(0f, 1f)
                     desplazado(s0, t, pa); desplazado(s1, t, pb)
@@ -241,12 +444,33 @@ object WorldMesh {
 
     private fun pt(x: Float, y: Float, z: Float) = floatArrayOf(x, y, z)
 
-    fun build(maze: Maze): Mesh {
+    /**
+     * Cuantas veces se subdivide cada cara.
+     *
+     * Ahora que el ruido corre continuo entre casillas, subdividir de mas se
+     * nota mucho mas que antes: con pocas divisiones el bulto queda como una
+     * sola loma suave por casilla. Pero la malla crece con el CUADRADO de
+     * este numero y se dibuja entera cada cuadro, asi que se ata a la calidad
+     * elegida y al tamano del nivel para no fundir un telefono modesto.
+     */
+    internal fun subdivisiones(abiertas: Int, calidad: Int): Int {
+        val grande = abiertas > 2200
+        return when {
+            calidad <= 0 -> if (grande) 2 else 3
+            calidad >= 3 -> if (grande) 4 else 5
+            else -> if (grande) 3 else 4
+        }
+    }
+
+    fun build(maze: Maze, calidad: Int = 2): Mesh {
         val b = Builder()
-        // Mallas grandes se subdividen menos: el detalle fino ya lo pone el
-        // mapa de normales del shader.
         val abiertas = maze.solid.count { !it }
-        val n = if (abiertas > 2200) 2 else 3
+        val n = subdivisiones(abiertas, calidad)
+        // Se reusan casilla a casilla: los bordes son los mismos para toda la
+        // cara, asi que se juntan una vez y no por vertice.
+        val bordes = FloatArray(MAX_BORDES * 2)
+        val bordesTecho = FloatArray(MAX_BORDES * 2)
+        val bordesPared = FloatArray(MAX_BORDES * 2)
 
         for (gy in 0 until maze.gh) {
             for (gx in 0 until maze.gw) {
@@ -266,10 +490,14 @@ object WorldMesh {
                 val a01 = cornerAo(maze, gx, gy + 1)
 
                 // --------------------------------------------------- piso
+                val nPiso = bordesDeCara(maze, gx, gy, bordes) { vx, vy ->
+                    pisoSigue(maze, gx, gy, vx, vy)
+                }
                 cara(
                     b, n,
                     pt(x0, fy, z0), pt(x1, fy, z0), pt(x1, fy, z1), pt(x0, fy, z1),
-                    0f, 1f, 0f, -BULTO_PISO, CAPA_PISO,
+                    0f, 1f, 0f, -BULTO_PISO, 0f, CAPA_PISO,
+                    Modo.CAMPO, bordes, nPiso,
                     a00, a10, a11, a01
                 )
 
@@ -279,50 +507,75 @@ object WorldMesh {
                 // En una gatera el techo casi no se abolla: si no, deja de
                 // parecer un tramo bajo.
                 val bultoTecho = -kotlin.math.min(BULTO_TECHO, maze.ceilClearance[i] * 0.11f)
+                // El arco va con signo negativo porque la normal del techo
+                // mira para abajo: asi el techo SUBE en el medio del tunel.
+                val arco = -kotlin.math.min(ARCO_TECHO, maze.ceilClearance[i] * FACTOR_ARCO)
+                val nTecho = bordesDeCara(maze, gx, gy, bordesTecho) { vx, vy ->
+                    techoSigue(maze, gx, gy, vx, vy)
+                }
                 cara(
                     b, n,
                     pt(x0, cy, z0), pt(x0, cy, z1), pt(x1, cy, z1), pt(x1, cy, z0),
-                    0f, -1f, 0f, bultoTecho, CAPA_TECHO,
+                    0f, -1f, 0f, bultoTecho, arco, CAPA_TECHO,
+                    Modo.CAMPO, bordesTecho, nTecho,
                     a00 * t, a01 * t, a11 * t, a10 * t
                 )
 
                 // -------------------------------------------------- paredes
+                // En las cuatro, t va del piso al techo, asi que arriba y
+                // abajo SIEMPRE se apagan: ahi la pared se encuentra con dos
+                // superficies de otra normal. Lo que cambia es el eje s, que
+                // corre a lo largo de la pared, y ahi solo se apaga si la
+                // pared no continua en la casilla vecina.
+
                 // Cara -X: la normal mira hacia +X (hacia adentro de la casilla).
+                // s va de z0 a z1.
                 if (maze.isSolid(gx - 1, gy)) {
                     cara(
                         b, n,
                         pt(x0, fy, z0), pt(x0, fy, z1), pt(x0, cy, z1), pt(x0, cy, z0),
-                        1f, 0f, 0f, BULTO_PARED, CAPA_PARED,
+                        1f, 0f, 0f, BULTO_PARED, -ENSANCHE_PARED, CAPA_PARED,
+                        Modo.PARED, bordesPared,
+                        bordesDePared(maze, gx, gy, -1, 0, bordesPared),
                         a00 * verticalAo(0f), a01 * verticalAo(0f),
                         a01 * verticalAo(1f), a00 * verticalAo(1f)
                     )
                 } else emitirDesniveles(b, maze, gx, gy, gx - 1, gy, n)
 
+                // Cara +X: s va de z1 a z0 (al reves que la de -X).
                 if (maze.isSolid(gx + 1, gy)) {
                     cara(
                         b, n,
                         pt(x1, fy, z1), pt(x1, fy, z0), pt(x1, cy, z0), pt(x1, cy, z1),
-                        -1f, 0f, 0f, BULTO_PARED, CAPA_PARED,
+                        -1f, 0f, 0f, BULTO_PARED, -ENSANCHE_PARED, CAPA_PARED,
+                        Modo.PARED, bordesPared,
+                        bordesDePared(maze, gx, gy, 1, 0, bordesPared),
                         a11 * verticalAo(0f), a10 * verticalAo(0f),
                         a10 * verticalAo(1f), a11 * verticalAo(1f)
                     )
                 } else emitirDesniveles(b, maze, gx, gy, gx + 1, gy, n)
 
+                // Cara -Z: s va de x1 a x0.
                 if (maze.isSolid(gx, gy - 1)) {
                     cara(
                         b, n,
                         pt(x1, fy, z0), pt(x0, fy, z0), pt(x0, cy, z0), pt(x1, cy, z0),
-                        0f, 0f, 1f, BULTO_PARED, CAPA_PARED,
+                        0f, 0f, 1f, BULTO_PARED, -ENSANCHE_PARED, CAPA_PARED,
+                        Modo.PARED, bordesPared,
+                        bordesDePared(maze, gx, gy, 0, -1, bordesPared),
                         a10 * verticalAo(0f), a00 * verticalAo(0f),
                         a00 * verticalAo(1f), a10 * verticalAo(1f)
                     )
                 } else emitirDesniveles(b, maze, gx, gy, gx, gy - 1, n)
 
+                // Cara +Z: s va de x0 a x1.
                 if (maze.isSolid(gx, gy + 1)) {
                     cara(
                         b, n,
                         pt(x0, fy, z1), pt(x1, fy, z1), pt(x1, cy, z1), pt(x0, cy, z1),
-                        0f, 0f, -1f, BULTO_PARED, CAPA_PARED,
+                        0f, 0f, -1f, BULTO_PARED, -ENSANCHE_PARED, CAPA_PARED,
+                        Modo.PARED, bordesPared,
+                        bordesDePared(maze, gx, gy, 0, 1, bordesPared),
                         a01 * verticalAo(0f), a11 * verticalAo(0f),
                         a11 * verticalAo(1f), a01 * verticalAo(1f)
                     )
@@ -379,7 +632,7 @@ object WorldMesh {
                 cara(
                     b, n,
                     pt(ex, fv, za), pt(ex, fv, zb), pt(ex, fy, zb), pt(ex, fy, za),
-                    nx, 0f, 0f, 0.10f, CAPA_PARED, ao, ao, ao, ao
+                    nx, 0f, 0f, 0.10f, 0f, CAPA_PARED, Modo.CONTORNO, null, 0, ao, ao, ao, ao
                 )
             } else {
                 val xa = if (dz > 0) ex1 else ex0
@@ -387,7 +640,7 @@ object WorldMesh {
                 cara(
                     b, n,
                     pt(xa, fv, ez), pt(xb, fv, ez), pt(xb, fy, ez), pt(xa, fy, ez),
-                    0f, 0f, nz, 0.10f, CAPA_PARED, ao, ao, ao, ao
+                    0f, 0f, nz, 0.10f, 0f, CAPA_PARED, Modo.CONTORNO, null, 0, ao, ao, ao, ao
                 )
             }
             if (maze.hasLadder(gx, gy) || maze.hasLadder(vx, vy)) {
@@ -404,7 +657,7 @@ object WorldMesh {
                 cara(
                     b, n,
                     pt(ex, cy, za), pt(ex, cy, zb), pt(ex, cv, zb), pt(ex, cv, za),
-                    nx, 0f, 0f, 0.10f, CAPA_TECHO, ao, ao, ao, ao
+                    nx, 0f, 0f, 0.10f, 0f, CAPA_TECHO, Modo.CONTORNO, null, 0, ao, ao, ao, ao
                 )
             } else {
                 val xa = if (dz > 0) ex1 else ex0
@@ -412,7 +665,7 @@ object WorldMesh {
                 cara(
                     b, n,
                     pt(xa, cy, ez), pt(xb, cy, ez), pt(xb, cv, ez), pt(xa, cv, ez),
-                    0f, 0f, nz, 0.10f, CAPA_TECHO, ao, ao, ao, ao
+                    0f, 0f, nz, 0.10f, 0f, CAPA_TECHO, Modo.CONTORNO, null, 0, ao, ao, ao, ao
                 )
             }
         }
@@ -456,17 +709,17 @@ object WorldMesh {
     private fun caja(b: Builder, x0: Float, y0: Float, z0: Float, x1: Float, y1: Float, z1: Float) {
         val ao = 0.72f
         // +Y
-        cara(b, 1, pt(x0, y1, z0), pt(x1, y1, z0), pt(x1, y1, z1), pt(x0, y1, z1), 0f, 1f, 0f, 0f, CAPA_PARED, ao, ao, ao, ao)
+        cara(b, 1, pt(x0, y1, z0), pt(x1, y1, z0), pt(x1, y1, z1), pt(x0, y1, z1), 0f, 1f, 0f, 0f, 0f, CAPA_PARED, Modo.CONTORNO, null, 0, ao, ao, ao, ao)
         // -Y
-        cara(b, 1, pt(x0, y0, z0), pt(x0, y0, z1), pt(x1, y0, z1), pt(x1, y0, z0), 0f, -1f, 0f, 0f, CAPA_PARED, ao, ao, ao, ao)
+        cara(b, 1, pt(x0, y0, z0), pt(x0, y0, z1), pt(x1, y0, z1), pt(x1, y0, z0), 0f, -1f, 0f, 0f, 0f, CAPA_PARED, Modo.CONTORNO, null, 0, ao, ao, ao, ao)
         // -X (normal hacia -X)
-        cara(b, 1, pt(x0, y0, z1), pt(x0, y0, z0), pt(x0, y1, z0), pt(x0, y1, z1), -1f, 0f, 0f, 0f, CAPA_PARED, ao, ao, ao, ao)
+        cara(b, 1, pt(x0, y0, z1), pt(x0, y0, z0), pt(x0, y1, z0), pt(x0, y1, z1), -1f, 0f, 0f, 0f, 0f, CAPA_PARED, Modo.CONTORNO, null, 0, ao, ao, ao, ao)
         // +X
-        cara(b, 1, pt(x1, y0, z0), pt(x1, y0, z1), pt(x1, y1, z1), pt(x1, y1, z0), 1f, 0f, 0f, 0f, CAPA_PARED, ao, ao, ao, ao)
+        cara(b, 1, pt(x1, y0, z0), pt(x1, y0, z1), pt(x1, y1, z1), pt(x1, y1, z0), 1f, 0f, 0f, 0f, 0f, CAPA_PARED, Modo.CONTORNO, null, 0, ao, ao, ao, ao)
         // -Z
-        cara(b, 1, pt(x0, y0, z0), pt(x1, y0, z0), pt(x1, y1, z0), pt(x0, y1, z0), 0f, 0f, -1f, 0f, CAPA_PARED, ao, ao, ao, ao)
+        cara(b, 1, pt(x0, y0, z0), pt(x1, y0, z0), pt(x1, y1, z0), pt(x0, y1, z0), 0f, 0f, -1f, 0f, 0f, CAPA_PARED, Modo.CONTORNO, null, 0, ao, ao, ao, ao)
         // +Z
-        cara(b, 1, pt(x1, y0, z1), pt(x0, y0, z1), pt(x0, y1, z1), pt(x1, y1, z1), 0f, 0f, 1f, 0f, CAPA_PARED, ao, ao, ao, ao)
+        cara(b, 1, pt(x1, y0, z1), pt(x0, y0, z1), pt(x0, y1, z1), pt(x1, y1, z1), 0f, 0f, 1f, 0f, 0f, CAPA_PARED, Modo.CONTORNO, null, 0, ao, ao, ao, ao)
     }
 
 }
