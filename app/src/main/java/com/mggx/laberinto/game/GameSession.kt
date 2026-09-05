@@ -57,6 +57,13 @@ class GameSession(
         const val CAIDA_SEGURA = 11f
         /** Segundos que dura un tanque lleno de carburo con la linterna prendida. */
         const val DURACION_CARBURO = 150f
+        /**
+         * Medio angulo del golpe, en coseno. 0.55 son unos 57 grados a cada
+         * lado: hay que apuntarle al bicho, pero no al pixel.
+         */
+        const val COS_CONO_GOLPE = 0.55f
+        /** Cuanto dura la animacion del swing, en segundos. */
+        const val DURACION_SWING = 0.26f
     }
 
     enum class Phase { JUGANDO, PAUSA, GANADO, PERDIDO }
@@ -170,6 +177,17 @@ class GameSession(
     private val estacionesUsadas = HashSet<Int>()
     fun estacionUsada(gi: Int): Boolean = estacionesUsadas.contains(gi)
 
+    // ------------------------------------------------------------- pelea
+    /** Segundos que faltan para poder volver a golpear. */
+    var golpeRecarga: Float = 0f
+        private set
+    /** De 1 a 0 mientras dura el swing: lo usa el renderer para el brazo. */
+    var golpeAnim: Float = 0f
+        private set
+    /** Bichos que volteaste en este nivel. */
+    var bichosVolteados: Int = 0
+        private set
+
     /** Cargas activas de objetos de uso puntual. */
     var pickCharges = 0; private set
     var phaseCharges = 0; private set
@@ -204,7 +222,7 @@ class GameSession(
 
     /** Sonidos pendientes que el motor de audio va a consumir este frame. */
     private val soundQueue = ArrayList<Sfx>()
-    enum class Sfx { PASO, ECO, ECO_GRANDE, VETAGRIS, COFRE, TRAMPA, DANO, USAR, ROMPER, GANAR, PERDER, MARCA, ZUMBIDO, BICHO }
+    enum class Sfx { PASO, ECO, ECO_GRANDE, VETAGRIS, COFRE, TRAMPA, DANO, USAR, ROMPER, GANAR, PERDER, MARCA, ZUMBIDO, BICHO, GOLPE, IMPACTO }
     fun drainSounds(): List<Sfx> {
         if (soundQueue.isEmpty()) return emptyList()
         val out = ArrayList(soundQueue); soundQueue.clear(); return out
@@ -350,6 +368,8 @@ class GameSession(
 
         effects.update(dt)
         if (runBurstLeft > 0f) runBurstLeft -= dt
+        if (golpeRecarga > 0f) golpeRecarga -= dt
+        if (golpeAnim > 0f) golpeAnim = max(0f, golpeAnim - dt / DURACION_SWING)
         if (phaseWindow > 0f) phaseWindow -= dt
         if (hurtCooldown > 0f) hurtCooldown -= dt
         sinceDamage += dt
@@ -737,6 +757,64 @@ class GameSession(
         }
     }
 
+    // -------------------------------------------------------------- pelea
+
+    fun puedeGolpear(): Boolean = phase == Phase.JUGANDO && golpeRecarga <= 0f
+
+    /**
+     * Un golpe cuerpo a cuerpo hacia donde estas mirando.
+     *
+     * Le pega a TODOS los bichos vivos que entren en el cono: si te rodean
+     * tres murcielagos, un buen golpe se lleva a los tres puestos. Devuelve
+     * cuantos toco, o -1 si todavia no se podia golpear.
+     */
+    fun golpear(): Int {
+        if (!puedeGolpear()) return -1
+        golpeRecarga = stats.cadenciaGolpe
+        golpeAnim = 1f
+        play(Sfx.GOLPE)
+
+        val yawRad = Math.toRadians(yawDeg.toDouble())
+        val fx = sin(yawRad).toFloat()
+        val fz = cos(yawRad).toFloat()
+        val alcance = stats.alcanceGolpe
+        val ojoY = posY + postura.alturaOjo
+
+        var tocados = 0
+        for (e in enemies) {
+            if (!e.vivo) continue
+            val dx = e.x - posX
+            val dz = e.z - posZ
+            val d = hypot(dx, dz)
+            // El alcance se mide hasta el borde del bicho, no hasta su centro:
+            // si no, a un guardian gordo no le llegabas nunca.
+            if (d > alcance + e.kind.radio) continue
+            // Y tiene que estar mas o menos a tu altura: un murcielago que
+            // pasa por arriba de la cabeza no se toca desde el piso.
+            if (abs(e.altura + e.kind.radio - ojoY) > 1.5f) continue
+            if (d > 0.05f) {
+                val cos = (dx * fx + dz * fz) / d
+                if (cos < COS_CONO_GOLPE) continue
+            }
+            tocados++
+            val cayo = e.recibirGolpe(stats.danoGolpe, posX, posZ, stats.empujeGolpe)
+            if (cayo) voltear(e)
+        }
+        if (tocados > 0) play(Sfx.IMPACTO)
+        return tocados
+    }
+
+    private fun voltear(e: Enemy) {
+        bichosVolteados++
+        val premio = (e.kind.recompensa * (1f + level * 0.02f)).toInt().coerceAtLeast(1)
+        ecosCollected += premio
+        toast("${e.kind.etiqueta} volteado  +$premio")
+        play(Sfx.ECO)
+    }
+
+    /** Bichos vivos que quedan en el nivel. */
+    fun bichosVivos(): Int = enemies.count { it.vivo }
+
     // ------------------------------------------------------------ linterna
 
     /** Enciende o apaga la linterna. Devuelve si quedo encendida. */
@@ -787,7 +865,7 @@ class GameSession(
     // -------------------------------------------------------------- bichos
 
     /** Bichos que ahora mismo te estan persiguiendo. */
-    fun enemigosAlerta(): Int = enemies.count { it.alerta }
+    fun enemigosAlerta(): Int = enemies.count { it.alerta && it.vivo }
 
     private fun updateEnemies(dt: Float, input: Input) {
         if (enemies.isEmpty()) return

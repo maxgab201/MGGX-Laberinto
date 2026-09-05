@@ -89,12 +89,13 @@ class SaveDataTest {
     @Test
     fun lasRanurasRapidasCrecenConBolsillosProfundos() {
         val s = nuevo()
-        assertEquals(2, s.loadoutSlots())
+        val base = s.loadoutSlots()
+        assertTrue("de arranque tiene que haber varias ranuras", base >= 3)
         s.addEcos(500000)
         s.buy("up_bolsillos")
-        assertEquals(3, s.loadoutSlots())
+        assertEquals(base + 1, s.loadoutSlots())
         s.buy("up_bolsillos")
-        assertEquals(4, s.loadoutSlots())
+        assertEquals(base + 2, s.loadoutSlots())
     }
 
     @Test

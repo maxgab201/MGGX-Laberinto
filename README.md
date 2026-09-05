@@ -32,15 +32,20 @@ proximo descenso.
 - **Bichos con cabeza propia**: murcielagos que vuelan, rastreros ciegos que
   solo te oyen si corres y guardianes de roca que cuidan su pedazo de cueva.
   Persiguen por campo de distancias, asi que doblan las esquinas.
+- **Y se les puede pelear**: cada bicho tiene su vida, el golpe los empuja y
+  los aturde, y al voltearlos sueltan ecos. Sin comprar nada se pega a mano
+  limpia; en la tienda hay garrote, pico, aguijon, maza y hacha de vetagris.
+- **La cueva se ilumina sola**: antorchas, racimos de cristal, hongos y la
+  salida son luces de verdad que alumbran la roca, no manchas que brillan.
 - **Trampas y ambientacion con modelos**: pinches de hierro, bocas de pozo con
   tablas partidas, valvulas de vapor, rocas colgando, racimos de cristal,
   hongos luminosos y marcos de madera de la mina vieja.
 - **8 poderes permanentes** carisimos que cambian como se juega: linterna de
   carburo con estaciones de recarga, reptador, pies de cabra, ojo de la veta,
   pico eterno, memoria de la sima, corazon de la cueva y paso de sombra.
-- **75 objetos unicos** en la tienda: 25 consumibles, 15 mejoras permanentes,
-  12 reliquias pasivas, 8 poderes y 15 aspectos (entre ellos 6 skins del
-  personaje). Ninguno repite efecto.
+- **80 objetos unicos** en la tienda: 25 consumibles, 15 mejoras permanentes,
+  12 reliquias pasivas, 5 armas, 8 poderes y 15 aspectos (entre ellos 6 skins
+  del personaje). Ninguno repite efecto.
 - **Lobby en 3D**: detras de los paneles se ve, en vivo, la cueva a la que vas
   a bajar.
 - **Multijugador preparado**: el protocolo y el estado de sala estan escritos y

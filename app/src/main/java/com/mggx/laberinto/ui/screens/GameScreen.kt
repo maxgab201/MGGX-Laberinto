@@ -2,6 +2,9 @@ package com.mggx.laberinto.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -87,7 +90,10 @@ fun GameHud(
 
     val sem = remember(s.colorBlindMode) { Semantics.of(s.colorBlindMode) }
     var selectedSlot by remember { mutableIntStateOf(0) }
-    val loadout = save.loadoutList()
+    // La barra de la partida muestra TODO lo que se puede usar, no solo las
+    // ranuras elegidas: si no, algo comprado con las ranuras llenas quedaba
+    // pago y sin forma de usarse.
+    val loadout = save.bolsaDeMano()
     if (selectedSlot >= max(1, loadout.size)) selectedSlot = 0
 
     Box(Modifier.fillMaxSize()) {
@@ -151,6 +157,21 @@ fun GameHud(
                             CaveIcon(IconId.CUERDA, size = 13.dp, tint = sem.good, accent = sem.good)
                             Spacer(Modifier.width(6.dp))
                             Text("${session.livesLeft} vida(s) extra", fontSize = 10.sp, color = sem.good)
+                        }
+                    }
+                    val vivos = session.bichosVivos()
+                    if (vivos > 0 || session.bichosVolteados > 0) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CaveIcon(
+                                ItemCatalog.get(save.armaEquipada)?.icon ?: IconId.PUNO,
+                                size = 13.dp, tint = Cave.TextDim, accent = Cave.Bad
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "$vivos en la cueva · ${session.bichosVolteados} volteados",
+                                fontSize = 10.sp, color = Cave.TextDim
+                            )
                         }
                     }
                     val acechan = session.enemigosAlerta()
@@ -458,13 +479,20 @@ private fun ActionButtons(
 ) {
     val s = save.settings
     val scale = s.buttonScale
-    val loadout = save.loadoutList()
+    val loadout = save.bolsaDeMano()
     val currentId = loadout.getOrNull(selectedSlot)
     val currentItem = currentId?.let { ItemCatalog.get(it) }
+    val favoritas = save.loadoutSlots()
 
     Column(modifier, horizontalAlignment = Alignment.End) {
-        // Ranuras rapidas
-        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        // Bolso: las ranuras elegidas primero y despues el resto. Con muchos
+        // objetos la fila se corre para el costado en vez de desbordarse.
+        Row(
+            Modifier
+                .widthIn(max = 320.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
             loadout.forEachIndexed { i, id ->
                 val item = ItemCatalog.get(id) ?: return@forEachIndexed
                 val on = i == selectedSlot
@@ -486,7 +514,12 @@ private fun ActionButtons(
                         )
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CaveIcon(item.icon, size = (24 * scale).dp, tint = Cave.Text, accent = Cave.Amber)
+                        CaveIcon(
+                            item.icon, size = (24 * scale).dp, tint = Cave.Text,
+                            // Las que elegiste en Equipo van con el acento
+                            // fuerte; el resto del bolso, mas apagado.
+                            accent = if (i < favoritas) Cave.Amber else Cave.TextDim
+                        )
                         Text("${save.stockOf(id)}", fontSize = (9 * scale).sp, color = Cave.AmberSoft)
                     }
                 }
@@ -590,6 +623,17 @@ private fun ActionButtons(
                 tint = if (session.staminaFraction() > 0.05f) Cave.Text else Cave.TextFaint
             )
 
+            // Golpear. Siempre esta: aunque no tengas arma se pega a mano
+            // limpia, para que nunca quedes sin forma de defenderte.
+            RoundActionButton(
+                ItemCatalog.get(save.armaEquipada)?.icon ?: IconId.PUNO,
+                onClick = { session.golpear() },
+                diameter = (62 * scale).dp,
+                enabled = session.puedeGolpear(),
+                tint = if (session.puedeGolpear()) Cave.Text else Cave.TextFaint,
+                accent = Cave.Bad
+            )
+
             // Usar objeto
             RoundActionButton(
                 currentItem?.icon ?: IconId.MOCHILA,
@@ -602,7 +646,7 @@ private fun ActionButtons(
         if (currentItem == null) {
             Spacer(Modifier.height(6.dp))
             Text(
-                "Cargá objetos en Equipo antes de bajar",
+                "No te queda ningun objeto. Compra en la Tienda antes de bajar",
                 fontSize = 10.sp, color = Cave.TextFaint
             )
         }

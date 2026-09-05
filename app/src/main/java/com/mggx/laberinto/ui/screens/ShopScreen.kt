@@ -388,8 +388,8 @@ private fun ItemDetail(
                                         save.estaEnRanuraRapida(item.id) ->
                                             "${item.name} listo para usar en la partida"
                                         else ->
-                                            "${item.name} comprado. Tenes las ranuras llenas: " +
-                                                "cambialas en Equipo"
+                                            "${item.name} comprado. Va al final del bolso: " +
+                                                "en la partida corre la fila de objetos"
                                     }
                                 )
                                 onChanged()

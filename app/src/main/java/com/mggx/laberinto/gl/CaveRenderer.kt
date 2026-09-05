@@ -30,6 +30,11 @@ class CaveRenderer(
     private val input: InputState
 ) : GLSurfaceView.Renderer {
 
+    companion object {
+        /** Tiene que coincidir con el MAX_LUCES de los shaders. */
+        const val MAX_LUCES = 8
+    }
+
     /** Estado de entrada compartido con la vista (se escribe desde el hilo de UI). */
     class InputState {
         @Volatile var moveX = 0f
@@ -140,6 +145,132 @@ class CaveRenderer(
             canal(((argb shr 8) and 0xFF).toInt()),
             canal((argb and 0xFF).toInt())
         )
+    }
+
+    // ---------------------------------------------------- luces de la cueva
+    //
+    // Antes la unica luz del mundo era la del jugador, asi que una galeria
+    // llena de antorchas y cristales se veia igual de negra que una vacia.
+    // Aca se juntan una sola vez por nivel todas las fuentes fijas, y cada
+    // frame se le pasan al shader las mas cercanas.
+
+    private class Farol(
+        val x: Float, val y: Float, val z: Float,
+        val r: Float, val g: Float, val b: Float,
+        val alcance: Float,
+        /** Las antorchas titilan; un cristal no. */
+        val titila: Boolean
+    )
+
+    private var faroles: List<Farol> = emptyList()
+    private val luzPos = FloatArray(MAX_LUCES * 4)
+    private val luzColor = FloatArray(MAX_LUCES * 3)
+    private var luzCount = 0
+
+    /**
+     * Elige las [MAX_LUCES] luces mas cercanas al jugador y las deja armadas
+     * en los arrays que van al shader. Es un barrido lineal: con unos cientos
+     * de candidatas sale mucho mas barato que ordenar la lista entera.
+     */
+    private fun elegirLuces(px: Float, pz: Float, calidad: Int, parpadeo: Float) {
+        luzCount = 0
+        if (calidad <= 0 || faroles.isEmpty()) return
+        val cupo = if (calidad >= 3) MAX_LUCES else if (calidad == 2) 6 else 4
+
+        // Distancias al cuadrado de las elegidas, para ir descartando.
+        val mejores = arrayOfNulls<Farol>(cupo)
+        val dist = FloatArray(cupo) { Float.MAX_VALUE }
+        for (f in faroles) {
+            val dx = f.x - px
+            val dz = f.z - pz
+            val d2 = dx * dx + dz * dz
+            // Fuera de su propio alcance no aporta nada.
+            if (d2 > (f.alcance + 2f) * (f.alcance + 2f)) continue
+            var i = cupo - 1
+            if (d2 >= dist[i]) continue
+            while (i > 0 && d2 < dist[i - 1]) {
+                dist[i] = dist[i - 1]; mejores[i] = mejores[i - 1]; i--
+            }
+            dist[i] = d2; mejores[i] = f
+        }
+        for (i in 0 until cupo) {
+            val f = mejores[i] ?: break
+            val k = if (f.titila) parpadeo else 1f
+            luzPos[luzCount * 4] = f.x
+            luzPos[luzCount * 4 + 1] = f.y
+            luzPos[luzCount * 4 + 2] = f.z
+            luzPos[luzCount * 4 + 3] = f.alcance
+            luzColor[luzCount * 3] = f.r * k
+            luzColor[luzCount * 3 + 1] = f.g * k
+            luzColor[luzCount * 3 + 2] = f.b * k
+            luzCount++
+        }
+    }
+
+    /** Sube las luces elegidas al programa que este activo. */
+    private fun subirLuces(prog: Int) {
+        GLES30.glUniform1i(GLES30.glGetUniformLocation(prog, "uNumLuces"), luzCount)
+        if (luzCount == 0) return
+        GLES30.glUniform4fv(GLES30.glGetUniformLocation(prog, "uLuzPos"), luzCount, luzPos, 0)
+        GLES30.glUniform3fv(GLES30.glGetUniformLocation(prog, "uLuzColor"), luzCount, luzColor, 0)
+    }
+
+    /** Junta todas las fuentes fijas del nivel. Se llama al armar el nivel. */
+    private fun armarFaroles(s: GameSession) {
+        val lista = ArrayList<Farol>()
+        val m = s.maze
+        val t = s.theme
+        val C = GameSession.CELL
+
+        for (gi in s.torches) {
+            val gx = gi % m.gw; val gy = gi / m.gw
+            var ox = 0f; var oz = 0f
+            if (m.isSolid(gx - 1, gy)) ox = -C * 0.38f
+            else if (m.isSolid(gx + 1, gy)) ox = C * 0.38f
+            else if (m.isSolid(gx, gy - 1)) oz = -C * 0.38f
+            else if (m.isSolid(gx, gy + 1)) oz = C * 0.38f
+            lista.add(
+                Farol(
+                    (gx + 0.5f) * C + ox, m.floorY(gx, gy) + 2.25f, (gy + 0.5f) * C + oz,
+                    1.00f, 0.58f, 0.22f, 7.0f, true
+                )
+            )
+        }
+        for (gi in s.crystalClusters) {
+            val gx = gi % m.gw; val gy = gi / m.gw
+            lista.add(
+                Farol(
+                    (gx + 0.5f) * C, m.floorY(gx, gy) + 0.45f, (gy + 0.5f) * C,
+                    t.veinR * 0.55f, t.veinG * 0.55f, t.veinB * 0.55f, 4.6f, false
+                )
+            )
+        }
+        for (gi in s.mushrooms) {
+            val gx = gi % m.gw; val gy = gi / m.gw
+            lista.add(
+                Farol(
+                    (gx + 0.5f) * C, m.floorY(gx, gy) + 0.55f, (gy + 0.5f) * C,
+                    0.22f, 0.52f, 0.32f, 3.4f, false
+                )
+            )
+        }
+        for (gi in s.carbideStations) {
+            val gx = gi % m.gw; val gy = gi / m.gw
+            lista.add(
+                Farol(
+                    (gx + 0.5f) * C, m.floorY(gx, gy) + 1.10f, (gy + 0.5f) * C,
+                    0.62f, 0.56f, 0.30f, 5.2f, true
+                )
+            )
+        }
+        // La salida se ve de lejos a proposito: es la referencia del nivel.
+        lista.add(
+            Farol(
+                s.exitWorldX, m.floorY(m.exitGx, m.exitGy) + 1.2f, s.exitWorldZ,
+                0.30f, 0.62f, 0.52f, 9.5f, false
+            )
+        )
+        faroles = lista
     }
 
     /** Direccion en la que mira la camara este frame (para la linterna). */
@@ -363,6 +494,8 @@ class CaveRenderer(
         val fogDensity = theme.fogDensity * save.settings.fogIntensity
         val brightness = save.settings.brightness
 
+        elegirLuces(s.posX, s.posZ, save.settings.quality, flicker)
+
         GLES30.glClearColor(theme.fogR * 0.55f, theme.fogG * 0.55f, theme.fogB * 0.55f, 1f)
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
 
@@ -416,6 +549,7 @@ class CaveRenderer(
     // ------------------------------------------------------------ montaje
 
     private fun prepareLevel(s: GameSession) {
+        armarFaroles(s)
         if (texturedTheme != s.theme || albedoTex == 0) {
             if (albedoTex != 0) GLES30.glDeleteTextures(2, intArrayOf(albedoTex, normalTex), 0)
             val r = ProcTextures.build(s.theme, save.settings.quality)
@@ -556,6 +690,7 @@ class CaveRenderer(
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotPower"), fuerza * 2.6f)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotRange"), radius * 2.6f)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotCos"), 0.90f)
+        subirLuces(p)
         GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uSonarColor"), 0.35f, 0.85f, 1.0f)
 
         GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
@@ -826,6 +961,9 @@ class CaveRenderer(
 
         // --- bichos
         for (e in s.enemies) {
+            // Al que volteaste ya no se lo dibuja: si quedara en pantalla, el
+            // jugador seguiria esquivando un cadaver.
+            if (!e.vivo) continue
             if (!near(e.x, e.z)) continue
             val ex2 = e.x; val ez2 = e.z; val ey = e.altura
             val r = e.rumbo
@@ -833,13 +971,18 @@ class CaveRenderer(
             val rgtX = cos(r.toDouble()).toFloat(); val rgtZ = -sin(r.toDouble()).toFloat()
             // Los ojos se prenden cuando te vieron.
             val ojo = if (e.alerta) 1.45f else 0.30f
+            // Destello rojo del golpe recibido: es lo que hace que se sienta
+            // que le pegaste, y ademas avisa cuando le queda poca vida.
+            val golpe = (e.destello / 0.28f).coerceIn(0f, 1f)
+            val herido = 1f - (e.vida / e.kind.vida).coerceIn(0f, 1f)
+            val flash = golpe * 1.9f + herido * 0.22f
             when (e.kind) {
                 com.mggx.laberinto.maze.MazeGenerator.EnemyKind.MURCIELAGO -> {
-                    boulder.add(ex2, ey, ez2, 0.24f, 0.20f, 0.16f, 0.19f, 0f, r, e.fase, 0f, 1f)
+                    boulder.add(ex2, ey, ez2, 0.24f, 0.20f + golpe * 0.7f, 0.16f, 0.19f, flash, r, e.fase, 0f, 1f)
                     wing.add(ex2 - rgtX * 0.26f, ey + 0.03f, ez2 - rgtZ * 0.26f, 0.62f,
-                        0.26f, 0.19f, 0.22f, 0f, r, e.fase, 2f, 1f)
+                        0.26f + golpe * 0.6f, 0.19f, 0.22f, flash, r, e.fase, 2f, 1f)
                     wing.add(ex2 + rgtX * 0.26f, ey + 0.03f, ez2 + rgtZ * 0.26f, 0.62f,
-                        0.26f, 0.19f, 0.22f, 0f, r, e.fase + 3.14f, 2f, 1f)
+                        0.26f + golpe * 0.6f, 0.19f, 0.22f, flash, r, e.fase + 3.14f, 2f, 1f)
                     gem.add(ex2 + fwdX * 0.14f - rgtX * 0.06f, ey + 0.05f, ez2 + fwdZ * 0.14f - rgtZ * 0.06f,
                         0.035f, 1f, 0.42f, 0.30f, ojo, 0f, 0f, 0f, 1f)
                     gem.add(ex2 + fwdX * 0.14f + rgtX * 0.06f, ey + 0.05f, ez2 + fwdZ * 0.14f + rgtZ * 0.06f,
@@ -852,7 +995,8 @@ class CaveRenderer(
                         boxS.add(
                             ex2 + fwdX * off, ey + 0.24f - k * 0.03f, ez2 + fwdZ * off,
                             0.46f - k * 0.08f,
-                            0.74f, 0.71f, 0.62f, 0f, r, e.fase + k * 0.8f, 3f, 1f
+                            0.74f + golpe * 0.26f, 0.71f - golpe * 0.3f, 0.62f - golpe * 0.3f,
+                            flash, r, e.fase + k * 0.8f, 3f, 1f
                         )
                     }
                     for (k in 0 until 4) {
@@ -871,8 +1015,8 @@ class CaveRenderer(
                         0.05f, 0.95f, 0.86f, 0.52f, ojo * 0.6f, 0f, 0f, 0f, 1f)
                 }
                 com.mggx.laberinto.maze.MazeGenerator.EnemyKind.GUARDIAN -> {
-                    boulder.add(ex2, ey + 0.42f, ez2, 0.86f, th.rockR * 0.8f, th.rockG * 0.8f, th.rockB * 0.82f, 0f, r, 0f, 0f, 1f)
-                    boulder.add(ex2, ey + 1.02f, ez2, 0.52f, th.rockR * 0.9f, th.rockG * 0.9f, th.rockB * 0.92f, 0f, r + 0.8f, 0f, 0f, 1f)
+                    boulder.add(ex2, ey + 0.42f, ez2, 0.86f, th.rockR * 0.8f + golpe * 0.5f, th.rockG * 0.8f, th.rockB * 0.82f, flash, r, 0f, 0f, 1f)
+                    boulder.add(ex2, ey + 1.02f, ez2, 0.52f, th.rockR * 0.9f + golpe * 0.5f, th.rockG * 0.9f, th.rockB * 0.92f, flash, r + 0.8f, 0f, 0f, 1f)
                     boulder.add(ex2 - rgtX * 0.42f, ey + 0.62f, ez2 - rgtZ * 0.42f, 0.34f,
                         th.rockR * 0.75f, th.rockG * 0.75f, th.rockB * 0.78f, 0f, r + 2f, 0f, 0f, 1f)
                     boulder.add(ex2 + rgtX * 0.42f, ey + 0.62f, ez2 + rgtZ * 0.42f, 0.34f,
@@ -946,6 +1090,7 @@ class CaveRenderer(
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotPower"), fuerza * 2.6f)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotRange"), radius * 2.6f)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotCos"), 0.90f)
+        subirLuces(p)
 
         gem.draw(); cone.draw(); coneD.draw(); boxS.draw(); cyl.draw(); arrow.draw()
         slab.draw(); wing.draw(); spike.draw(); boulder.draw(); post.draw()
@@ -1034,21 +1179,32 @@ class CaveRenderer(
         // Las manos tienen que entrar dentro del cono de vision: con 62 grados
         // de campo vertical, a 44 cm de la camara el borde de abajo esta a
         // 0.44 * tan(31) = 0.264. Por eso la altura es -0.205 y no mas baja.
+        // El swing: sale rapido y vuelve despacio, que es como se siente un
+        // golpe de verdad. golpeAnim va de 1 a 0 mientras dura.
+        val g = s.golpeAnim
+        val swing = if (g <= 0f) 0f else {
+            val t = 1f - g                       // 0 al empezar, 1 al terminar
+            if (t < 0.35f) t / 0.35f else (1f - (t - 0.35f) / 0.65f)
+        }
+
         fun armMatrix(out: FloatArray, side: Float) {
+            // Solo el brazo derecho pega; el izquierdo acompana apenas.
+            val mio = if (side > 0f) swing else swing * 0.22f
             Matrix.setIdentityM(out, 0)
             Matrix.translateM(
                 out, 0,
-                side * (0.258f + sway * side * 0.5f),
-                -0.196f + bob + breathe,
-                -0.48f - abs(sway) * 0.4f
+                side * (0.258f + sway * side * 0.5f) - side * mio * 0.16f,
+                -0.196f + bob + breathe + mio * 0.10f,
+                -0.48f - abs(sway) * 0.4f + mio * 0.20f
             )
             // El brazo entra desde la esquina de abajo: se abre hacia afuera con
             // el giro en Y y baja apenas con el de X, para que se vea el dorso
             // de la mano y los dedos sin mirarlos de punta.
-            Matrix.rotateM(out, 0, side * -27f, 0f, 1f, 0f)
-            Matrix.rotateM(out, 0, 3f + bob * 80f, 1f, 0f, 0f)
-            Matrix.rotateM(out, 0, side * 14f, 0f, 0f, 1f)
-            Matrix.scaleM(out, 0, 0.95f, 0.95f, 0.95f)
+            Matrix.rotateM(out, 0, side * -27f + side * mio * 22f, 0f, 1f, 0f)
+            Matrix.rotateM(out, 0, 3f + bob * 80f - mio * 46f, 1f, 0f, 0f)
+            Matrix.rotateM(out, 0, side * 14f - side * mio * 30f, 0f, 0f, 1f)
+            val esc = 0.95f + mio * 0.10f
+            Matrix.scaleM(out, 0, esc, esc, esc)
         }
         armMatrix(armMatL, -1f)
         armMatrix(armMatR, 1f)

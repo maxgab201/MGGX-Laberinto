@@ -424,7 +424,8 @@ private fun GamepadMapHelp() {
             "L2" to "Dejar una marca de tiza",
             "Y" to "Cambiar de objeto",
             "B" to "Volver atras",
-            "L1 / R1" to "Objeto anterior / siguiente",
+            "R1" to "Golpear con lo que tengas en la mano",
+            "L1" to "Objeto anterior",
             "Cruceta arriba" to "Prender y apagar la linterna",
             "Start" to "Pausa",
             "Cruceta" to "Moverte por los menus"

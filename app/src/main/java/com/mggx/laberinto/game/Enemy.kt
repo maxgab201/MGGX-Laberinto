@@ -37,7 +37,50 @@ class Enemy(
     /** Hacia donde mira, en radianes (0 = +Z), para dibujarlo derecho. */
     var rumbo: Float = 0f
 
+    // ---------------------------------------------------------------- vida
+    var vida: Float = kind.vida
+        private set
+    val vivo: Boolean get() = vida > 0f
+    /** Segundos que le queda el destello del golpe recibido. */
+    var destello: Float = 0f
+    /** Empuje que le quedo del ultimo golpe, en metros por segundo. */
+    var empujeX: Float = 0f
+    var empujeZ: Float = 0f
+    /**
+     * Segundos que le queda de aturdimiento. Mientras dura no avanza por su
+     * cuenta: sin esto el empuje no servia de nada, porque un murcielago corre
+     * mas rapido de lo que el golpe lo tira para atras y volvia encima al
+     * instante.
+     */
+    var aturdido: Float = 0f
+
     val vuela: Boolean get() = kind == MazeGenerator.EnemyKind.MURCIELAGO
+
+    /**
+     * Le pega. Devuelve true si con este golpe se cae.
+     *
+     * El empuje sirve para dos cosas: se siente el golpe, y separa al bicho lo
+     * justo para que no te muerda en el mismo instante en que le pegas.
+     */
+    fun recibirGolpe(dano: Float, desdeX: Float, desdeZ: Float, empuje: Float): Boolean {
+        if (!vivo || dano <= 0f) return false
+        vida -= dano
+        destello = 0.28f
+        val dx = x - desdeX
+        val dz = z - desdeZ
+        val len = hypot(dx, dz)
+        if (len > 1e-4f) {
+            empujeX = dx / len * empuje
+            empujeZ = dz / len * empuje
+        }
+        aturdido = 0.32f
+        // Aunque no lo mate, el golpe lo pone en guardia: si no, un bicho que
+        // no te habia visto se quedaba quieto mientras lo hacias pedazos.
+        alerta = true
+        interes = 4.5f
+        if (vida <= 0f) { vida = 0f; return true }
+        return false
+    }
 
     fun distanciaA(px: Float, pz: Float): Float = hypot(px - x, pz - z)
 }
@@ -92,7 +135,21 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
         val d = campo!!
 
         for (e in enemigos) {
+            if (!e.vivo) continue
             if (e.recarga > 0f) e.recarga -= dt
+            if (e.destello > 0f) e.destello -= dt
+            if (e.aturdido > 0f) e.aturdido -= dt
+
+            // El empuje del ultimo golpe se va apagando solo.
+            if (e.empujeX != 0f || e.empujeZ != 0f) {
+                empujar(e, e.empujeX * dt, e.empujeZ * dt, cell)
+                val freno = (1f - 6f * dt).coerceIn(0f, 1f)
+                e.empujeX *= freno
+                e.empujeZ *= freno
+                if (kotlin.math.abs(e.empujeX) < 0.05f && kotlin.math.abs(e.empujeZ) < 0.05f) {
+                    e.empujeX = 0f; e.empujeZ = 0f
+                }
+            }
 
             val dist = e.distanciaA(px, pz)
             val alcance = e.kind.alcance * alcanceEscala
@@ -114,9 +171,12 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
             )
             if (e.kind.guardian && lejosDelNido > cell * 2.2f) e.alerta = false
 
-            val objetivo = if (e.alerta) siguientePaso(e, d, cell, px, pz) else vagar(e, cell)
-            if (objetivo != null) {
-                mover(e, objetivo.first, objetivo.second, e.kind.velocidad * dt, cell)
+            // Aturdido no avanza: el golpe le gana la pulseada y se separa.
+            if (e.aturdido <= 0f) {
+                val objetivo = if (e.alerta) siguientePaso(e, d, cell, px, pz) else vagar(e, cell)
+                if (objetivo != null) {
+                    mover(e, objetivo.first, objetivo.second, e.kind.velocidad * dt, cell)
+                }
             }
 
             // Altura: el murcielago vuela a media altura, el resto pisa el piso.
@@ -124,7 +184,7 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
             val gy = (e.z / cell).toInt().coerceIn(0, maze.gh - 1)
             e.altura = pisoDe(gx, gy) + if (e.vuela) 1.45f else 0f
 
-            if (dist <= pRadio + e.kind.radio + 0.18f && e.recarga <= 0f) {
+            if (e.aturdido <= 0f && dist <= pRadio + e.kind.radio + 0.18f && e.recarga <= 0f) {
                 e.recarga = e.kind.recarga
                 muerde(e)
             }
@@ -176,6 +236,12 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
         e.vagarGx = elegido % maze.gw
         e.vagarGy = elegido / maze.gw
         return null
+    }
+
+    /** Corre al bicho un tirito, respetando la roca. */
+    private fun empujar(e: Enemy, dx: Float, dz: Float, cell: Float) {
+        if (!chocaRoca(e.x + dx, e.z, e.kind.radio, cell)) e.x += dx
+        if (!chocaRoca(e.x, e.z + dz, e.kind.radio, cell)) e.z += dz
     }
 
     /** Avanza hacia un punto sin meterse en la roca. */

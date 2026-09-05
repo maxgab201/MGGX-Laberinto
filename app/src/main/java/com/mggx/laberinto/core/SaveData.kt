@@ -51,6 +51,8 @@ class SaveData private constructor(private val store: Store) {
     var cosmeticLight: String = "cos_luz_calida"; private set
     /** Skin del personaje: define la piel y el traje que se ven en primera persona. */
     var cosmeticSkin: String = "skin_minero"; private set
+    /** Arma que llevas en la mano. Vacio = a mano limpia. */
+    var armaEquipada: String = ""; private set
 
     // --- estadisticas
     var totalRuns: Int = 0; private set
@@ -111,8 +113,30 @@ class SaveData private constructor(private val store: Store) {
     fun isRelicEquipped(id: String): Boolean = equippedRelics.contains(id)
     fun loadoutList(): List<String> = loadout.toList()
 
-    /** Ranuras de consumible disponibles: 2 de base + mejora Bolsillos Profundos. */
-    fun loadoutSlots(): Int = 2 + ownedLevel("up_bolsillos")
+    /** Ranuras de consumible disponibles: 3 de base + mejora Bolsillos Profundos. */
+    fun loadoutSlots(): Int = 3 + ownedLevel("up_bolsillos")
+
+    /**
+     * Todo lo que se puede usar durante la partida: primero las ranuras que
+     * elegiste, y despues el resto de lo que tengas en el bolso.
+     *
+     * Antes la partida mostraba UNICAMENTE las ranuras. Con las ranuras llenas,
+     * comprar algo lo sumaba al stock pero no aparecia por ningun lado: lo
+     * pagabas y no lo podias usar nunca. Ahora las ranuras deciden el ORDEN en
+     * que aparecen las cosas, no si existen.
+     */
+    fun bolsaDeMano(): List<String> {
+        val out = ArrayList<String>(loadout.size + stock.size)
+        for (id in loadout) if (stockOf(id) > 0 && !out.contains(id)) out.add(id)
+        // El resto va ordenado por id para que la barra no cambie de orden sola
+        // entre una partida y la siguiente.
+        stock.keys.sorted().forEach { id ->
+            if (out.contains(id) || stockOf(id) <= 0) return@forEach
+            if (ItemCatalog.get(id)?.kind != ItemKind.CONSUMIBLE) return@forEach
+            out.add(id)
+        }
+        return out
+    }
 
     // ------------------------------------------------------------ mutaciones
 
@@ -172,6 +196,9 @@ class SaveData private constructor(private val store: Store) {
         when (item.kind) {
             ItemKind.COSMETICO -> equipCosmetic(id)
             ItemKind.RELIQUIA -> if (equippedRelics.size < ItemCatalog.RELIC_SLOTS) equippedRelics.add(id)
+            // Un arma nueva se agarra sola: nadie compra un hacha para dejarla
+            // en el bolso.
+            ItemKind.ARMA -> armaEquipada = id
             else -> {}
         }
         save()
@@ -197,6 +224,18 @@ class SaveData private constructor(private val store: Store) {
             com.mggx.laberinto.game.EffectType.COS_PIEL -> cosmeticSkin = id
             else -> return
         }
+        save()
+    }
+
+    /**
+     * Agarra un arma. Con [id] vacio se pelea a mano limpia, que siempre es
+     * una opcion valida.
+     */
+    fun equipArma(id: String) {
+        if (id.isEmpty()) { armaEquipada = ""; save(); return }
+        val item = ItemCatalog.get(id) ?: return
+        if (item.kind != ItemKind.ARMA || !isOwned(id)) return
+        armaEquipada = id
         save()
     }
 
@@ -253,6 +292,10 @@ class SaveData private constructor(private val store: Store) {
 
     /** true si al comprar [id] entro solo en una ranura rapida. */
     fun estaEnRanuraRapida(id: String): Boolean = loadout.contains(id)
+
+    /** true si el objeto se puede usar en la partida (esta en el bolso). */
+    fun sePuedeUsarEnPartida(id: String): Boolean =
+        stockOf(id) > 0 && ItemCatalog.get(id)?.kind == ItemKind.CONSUMIBLE
 
     /** true si no queda ninguna ranura rapida libre. */
     fun ranurasLlenas(): Boolean = loadout.size >= loadoutSlots()
@@ -332,6 +375,7 @@ class SaveData private constructor(private val store: Store) {
         owned.clear(); stock.clear(); equippedRelics.clear(); loadout.clear()
         cosmeticGloves = "cos_guantes_cuero"; cosmeticLight = "cos_luz_calida"
         cosmeticSkin = "skin_minero"
+        armaEquipada = ""
         totalRuns = 0; totalWins = 0; totalDeaths = 0; totalEcosGanados = 0
         bestTimeMs = 0; totalPlayMs = 0; totalSteps = 0; levelsSinceVetagris = 0
         exploredLevel = 0; exploredMask = ""
@@ -351,6 +395,7 @@ class SaveData private constructor(private val store: Store) {
         root.put("gloves", cosmeticGloves)
         root.put("light", cosmeticLight)
         root.put("skin", cosmeticSkin)
+        root.put("arma", armaEquipada)
         root.put("owned", JSONObject(owned as Map<*, *>))
         root.put("stock", JSONObject(stock as Map<*, *>))
         root.put("relics", JSONArray(equippedRelics))
@@ -398,6 +443,7 @@ class SaveData private constructor(private val store: Store) {
             cosmeticGloves = root.optString("gloves", "cos_guantes_cuero")
             cosmeticLight = root.optString("light", "cos_luz_calida")
             cosmeticSkin = root.optString("skin", "skin_minero")
+            armaEquipada = root.optString("arma", "")
             exploredLevel = root.optInt("expLevel", 0)
             exploredMask = root.optString("expMask", "")
 

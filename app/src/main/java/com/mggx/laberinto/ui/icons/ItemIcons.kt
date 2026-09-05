@@ -470,6 +470,55 @@ fun drawItemIcon(p: Pen, id: IconId): Boolean {
         IconId.TINTE_CALIDO -> drawTint(p, Color(0xFFFFC58A))
         IconId.TINTE_AMBAR -> drawTint(p, Color(0xFFFFB25E))
         IconId.TINTE_VERDE -> drawTint(p, Color(0xFF7BF0A8))
+        // ------------------------------------------------ armas
+        IconId.PUNO -> {
+            // Mano cerrada: pelear sin nada.
+            p.fill(dim) { m(5.4f, 10.4f); c(5.4f, 7.4f, 8.4f, 6.4f, 12f, 6.4f); c(16f, 6.4f, 18.6f, 8f, 18.6f, 11.4f); l(18.6f, 15.4f); c(18.6f, 18.6f, 15.6f, 20.4f, 12f, 20.4f); c(8.4f, 20.4f, 5.4f, 18.6f, 5.4f, 15.4f); z() }
+            p.line(m, 1.4f) { m(5.4f, 10.4f); c(5.4f, 7.4f, 8.4f, 6.4f, 12f, 6.4f); c(16f, 6.4f, 18.6f, 8f, 18.6f, 11.4f); l(18.6f, 15.4f); c(18.6f, 18.6f, 15.6f, 20.4f, 12f, 20.4f); c(8.4f, 20.4f, 5.4f, 18.6f, 5.4f, 15.4f); z() }
+            p.seg(8.4f, 11.4f, 16.4f, 11.4f, m, 1.2f)
+            p.seg(9.4f, 14.4f, 16f, 14.4f, m.copy(alpha = 0.6f), 1.1f)
+            p.line(a, 1.3f) { m(3.4f, 6.4f); l(5.4f, 4.4f) }
+        }
+        IconId.GARROTE -> {
+            // Palo grueso con las vetas de la madera.
+            p.fill(dim) { m(6.4f, 20.4f); l(9.4f, 20.4f); l(17.6f, 6.4f); c(18.4f, 4.6f, 15.4f, 2.8f, 14.2f, 4.6f); z() }
+            p.line(m, 1.4f) { m(6.4f, 20.4f); l(9.4f, 20.4f); l(17.6f, 6.4f); c(18.4f, 4.6f, 15.4f, 2.8f, 14.2f, 4.6f); z() }
+            p.seg(11.4f, 15.4f, 14.4f, 10.4f, m.copy(alpha = 0.55f), 1.1f)
+            p.dot(15.8f, 6.6f, 0.9f, a)
+            p.dot(13.4f, 10.6f, 0.7f, a.copy(alpha = 0.7f))
+        }
+        IconId.PICO_MINERO -> {
+            // Cabeza de pico curva sobre el mango.
+            p.line(m, 2.1f) { m(3.4f, 9.4f); c(9.4f, 3.6f, 14.6f, 3.6f, 20.6f, 9.4f) }
+            p.seg(12f, 5.6f, 12f, 20.6f, dim, 2.4f)
+            p.seg(12f, 5.6f, 12f, 20.6f, m, 1.5f)
+            p.dot(12f, 7.4f, 1.05f, a)
+        }
+        IconId.AGUIJON -> {
+            // Hoja fina de cristal con el filo brillante.
+            p.fill(a.copy(alpha = 0.35f)) { m(12f, 2.4f); l(14.6f, 12.4f); l(12f, 15.4f); l(9.4f, 12.4f); z() }
+            p.line(m, 1.4f) { m(12f, 2.4f); l(14.6f, 12.4f); l(12f, 15.4f); l(9.4f, 12.4f); z() }
+            p.seg(12f, 3.6f, 12f, 14.4f, a, 1.1f)
+            p.seg(8.4f, 15.4f, 15.6f, 15.4f, m, 1.8f)
+            p.seg(12f, 15.4f, 12f, 21.4f, m, 1.7f)
+        }
+        IconId.MAZA -> {
+            // Piedra bruta atada a un palo.
+            p.seg(12f, 10.4f, 9.4f, 21.4f, m, 1.9f)
+            p.fill(dim) { m(12f, 2.6f); l(18.4f, 5.4f); l(19f, 11.4f); l(13.4f, 14.4f); l(7.4f, 12f); l(6.6f, 5.8f); z() }
+            p.line(m, 1.4f) { m(12f, 2.6f); l(18.4f, 5.4f); l(19f, 11.4f); l(13.4f, 14.4f); l(7.4f, 12f); l(6.6f, 5.8f); z() }
+            p.seg(9.4f, 6.4f, 15.4f, 9.4f, m.copy(alpha = 0.5f), 1.1f)
+            p.seg(10.4f, 12.4f, 13.6f, 11.4f, a, 1.3f)
+        }
+        IconId.HACHA_VETAGRIS -> {
+            // Hacha de hoja ancha con la veta encendida.
+            p.seg(11.4f, 4.4f, 13.4f, 21.4f, m, 1.9f)
+            p.fill(dim) { m(11.6f, 4.4f); c(17.6f, 4.4f, 20.6f, 8.4f, 19.4f, 13.4f); l(12.4f, 11.6f); z() }
+            p.line(m, 1.4f) { m(11.6f, 4.4f); c(17.6f, 4.4f, 20.6f, 8.4f, 19.4f, 13.4f); l(12.4f, 11.6f); z() }
+            p.line(a, 1.5f) { m(13.4f, 6.4f); l(15.4f, 8.4f); l(14.4f, 10f); l(17.4f, 11.4f) }
+            p.dot(17.4f, 11.4f, 0.95f, a)
+        }
+
         // ------------------------------------------------ skins del personaje
         IconId.SKIN_MINERO -> drawSkin(p, Color(0xFF95664F), Color(0xFF60422A), 0)
         IconId.SKIN_VETERANO -> drawSkin(p, Color(0xFF7E5A46), Color(0xFF5C6068), 1)

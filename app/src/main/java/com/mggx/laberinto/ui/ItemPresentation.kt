@@ -79,6 +79,9 @@ object ItemText {
             EffectType.REL_INMUNE_CALOR -> "Inmune al calor de la roca"
             EffectType.REL_SONAR_GRATIS -> "Grito de Eco gratis cada ${secs(e.magnitude)}"
 
+            EffectType.ARMA_CUERPO ->
+                "${e.magnitude.roundToInt()} de dano · un golpe cada ${e.duration} s"
+
             EffectType.POD_LINTERNA -> "Haz de luz dirigido, con carburo"
             EffectType.POD_POSTURA_LIBRE -> "Agachado vas igual de rapido"
             EffectType.POD_SALTO_ALTO -> "+${pctMore(e.magnitude)} de salto y sin dano de caida"
@@ -100,6 +103,7 @@ object ItemText {
         ItemKind.MEJORA -> "Se aplica sola, para siempre, apenas la compras."
         ItemKind.RELIQUIA -> "Equipala en una de las 3 ranuras de reliquia."
         ItemKind.PODER -> "Se compra una sola vez y ya queda activo para siempre."
+        ItemKind.ARMA -> "La agarras al comprarla. Se lleva una sola a la vez."
         ItemKind.COSMETICO -> "Se equipa al comprarla. No cambia como se juega."
     }
 

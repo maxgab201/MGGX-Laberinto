@@ -260,14 +260,15 @@ fun MggxApp(
         pad.onUseItem = {
             val s = session
             if (s != null) {
-                val lo = save.loadoutList()
+                val lo = save.bolsaDeMano()
                 lo.getOrNull(selectedSlotCycle % lo.size.coerceAtLeast(1))?.let { s.useItem(it) }
             }
         }
         pad.onChalk = { session?.dropChalk() }
         pad.onFlashlight = { session?.toggleLinterna() }
+        pad.onAttack = { session?.golpear() }
         pad.onCycleItem = { dir ->
-            val n = save.loadoutList().size
+            val n = save.bolsaDeMano().size
             if (n > 0) selectedSlotCycle = ((selectedSlotCycle + dir) % n + n) % n
         }
         pad.onBack = {
@@ -479,7 +480,7 @@ private fun TutorialOverlay(onClose: () -> Unit) {
                 Text("Primeros pasos", style = MaterialTheme.typography.headlineLarge)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Seis cosas y arrancamos.",
+                    "Siete cosas y arrancamos.",
                     style = MaterialTheme.typography.bodyMedium, color = Cave.TextFaint
                 )
                 Spacer(Modifier.height(18.dp))
@@ -493,6 +494,9 @@ private fun TutorialOverlay(onClose: () -> Unit) {
                 TutorialLine(IconId.CALAVERA, "Cuidado",
                     "Hay trampas y bichos. Los pinches y los pozos se ven; los bichos hacen " +
                         "ruido antes de encontrarte.")
+                TutorialLine(IconId.PUNO, "Pelear",
+                    "Al bicho que se te viene encima le pegas con el boton del puno. Sin arma " +
+                        "pegas flojo pero pegas; en la Tienda hay palos, picos y hachas.")
                 TutorialLine(IconId.SALIDA, "Salir",
                     "Busca la columna de cristal que brilla. Esa es la salida del nivel.")
                 TutorialLine(IconId.MOCHILA, "Objetos",

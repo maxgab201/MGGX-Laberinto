@@ -3,7 +3,7 @@ package com.mggx.laberinto.game
 import com.mggx.laberinto.ui.icons.IconId
 
 /**
- * Catalogo completo de la tienda: 75 objetos, todos con un efecto propio.
+ * Catalogo completo de la tienda: 80 objetos, todos con un efecto propio.
  * No hay dos entradas que compartan (EffectType, magnitud, duracion).
  * La consistencia se verifica en los tests unitarios.
  */
@@ -273,6 +273,38 @@ object ItemCatalog {
             "Cada 60 segundos podes lanzar un Grito de Eco sin gastar nada.",
             ItemKind.RELIQUIA, Rarity.LEGENDARIO, Currency.VETAGRIS, 7,
             ItemEffect(EffectType.REL_SONAR_GRATIS, 60f), IconId.DIAPASON, unlockLevel = 22))
+
+        // ============================== ARMAS (5) ================================
+        // Sin arma igual se pega, pero flojo: nadie se queda sin poder
+        // defenderse por no haber comprado nada.
+        add(ShopItem("arma_garrote", "Garrote de Roble",
+            "Un palo pesado del entibado viejo. Nada elegante, pero le saca las ganas a un murcielago.",
+            ItemKind.ARMA, Rarity.COMUN, Currency.ECOS, 220,
+            ItemEffect(EffectType.ARMA_CUERPO, 14f, 0.80f, charges = 165), IconId.GARROTE))
+
+        add(ShopItem("arma_pico", "Pico de Minero",
+            "El pico de toda la vida. Pega mas fuerte que el garrote y llega un poco mas lejos.",
+            ItemKind.ARMA, Rarity.RARO, Currency.ECOS, 520,
+            ItemEffect(EffectType.ARMA_CUERPO, 23f, 0.85f, charges = 185), IconId.PICO_MINERO,
+            unlockLevel = 6))
+
+        add(ShopItem("arma_aguijon", "Aguijon de Cristal",
+            "Liviano y filoso: pega menos de una vez, pero pega muchas mas veces por minuto.",
+            ItemKind.ARMA, Rarity.EPICO, Currency.ECOS, 1350,
+            ItemEffect(EffectType.ARMA_CUERPO, 19f, 0.38f, charges = 155), IconId.AGUIJON,
+            unlockLevel = 14))
+
+        add(ShopItem("arma_maza", "Maza de Basalto",
+            "Una piedra atada a un palo. Tarda en volver, pero al guardian lo hace pensar.",
+            ItemKind.ARMA, Rarity.EPICO, Currency.ECOS, 1900,
+            ItemEffect(EffectType.ARMA_CUERPO, 42f, 1.25f, charges = 175), IconId.MAZA,
+            unlockLevel = 18))
+
+        add(ShopItem("arma_hacha", "Hacha de Vetagris",
+            "Filo de vetagris puro. Parte roca, asi que a un bicho lo parte sin despeinarse.",
+            ItemKind.ARMA, Rarity.LEGENDARIO, Currency.VETAGRIS, 8,
+            ItemEffect(EffectType.ARMA_CUERPO, 58f, 0.70f, charges = 200), IconId.HACHA_VETAGRIS,
+            unlockLevel = 24))
 
         // ============================= PODERES (8) ===============================
         // Se compran una sola vez, cuestan Vetagris (la moneda dificil) y

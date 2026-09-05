@@ -14,6 +14,7 @@ enum class ItemKind(val label: String, val blurb: String) {
     CONSUMIBLE("Consumibles", "Se usan durante la partida y se gastan."),
     MEJORA("Mejoras", "Suben de nivel y son para siempre."),
     RELIQUIA("Reliquias", "Se equipan y actuan solas. Tenes 3 ranuras."),
+    ARMA("Armas", "Para pelearles a los bichos. Se lleva una sola."),
     PODER("Poderes", "Carisimos y para siempre. Cambian como se juega."),
     COSMETICO("Aspecto", "Cambian como se ven tus manos y tu luz.")
 }
@@ -95,6 +96,12 @@ enum class EffectType {
     POD_MAPA_PERSISTENTE,   // el mapa explorado no se borra al reintentar
     POD_REGENERACION,       // la vida se recupera sola de a poco
     POD_SIGILO,             // los bichos te ven de mucho mas cerca
+
+    // --- armas cuerpo a cuerpo
+    // magnitud = dano por golpe, duracion = segundos entre golpes,
+    // cargas = alcance en centimetros. Los tres numeros hacen a cada arma
+    // distinta de todas las demas.
+    ARMA_CUERPO,
 
     // --- cosmeticos
     COS_GUANTES,

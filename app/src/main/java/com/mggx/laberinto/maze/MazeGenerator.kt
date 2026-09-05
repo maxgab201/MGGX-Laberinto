@@ -70,11 +70,15 @@ object MazeGenerator {
         /** Solo detecta al que corre (murcielago no, rastrero si). */
         val soloOye: Boolean,
         /** No persigue: se queda cuidando su pedazo de cueva. */
-        val guardian: Boolean
+        val guardian: Boolean,
+        /** Cuanto castigo aguanta antes de caer. */
+        val vida: Float,
+        /** Ecos que suelta al morir. */
+        val recompensa: Int
     ) {
-        MURCIELAGO("Murcielago de sima", 9.5f, 4.1f, 7f, 1.5f, 0.34f, false, false),
-        RASTRERO("Rastrero ciego", 13f, 3.4f, 16f, 2.0f, 0.44f, true, false),
-        GUARDIAN("Guardian de roca", 6.5f, 1.9f, 30f, 2.6f, 0.62f, false, true)
+        MURCIELAGO("Murcielago de sima", 9.5f, 4.1f, 7f, 1.5f, 0.34f, false, false, 16f, 6),
+        RASTRERO("Rastrero ciego", 13f, 3.4f, 16f, 2.0f, 0.44f, true, false, 44f, 14),
+        GUARDIAN("Guardian de roca", 6.5f, 1.9f, 30f, 2.6f, 0.62f, false, true, 120f, 40)
     }
 
     /** Dimensiones logicas del nivel. Crece de forma sostenida pero acotada. */
@@ -497,7 +501,7 @@ object MazeGenerator {
         val cuantos = when {
             level < 6 -> 1 + level / 3
             level < 14 -> 2 + level / 3
-            else -> (3 + level / 3).coerceAtMost(18)
+            else -> (3 + level / 3).coerceAtMost(15)
         }
         val libres = lugares.filter { distFromStart[it] >= 10 }
         val out = ArrayList<EnemySpawn>()

@@ -104,6 +104,23 @@ class PlayerStats(private val save: SaveData) {
     val sigilo: Float = if (poder("pod_sombra")) poderMag("pod_sombra") else 1f
     val invisibleArrastrandose: Boolean = poder("pod_sombra")
 
+    // --------------------------------------------------------------- pelea
+
+    private val armaItem = ItemCatalog.get(save.armaEquipada)
+        ?.takeIf { it.kind == ItemKind.ARMA && save.ownedLevel(it.id) > 0 }
+
+    /** Como se llama lo que llevas en la mano. */
+    val nombreArma: String = armaItem?.name ?: "A mano limpia"
+    /** Dano de un golpe. Sin arma se pega igual, pero flojo. */
+    val danoGolpe: Float = armaItem?.effect?.magnitude ?: GOLPE_BASE_DANO
+    /** Segundos entre golpe y golpe. */
+    val cadenciaGolpe: Float = armaItem?.effect?.duration ?: GOLPE_BASE_CADENCIA
+    /** Hasta donde llega el golpe, en metros. */
+    val alcanceGolpe: Float =
+        (armaItem?.effect?.charges ?: GOLPE_BASE_ALCANCE_CM) / 100f
+    /** Cuanto empuja al bicho, en metros por segundo. */
+    val empujeGolpe: Float = 3.4f + danoGolpe * 0.07f
+
     /** Indice de guantes cosmeticos (0..4). */
     val gloveStyle: Int = (ItemCatalog.get(save.cosmeticGloves)?.effect?.magnitude ?: 0f).toInt()
     /** Color de la luz de la antorcha en ARGB. */
@@ -126,5 +143,13 @@ class PlayerStats(private val save: SaveData) {
         const val BASE_PICKUP = 1.1f
         const val BASE_STAMINA_DRAIN = 22f
         const val STAMINA_REGEN = 16f
+
+        /**
+         * El golpe a mano limpia. Existe a proposito: sin esto, un jugador sin
+         * plata para un arma se quedaba sin ninguna forma de defenderse.
+         */
+        const val GOLPE_BASE_DANO = 6f
+        const val GOLPE_BASE_CADENCIA = 0.85f
+        const val GOLPE_BASE_ALCANCE_CM = 145
     }
 }

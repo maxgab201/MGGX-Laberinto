@@ -184,6 +184,8 @@ class CaveAudio(private val save: SaveData) {
             GameSession.Sfx.MARCA -> { v.kind = 10; v.dur = 0.24; v.amp = 0.30; v.freq = 1200.0 }
             GameSession.Sfx.ZUMBIDO -> { v.kind = 11; v.dur = 0.50; v.amp = 0.18; v.freq = 58.0 }
             GameSession.Sfx.BICHO -> { v.kind = 12; v.dur = 0.62; v.amp = 0.42; v.freq = 168.0 }
+            GameSession.Sfx.GOLPE -> { v.kind = 13; v.dur = 0.22; v.amp = 0.30; v.freq = 620.0 }
+            GameSession.Sfx.IMPACTO -> { v.kind = 14; v.dur = 0.34; v.amp = 0.52; v.freq = 96.0 }
         }
     }
 
@@ -269,6 +271,19 @@ class CaveAudio(private val save: SaveData) {
                 v.noise = v.noise * 0.55f + noise() * 0.45f
                 val f = v.freq * (1.0 + 0.9 * exp(-x * 9.0)) * (1.0 - 0.45 * x)
                 sample = sin(v.phase) * 0.42 + sin(v.phase * 2.51) * 0.22 + v.noise * 0.30
+                v.phase += 2 * PI * f * dt
+            }
+            13 -> { // swing: el aire cortado, corto y agudo
+                env = exp(-x * 20.0) * sin(PI * x)
+                v.noise = v.noise * 0.35f + noise() * 0.65f
+                sample = v.noise * 0.85 + sin(v.phase) * 0.15
+                v.phase += 2 * PI * (v.freq * (1.0 - 0.55 * x)) * dt
+            }
+            14 -> { // impacto: golpe carnoso con cuerpo grave
+                env = exp(-x * 11.0)
+                v.noise = v.noise * 0.60f + noise() * 0.40f
+                val f = v.freq * (1.0 + 1.6 * exp(-x * 26.0))
+                sample = sin(v.phase) * 0.55 + v.noise * 0.45
                 v.phase += 2 * PI * f * dt
             }
             else -> { // zumbido de peligro

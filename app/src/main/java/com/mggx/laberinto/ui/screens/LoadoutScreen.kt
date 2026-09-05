@@ -41,6 +41,7 @@ import com.mggx.laberinto.core.SaveData
 import com.mggx.laberinto.game.EffectType
 import com.mggx.laberinto.game.ItemCatalog
 import com.mggx.laberinto.game.ItemKind
+import com.mggx.laberinto.game.PlayerStats
 import com.mggx.laberinto.game.ShopItem
 import com.mggx.laberinto.ui.CaveBackdrop
 import com.mggx.laberinto.ui.CaveButton
@@ -62,7 +63,7 @@ fun LoadoutScreen(
     onMessage: (String) -> Unit
 ) {
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Ranuras rapidas", "Reliquias", "Aspecto")
+    val tabs = listOf("Ranuras rapidas", "Arma", "Reliquias", "Aspecto")
 
     Box(Modifier.fillMaxSize()) {
         CaveBackdrop(seed = 31)
@@ -79,14 +80,124 @@ fun LoadoutScreen(
                 }
             }
             Spacer(Modifier.height(12.dp))
-            CaveTabs(tabs, tab, { tab = it }, Modifier.fillMaxWidth(0.60f))
+            CaveTabs(tabs, tab, { tab = it }, Modifier.fillMaxWidth(0.74f))
             Spacer(Modifier.height(14.dp))
 
             when (tab) {
                 0 -> QuickSlots(save, refreshKey, onChanged, onMessage)
-                1 -> Relics(save, refreshKey, onChanged, onMessage)
+                1 -> Armas(save, refreshKey, onChanged, onMessage)
+                2 -> Relics(save, refreshKey, onChanged, onMessage)
                 else -> Cosmetics(save, refreshKey, onChanged, onMessage)
             }
+        }
+    }
+}
+
+// ----------------------------------------------------------------- arma
+
+/**
+ * Que llevas en la mano para pelear. "A mano limpia" es una opcion de verdad
+ * y siempre esta: pega poco, pero nadie se queda sin poder defenderse.
+ */
+@Composable
+private fun Armas(save: SaveData, refreshKey: Int, onChanged: () -> Unit, onMessage: (String) -> Unit) {
+    val armas = remember(refreshKey) { ItemCatalog.ofKind(ItemKind.ARMA) }
+    val stats = remember(refreshKey) { PlayerStats(save) }
+
+    Column(Modifier.fillMaxSize()) {
+        StonePanel(Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                CaveIcon(
+                    ItemCatalog.get(save.armaEquipada)?.icon ?: IconId.PUNO,
+                    size = 34.dp, tint = Cave.Text, accent = Cave.Bad
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(stats.nombreArma, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "${stats.danoGolpe.toInt()} de dano · un golpe cada " +
+                            "${(stats.cadenciaGolpe * 100).toInt() / 100f} s · " +
+                            "alcance ${(stats.alcanceGolpe * 100).toInt() / 100f} m",
+                        style = MaterialTheme.typography.bodyMedium, color = Cave.TextFaint
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            ArmaRow(
+                icon = IconId.PUNO,
+                nombre = "A mano limpia",
+                detalle = "${PlayerStats.GOLPE_BASE_DANO.toInt()} de dano. Siempre disponible, " +
+                    "no hay que comprarla.",
+                tuya = true,
+                activa = save.armaEquipada.isEmpty()
+            ) {
+                save.equipArma("")
+                onMessage("Peleas a mano limpia")
+                onChanged()
+            }
+            Spacer(Modifier.height(8.dp))
+            armas.forEach { item ->
+                val tuya = save.isOwned(item.id)
+                ArmaRow(
+                    icon = item.icon,
+                    nombre = item.name,
+                    detalle = if (tuya) ItemText.shortEffect(item)
+                    else "Se compra en la Tienda por ${item.basePrice} ${item.currency.code}",
+                    tuya = tuya,
+                    activa = save.armaEquipada == item.id
+                ) {
+                    save.equipArma(item.id)
+                    onMessage("Agarraste: ${item.name}")
+                    onChanged()
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArmaRow(
+    icon: IconId,
+    nombre: String,
+    detalle: String,
+    tuya: Boolean,
+    activa: Boolean,
+    onClick: () -> Unit
+) {
+    val accent = if (activa) Cave.Bad else Cave.StoneEdge
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(13.dp))
+            .background(if (activa) Cave.Bad.copy(alpha = 0.13f) else Cave.Stone)
+            .clickable(enabled = tuya) { onClick() }
+            .padding(12.dp)
+    ) {
+        Canvas(Modifier.matchParentSize()) {
+            drawRoundRect(
+                color = accent,
+                cornerRadius = CornerRadius(13.dp.toPx(), 13.dp.toPx()),
+                style = Stroke(1.3f * density)
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CaveIcon(
+                icon, size = 32.dp,
+                tint = if (tuya) Cave.Text else Cave.TextFaint,
+                accent = if (tuya) Cave.Bad else Cave.TextFaint
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    nombre, style = MaterialTheme.typography.titleMedium,
+                    color = if (tuya) Cave.Text else Cave.TextFaint
+                )
+                Text(detalle, style = MaterialTheme.typography.bodyMedium, color = Cave.TextDim)
+            }
+            if (activa) Text("EN LA MANO", fontSize = 10.sp, color = Cave.Bad)
         }
     }
 }

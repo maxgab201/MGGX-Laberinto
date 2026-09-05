@@ -69,6 +69,32 @@ uniform float uSpotPower;
 uniform float uSpotRange;
 uniform float uSpotCos;
 
+// Luces de la propia cueva: antorchas, cristales, hongos y la salida.
+// Hasta ocho a la vez, las mas cercanas al jugador. Con uNumLuces en 0 el
+// bucle no corre y la cueva queda iluminada solo por vos, como antes.
+#define MAX_LUCES 8
+uniform vec4 uLuzPos[MAX_LUCES];    // xyz posicion, w alcance
+uniform vec3 uLuzColor[MAX_LUCES];
+uniform int uNumLuces;
+
+vec3 lucesDeLaCueva(vec3 p, vec3 n) {
+    vec3 suma = vec3(0.0);
+    for (int i = 0; i < MAX_LUCES; i++) {
+        if (i >= uNumLuces) break;
+        vec3 dl = uLuzPos[i].xyz - p;
+        float dd = length(dl);
+        float r = uLuzPos[i].w;
+        if (dd >= r) continue;
+        float att = 1.0 - dd / r;
+        att *= att;
+        // Un piso de luz ambiental propia para que la roca a contraluz de un
+        // cristal no quede completamente negra.
+        float ndl = max(dot(n, dl / max(dd, 0.0001)), 0.0) * 0.86 + 0.14;
+        suma += uLuzColor[i] * ndl * att;
+    }
+    return suma;
+}
+
 out vec4 fragColor;
 
 vec3 applyNormalMap(vec3 n, vec3 mapN) {
@@ -139,7 +165,8 @@ void main() {
     float humedad = 1.0 - smoothstep(0.05, 0.62, altura);
     float spec = pow(max(dot(n, L), 0.0), 30.0) * atten * (0.05 + 0.34 * humedad);
 
-    vec3 color = baseColor * (uAmbient + diffuse) * vAo + uLightColor * spec;
+    vec3 color = baseColor * (uAmbient + diffuse + lucesDeLaCueva(vWorld, n)) * vAo +
+        uLightColor * spec;
 
     // Vetas de mineral: brillan solas y laten
     float pulse = 0.72 + 0.28 * sin(uTime * 1.6 + vWorld.x * 0.35 + vWorld.z * 0.27);
@@ -240,6 +267,32 @@ uniform float uSpotPower;
 uniform float uSpotRange;
 uniform float uSpotCos;
 
+// Luces de la propia cueva: antorchas, cristales, hongos y la salida.
+// Hasta ocho a la vez, las mas cercanas al jugador. Con uNumLuces en 0 el
+// bucle no corre y la cueva queda iluminada solo por vos, como antes.
+#define MAX_LUCES 8
+uniform vec4 uLuzPos[MAX_LUCES];    // xyz posicion, w alcance
+uniform vec3 uLuzColor[MAX_LUCES];
+uniform int uNumLuces;
+
+vec3 lucesDeLaCueva(vec3 p, vec3 n) {
+    vec3 suma = vec3(0.0);
+    for (int i = 0; i < MAX_LUCES; i++) {
+        if (i >= uNumLuces) break;
+        vec3 dl = uLuzPos[i].xyz - p;
+        float dd = length(dl);
+        float r = uLuzPos[i].w;
+        if (dd >= r) continue;
+        float att = 1.0 - dd / r;
+        att *= att;
+        // Un piso de luz ambiental propia para que la roca a contraluz de un
+        // cristal no quede completamente negra.
+        float ndl = max(dot(n, dl / max(dd, 0.0001)), 0.0) * 0.86 + 0.14;
+        suma += uLuzColor[i] * ndl * att;
+    }
+    return suma;
+}
+
 out vec4 fragColor;
 
 void main() {
@@ -258,7 +311,8 @@ void main() {
     }
     float ndl = max(dot(n, L), 0.0);
 
-    vec3 color = vColor.rgb * (uAmbient + uLightColor * ndl * atten);
+    vec3 color = vColor.rgb *
+        (uAmbient + uLightColor * ndl * atten + lucesDeLaCueva(vWorld, n));
     color += vColor.rgb * vEmissive;
 
     float f = 1.0 - exp(-uFogDensity * uFogDensity * dist * dist);

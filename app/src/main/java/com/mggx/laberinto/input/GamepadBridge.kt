@@ -26,6 +26,7 @@ class GamepadBridge(
     var onUseItem: () -> Unit = {}
     var onChalk: () -> Unit = {}
     var onFlashlight: () -> Unit = {}
+    var onAttack: () -> Unit = {}
     var onCycleItem: (Int) -> Unit = {}
     var onBack: () -> Unit = {}
     /** Envia una tecla sintetica a la ventana (para navegar menus). */
@@ -70,7 +71,9 @@ class GamepadBridge(
                 KeyEvent.KEYCODE_BUTTON_X -> { onUseItem(); return true }
                 KeyEvent.KEYCODE_BUTTON_L2 -> { onChalk(); return true }
                 KeyEvent.KEYCODE_BUTTON_Y -> { onCycleItem(1); return true }
-                KeyEvent.KEYCODE_BUTTON_R1 -> { onCycleItem(1); return true }
+                // R1 golpea. Ciclar objetos ya lo hacen Y y L1, asi que el
+                // gatillo de arriba queda libre para lo que mas se usa.
+                KeyEvent.KEYCODE_BUTTON_R1 -> { onAttack(); return true }
                 KeyEvent.KEYCODE_BUTTON_L1 -> { onCycleItem(-1); return true }
                 KeyEvent.KEYCODE_BUTTON_THUMBR -> {
                     // R3 cicla de pie -> agachado -> arrastrandose -> de pie.
