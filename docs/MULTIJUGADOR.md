@@ -80,7 +80,12 @@ mensajes enviados borra lo que tenga más de 30 segundos, así la sala no crece
 para siempre y no hace falta una Cloud Function (esas piden tarjeta, aunque
 después no se cobre nada).
 
-**Lo único que falta hacer vos, a mano, es crear tu proyecto de Firebase:**
+La división del trabajo es simple: todo lo que es clickear en la web de
+Firebase lo hacés vos (no toca ningún archivo del repositorio); todo lo que es
+tocar código o el repo lo hace quien te está ayudando con el proyecto (Claude
+Code), una vez que le pases lo que Firebase te dio.
+
+#### Lo que hacés vos, en la web (unos 5 minutos, cero archivos)
 
 1. Andá a [console.firebase.google.com](https://console.firebase.google.com)
    con tu cuenta de Google y hacé clic en **Crear un proyecto**. Ponele
@@ -90,9 +95,9 @@ después no se cobre nada).
    Realtime Database** y hacé clic en **Crear base de datos**. Elegí la
    ubicación que te quede más cerca y arrancá en **modo de prueba** (test
    mode): eso te da reglas de lectura/escritura abiertas por 30 días, que
-   después vas a reemplazar por las de abajo.
+   después se reemplazan por las de abajo.
 3. Andá a la pestaña **Reglas** de la Realtime Database y pegá esto
-   (reemplazá lo que haya):
+   (reemplazá lo que haya), después guardá con **Publicar**:
    ```json
    {
      "rules": {
@@ -111,33 +116,35 @@ después no se cobre nada).
    Esto deja que cualquiera lea y escriba mensajes de cualquier sala, sin
    pedir login. Para jugar con amigos está bien (es la misma idea que la
    `anon key` pública de Supabase: no es secreta, solo abre la puerta a
-   mandar mensajes de juego, nada de datos sensibles). Guardá con
-   **Publicar**.
-4. Ahora conectá tu app: en la página principal del proyecto (el ícono de
-   engranaje → **Configuración del proyecto**), en la sección "Tus apps",
-   hacé clic en el ícono de Android para agregar una app nueva:
+   mandar mensajes de juego, nada de datos sensibles).
+4. En la página principal del proyecto, el ícono de engranaje →
+   **Configuración del proyecto**, sección "Tus apps": hacé clic en el ícono
+   de Android para agregar una app nueva.
    - **Nombre del paquete de Android**: `com.mggx.laberinto` (tiene que ser
-     EXACTO, es el `applicationId` de `app/build.gradle.kts`).
-   - Los demás campos (apodo, SHA-1) son opcionales, los podés dejar vacíos.
+     EXACTO, letra por letra).
+   - Los demás campos (apodo, SHA-1) son opcionales, dejalos vacíos.
 5. Firebase te va a ofrecer descargar un archivo llamado
-   **`google-services.json`**. Descargalo y ponelo en la carpeta `app/` del
-   repositorio (al lado de `build.gradle.kts`, **no** adentro de `src/`).
-6. Compilá de nuevo (`./gradlew assembleDebug` o desde Android Studio). El
-   `build.gradle.kts` ya está preparado para detectar el archivo solo: en
-   cuanto `app/google-services.json` existe, el plugin de Google se activa
-   solo y la app queda conectada a tu proyecto.
+   **`google-services.json`**. Descargalo. **Ese es el único archivo que hace
+   falta pasar** — pegá su contenido en el chat, o subilo, y de ahí en más lo
+   conecta y lo prueba quien te está ayudando con el código.
 
-**Un detalle de seguridad:** `google-services.json` no lleva ninguna clave
-secreta (es información pública que igual viaja adentro de cualquier APK), así
-que no pasa nada grave si lo subís al repositorio. Si preferís no subirlo de
-todos modos, agregalo a `.gitignore`: el build sigue andando igual para
-cualquiera que clone el repo, nomás que sin multijugador hasta que ponga el
-suyo.
+**Un detalle de seguridad, para que sepas qué estás compartiendo:**
+`google-services.json` no lleva ninguna clave secreta (es información pública
+que igual viaja adentro de cualquier APK), así que no hay drama en pasarlo así
+nomás.
 
-**Cómo saber que anda:** dos teléfonos en la misma sala (mismo código), creá
-`TransporteFirebase(codigo)` en los dos, uno manda un `PING` con
-`enviar(NetProtocol.ping(miId).codificar())` y el otro lo tiene que ver
-aparecer en `recibir()`. Con eso ya está resuelta la parte difícil.
+#### Lo que se hace del lado del código, con lo que pasaste
+
+1. El archivo se guarda en `app/google-services.json` (ya está en
+   `.gitignore`: no se sube al repositorio, queda solo en este entorno).
+2. Se compila (`./gradlew assembleDebug`): el `build.gradle.kts` ya detecta
+   el archivo solo y activa el plugin de Google.
+3. Se prueba que ande de verdad: con `TransporteFirebase("SALA1")` desde dos
+   instancias (simulando dos jugadores en la misma sala), una manda un `PING`
+   con `enviar(NetProtocol.ping(miId).codificar())` y la otra lo tiene que ver
+   aparecer en `recibir()`. Si algo falla (reglas mal pegadas, paquete mal
+   escrito), se avisa exactamente qué corregir en la consola de Firebase. Con
+   eso ya está resuelta la parte difícil.
 
 ### Paso 2 — La pantalla de sala
 
@@ -236,7 +243,9 @@ queda corto, ahí sí un VPS de 5 dólares aguanta muchísimo más.
 
 ## 6. Por dónde arrancar mañana
 
-Si tenés una tarde: **hacé el Paso 1 y nada más** (que hoy es solo crear la
-cuenta de Firebase y bajar el `google-services.json`, el código ya está
-escrito). Cuando dos teléfonos se manden un `PING` y se vean, el resto es
-juego, no es red, y es la parte divertida.
+Si tenés una tarde: **hacé el Paso 1 y nada más**. De tu lado son 5 minutos en
+la web de Firebase (crear el proyecto, activar Realtime Database, pegar las
+reglas, bajar el `google-services.json`); el resto — conectarlo al código y
+probar que ande — no hace falta que lo toques vos. Cuando el `PING` de una
+instancia aparezca en la otra, el resto es juego, no es red, y es la parte
+divertida.
