@@ -136,6 +136,250 @@ object PropMeshes {
         return flatFaces(p, faces)
     }
 
+    // ------------------------------------------------- herramientas de modelado
+    //
+    // El pipeline de instancias solo permite UNA escala (la misma en los tres
+    // ejes) y giro en Y, asi que las proporciones de una figura no se pueden
+    // estirar desde afuera: tienen que venir horneadas en la malla. Estas dos
+    // funciones son las que permiten hacer eso sin escribir vertices a mano.
+
+    /**
+     * Cuerpo de revolucion: gira un perfil alrededor del eje Y.
+     *
+     * Cada punto del perfil es (radio, altura), del de abajo al de arriba. Un
+     * radio 0 arriba o abajo cierra la figura en punta. Las normales salen de
+     * la pendiente del propio perfil y se promedian entre tramos, asi que la
+     * superficie se ve redonda y no facetada.
+     */
+    fun lathe(perfil: Array<FloatArray>, segmentos: Int = 10): Geometry {
+        val v = FloatList()
+        val idx = IntList()
+        val filas = perfil.size
+
+        // Normal 2D de cada tramo, en el plano (radio, altura).
+        val nr = FloatArray(filas)
+        val ny = FloatArray(filas)
+        for (k in 0 until filas) {
+            var ar = 0f; var ay = 0f
+            for (t in intArrayOf(k - 1, k)) {
+                if (t < 0 || t + 1 >= filas) continue
+                val dr = perfil[t + 1][0] - perfil[t][0]
+                val dy = perfil[t + 1][1] - perfil[t][1]
+                val l = sqrt(dr * dr + dy * dy).coerceAtLeast(1e-6f)
+                // (dy,-dr) apunta hacia afuera con el perfil de abajo a arriba.
+                ar += dy / l; ay += -dr / l
+            }
+            val l = sqrt(ar * ar + ay * ay).coerceAtLeast(1e-6f)
+            nr[k] = ar / l; ny[k] = ay / l
+        }
+
+        // Un anillo de vertices por fila del perfil.
+        for (k in 0 until filas) {
+            val r = perfil[k][0]
+            val y = perfil[k][1]
+            for (i in 0..segmentos) {
+                val a = i * 2.0 * PI / segmentos
+                val c = cos(a).toFloat(); val s = sin(a).toFloat()
+                val n = norm(nr[k] * c, ny[k], nr[k] * s)
+                v.add(r * c, y, r * s, n[0], n[1], n[2])
+            }
+        }
+
+        // Mismo tejido que usa cylinder(): (A,C,B) y (A,D,C) con A abajo-i,
+        // B abajo-i+1, C arriba-i+1, D arriba-i.
+        val porFila = segmentos + 1
+        for (k in 0 until filas - 1) {
+            for (i in 0 until segmentos) {
+                val a = k * porFila + i
+                val b = k * porFila + i + 1
+                val c = (k + 1) * porFila + i + 1
+                val d = (k + 1) * porFila + i
+                idx.add(a); idx.add(c); idx.add(b)
+                idx.add(a); idx.add(d); idx.add(c)
+            }
+        }
+        return Geometry(v.toArray(), idx.toArray())
+    }
+
+    /**
+     * Extruye un contorno plano (en XY) a lo largo de Z, con tapa adelante,
+     * tapa atras y el canto que las une. Sirve para las piezas chatas: alas,
+     * placas, aletas.
+     *
+     * El sentido en que se escriba el contorno no importa: se mide su area con
+     * signo y se lo da vuelta si hace falta. Dejarlo librado a quien lo
+     * escriba seria pedir un error invisible, porque un contorno al reves
+     * compila igual y recien se nota en el telefono, con la figura del reves.
+     *
+     * Tampoco hace falta que sea convexo: se triangula por recorte de orejas,
+     * asi que las muescas (los dedos de un ala, por ejemplo) salen bien.
+     */
+    fun extruir(contornoDado: Array<FloatArray>, grosor: Float): Geometry {
+        var area = 0f
+        for (k in contornoDado.indices) {
+            val p = contornoDado[k]
+            val q = contornoDado[(k + 1) % contornoDado.size]
+            area += p[0] * q[1] - q[0] * p[1]
+        }
+        val contorno = if (area < 0f) contornoDado.reversedArray() else contornoDado
+
+        val v = FloatList()
+        val idx = IntList()
+        val m = contorno.size
+        val h = grosor * 0.5f
+        val tri = triangular(contorno)
+        var n = 0
+
+        // Tapa de adelante (+Z) y de atras (-Z). La de atras va con los
+        // triangulos al reves, porque su normal mira para el otro lado.
+        for (lado in 0..1) {
+            val z = if (lado == 0) h else -h
+            val nz = if (lado == 0) 1f else -1f
+            val base = n
+            for (p in contorno) { v.add(p[0], p[1], z, 0f, 0f, nz); n++ }
+            var k = 0
+            while (k < tri.size) {
+                if (lado == 0) { idx.add(base + tri[k]); idx.add(base + tri[k + 1]); idx.add(base + tri[k + 2]) }
+                else { idx.add(base + tri[k]); idx.add(base + tri[k + 2]); idx.add(base + tri[k + 1]) }
+                k += 3
+            }
+        }
+
+        // Canto: un quad por lado del contorno, con la normal hacia afuera.
+        for (k in 0 until m) {
+            val p = contorno[k]
+            val q = contorno[(k + 1) % m]
+            val dx = q[0] - p[0]; val dy = q[1] - p[1]
+            // Con el contorno antihorario, (dy,-dx) mira hacia afuera.
+            val nn = norm(dy, -dx, 0f)
+            v.add(p[0], p[1], h, nn[0], nn[1], nn[2])
+            v.add(q[0], q[1], h, nn[0], nn[1], nn[2])
+            v.add(q[0], q[1], -h, nn[0], nn[1], nn[2])
+            v.add(p[0], p[1], -h, nn[0], nn[1], nn[2])
+            idx.add(n); idx.add(n + 2); idx.add(n + 1)
+            idx.add(n); idx.add(n + 3); idx.add(n + 2)
+            n += 4
+        }
+        return Geometry(v.toArray(), idx.toArray())
+    }
+
+    private fun giro(a: FloatArray, b: FloatArray, c: FloatArray): Float =
+        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+    /**
+     * Triangula un poligono simple ANTIHORARIO por recorte de orejas: busca un
+     * vertice convexo cuyo triangulo no tape a ningun otro vertice, lo corta y
+     * repite. Devuelve indices de a tres.
+     *
+     * Se usa esto y no un abanico desde el primer punto porque el abanico solo
+     * sirve si todo el contorno se ve desde ahi, y las formas con muescas (un
+     * ala con dedos) no cumplen eso: los triangulos que se van afuera salen
+     * dados vuelta y la figura se ve agujereada.
+     */
+    private fun triangular(p: Array<FloatArray>): IntArray {
+        val out = IntList()
+        val quedan = p.indices.toMutableList()
+        var vueltasSinCortar = 0
+        while (quedan.size > 3 && vueltasSinCortar <= quedan.size) {
+            var cortada = false
+            for (k in quedan.indices) {
+                val ia = quedan[(k - 1 + quedan.size) % quedan.size]
+                val ib = quedan[k]
+                val ic = quedan[(k + 1) % quedan.size]
+                val a = p[ia]; val b = p[ib]; val c = p[ic]
+                if (giro(a, b, c) <= 1e-9f) continue     // vertice concavo o plano
+                var libre = true
+                for (i in quedan) {
+                    if (i == ia || i == ib || i == ic) continue
+                    val q = p[i]
+                    if (giro(a, b, q) >= 0f && giro(b, c, q) >= 0f && giro(c, a, q) >= 0f) {
+                        libre = false; break
+                    }
+                }
+                if (!libre) continue
+                out.add(ia); out.add(ib); out.add(ic)
+                quedan.removeAt(k)
+                cortada = true
+                break
+            }
+            if (cortada) vueltasSinCortar = 0 else vueltasSinCortar++
+        }
+        for (k in 1 until quedan.size - 1) {
+            out.add(quedan[0]); out.add(quedan[k]); out.add(quedan[k + 1])
+        }
+        return out.toArray()
+    }
+
+    // ------------------------------------------------------ armar por piezas
+    //
+    // Con esto un modelo se escribe como lo que es ("un cuerpo, dos orejas y
+    // una cola") en vez de como una lista de vertices, y queda UNA sola malla:
+    // el bicho entero sale en una instancia y no en cinco.
+
+    private fun mapear(g: Geometry, f: (Float, Float, Float, Boolean) -> FloatArray): Geometry {
+        val v = g.vertices.copyOf()
+        var i = 0
+        while (i < v.size) {
+            val p = f(v[i], v[i + 1], v[i + 2], false)
+            val n = f(v[i + 3], v[i + 4], v[i + 5], true)
+            v[i] = p[0]; v[i + 1] = p[1]; v[i + 2] = p[2]
+            val l = sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).coerceAtLeast(1e-6f)
+            v[i + 3] = n[0] / l; v[i + 4] = n[1] / l; v[i + 5] = n[2] / l
+            i += 6
+        }
+        return Geometry(v, g.indices.copyOf())
+    }
+
+    fun trasladar(g: Geometry, dx: Float, dy: Float, dz: Float): Geometry =
+        mapear(g) { x, y, z, esNormal ->
+            if (esNormal) floatArrayOf(x, y, z) else floatArrayOf(x + dx, y + dy, z + dz)
+        }
+
+    /**
+     * Escala en cada eje por separado. Las normales van con la inversa (1/s):
+     * si no, una figura achatada quedaria con la luz mal, como inflada.
+     *
+     * No se admiten factores negativos: darian vuelta las caras y la figura se
+     * veria del reves. Para espejar, girar 180 grados.
+     */
+    fun escalar(g: Geometry, sx: Float, sy: Float, sz: Float): Geometry {
+        require(sx > 0f && sy > 0f && sz > 0f) { "escalar() no admite factores negativos ni cero" }
+        return mapear(g) { x, y, z, esNormal ->
+            if (esNormal) floatArrayOf(x / sx, y / sy, z / sz)
+            else floatArrayOf(x * sx, y * sy, z * sz)
+        }
+    }
+
+    fun rotarX(g: Geometry, grados: Float): Geometry {
+        val r = Math.toRadians(grados.toDouble())
+        val c = cos(r).toFloat(); val s = sin(r).toFloat()
+        return mapear(g) { x, y, z, _ -> floatArrayOf(x, y * c - z * s, y * s + z * c) }
+    }
+
+    fun rotarY(g: Geometry, grados: Float): Geometry {
+        val r = Math.toRadians(grados.toDouble())
+        val c = cos(r).toFloat(); val s = sin(r).toFloat()
+        return mapear(g) { x, y, z, _ -> floatArrayOf(x * c + z * s, y, -x * s + z * c) }
+    }
+
+    fun rotarZ(g: Geometry, grados: Float): Geometry {
+        val r = Math.toRadians(grados.toDouble())
+        val c = cos(r).toFloat(); val s = sin(r).toFloat()
+        return mapear(g) { x, y, z, _ -> floatArrayOf(x * c - y * s, x * s + y * c, z) }
+    }
+
+    fun combinar(vararg piezas: Geometry): Geometry {
+        val v = FloatList()
+        val idx = IntList()
+        var base = 0
+        for (g in piezas) {
+            for (f in g.vertices) v.add(f)
+            for (i in g.indices) idx.add(i + base)
+            base += g.vertices.size / 6
+        }
+        return Geometry(v.toArray(), idx.toArray())
+    }
+
     private fun flatFaces(p: Array<FloatArray>, faces: Array<IntArray>): Geometry {
         val v = FloatList()
         val idx = IntList()

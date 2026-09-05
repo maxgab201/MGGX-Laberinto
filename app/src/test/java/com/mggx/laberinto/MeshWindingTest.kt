@@ -1,6 +1,7 @@
 package com.mggx.laberinto
 
 import com.mggx.laberinto.gl.ArmsMesh
+import com.mggx.laberinto.gl.EnemyMeshes
 import com.mggx.laberinto.gl.PropMeshes
 import com.mggx.laberinto.gl.WorldMesh
 import com.mggx.laberinto.maze.MazeGenerator
@@ -99,6 +100,61 @@ class MeshWindingTest {
         for ((nombre, g) in formas) {
             val malas = contarInvertidos(g.vertices, g.indices, 6, 3)
             assertTrue("$nombre tiene $malas triangulos dados vuelta", malas == 0)
+        }
+    }
+
+    @Test
+    fun losBichosMiranParaAfuera() {
+        // Cada bicho tiene malla propia, armada con lathe/extruir/combinar. Un
+        // error de orientacion ahi no da ningun sintoma al compilar: el bicho
+        // simplemente se ve del reves o transparente en el telefono.
+        val formas = mapOf(
+            "cuerpo de murcielago" to EnemyMeshes.murcielagoCuerpo(),
+            "ala de murcielago" to EnemyMeshes.murcielagoAla(),
+            "segmento de rastrero" to EnemyMeshes.rastreroSegmento(),
+            "pata de rastrero" to EnemyMeshes.rastreroPata(),
+            "torso de guardian" to EnemyMeshes.guardianTorso(),
+            "cabeza de guardian" to EnemyMeshes.guardianCabeza(),
+            "brazo de guardian" to EnemyMeshes.guardianBrazo()
+        )
+        for ((nombre, g) in formas) {
+            assertTrue("$nombre esta vacio", g.indices.size > 30)
+            val malas = contarInvertidos(g.vertices, g.indices, 6, 3)
+            assertTrue("$nombre tiene $malas triangulos dados vuelta", malas == 0)
+        }
+    }
+
+    @Test
+    fun lasHerramientasDeModeladoNoDanVueltaLasCaras() {
+        // Las transformaciones son la base de todos los modelos nuevos: si
+        // alguna invirtiera la orientacion, romperia todo lo que se arme
+        // encima y seria dificil de rastrear.
+        val base = PropMeshes.lathe(
+            arrayOf(
+                floatArrayOf(0f, -0.5f), floatArrayOf(0.4f, -0.2f),
+                floatArrayOf(0.5f, 0.2f), floatArrayOf(0f, 0.5f)
+            ),
+            segmentos = 8
+        )
+        val casos = mapOf(
+            "lathe" to base,
+            "trasladar" to PropMeshes.trasladar(base, 1f, -2f, 0.5f),
+            "escalar" to PropMeshes.escalar(base, 0.3f, 2f, 1.4f),
+            "rotarX" to PropMeshes.rotarX(base, 37f),
+            "rotarY" to PropMeshes.rotarY(base, -110f),
+            "rotarZ" to PropMeshes.rotarZ(base, 64f),
+            "combinar" to PropMeshes.combinar(base, PropMeshes.trasladar(base, 2f, 0f, 0f)),
+            "extruir" to PropMeshes.extruir(
+                arrayOf(
+                    floatArrayOf(0f, 0f), floatArrayOf(1f, 0.3f),
+                    floatArrayOf(0.8f, -0.4f), floatArrayOf(0.2f, -0.5f)
+                ),
+                0.1f
+            )
+        )
+        for ((nombre, g) in casos) {
+            val malas = contarInvertidos(g.vertices, g.indices, 6, 3)
+            assertTrue("$nombre da vuelta $malas triangulos", malas == 0)
         }
     }
 

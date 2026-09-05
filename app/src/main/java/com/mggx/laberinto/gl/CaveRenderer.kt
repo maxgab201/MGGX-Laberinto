@@ -293,12 +293,22 @@ class CaveRenderer(
     private var camDirY = 0f
     private var camDirZ = 1f
     private var shapeSlab: InstancedShape? = null
-    /** Ala de murcielago: chapa fina que aletea. */
+    /** Ala de murcielago: membrana con los dedos festoneados, que aletea. */
     private var shapeWing: InstancedShape? = null
     /** Pincho de trampa. */
     private var shapeSpike: InstancedShape? = null
-    /** Roca suelta / cuerpo de bicho de piedra. */
+    /** Roca suelta. */
     private var shapeBoulder: InstancedShape? = null
+
+    // ---------------------------------------------------- modelos de bichos
+    // Cada bicho tiene su malla propia (ver EnemyMeshes): antes se armaban
+    // apilando las mismas primitivas genericas que el resto de la cueva.
+    private var shapeMurcielago: InstancedShape? = null
+    private var shapeRastreroCuerpo: InstancedShape? = null
+    private var shapeRastreroPata: InstancedShape? = null
+    private var shapeGuardianTorso: InstancedShape? = null
+    private var shapeGuardianCabeza: InstancedShape? = null
+    private var shapeGuardianBrazo: InstancedShape? = null
     /** Poste fino: los parantes de los marcos de la mina. */
     private var shapePost: InstancedShape? = null
     /** Estalactita: punta fina colgando del techo (no confundir con shapeConeDown,
@@ -609,6 +619,8 @@ class CaveRenderer(
         shapeBox?.release(); shapeCylinder?.release(); shapeArrow?.release()
         shapeSlab?.release(); shapeWing?.release(); shapeSpike?.release()
         shapeBoulder?.release(); shapePost?.release(); shapeStalactite?.release()
+        shapeMurcielago?.release(); shapeRastreroCuerpo?.release(); shapeRastreroPata?.release()
+        shapeGuardianTorso?.release(); shapeGuardianCabeza?.release(); shapeGuardianBrazo?.release()
         shapeGem = InstancedShape(PropMeshes.octahedron(1.5f), 1400)
         // Estalagmita (hacia arriba): antes radio 0.42 con altura 1, una
         // relacion de "gorro de fiesta" (2.4:1). Ahora una punta de verdad.
@@ -621,10 +633,17 @@ class CaveRenderer(
         shapeCylinder = InstancedShape(PropMeshes.cylinder(7, 1f, 0.1f), 900)
         shapeArrow = InstancedShape(PropMeshes.arrow(), 4)
         shapeSlab = InstancedShape(PropMeshes.box(1f, 0.13f, 0.13f), 400)
-        shapeWing = InstancedShape(PropMeshes.box(1f, 0.035f, 0.62f), 80)
+        shapeWing = InstancedShape(EnemyMeshes.murcielagoAla(), 200)
         shapeSpike = InstancedShape(PropMeshes.cone(6, 1f, 0.17f, false), 300)
         shapeBoulder = InstancedShape(PropMeshes.octahedron(0.72f), 900)
         shapePost = InstancedShape(PropMeshes.cylinder(6, 1f, 0.042f), 160)
+        // Los bichos: pocos a la vez, asi que alcanza con cupos chicos.
+        shapeMurcielago = InstancedShape(EnemyMeshes.murcielagoCuerpo(), 80)
+        shapeRastreroCuerpo = InstancedShape(EnemyMeshes.rastreroSegmento(), 240)
+        shapeRastreroPata = InstancedShape(EnemyMeshes.rastreroPata(), 320)
+        shapeGuardianTorso = InstancedShape(EnemyMeshes.guardianTorso(), 80)
+        shapeGuardianCabeza = InstancedShape(EnemyMeshes.guardianCabeza(), 80)
+        shapeGuardianBrazo = InstancedShape(EnemyMeshes.guardianBrazo(), 160)
     }
 
     private fun buildArms() {
@@ -739,11 +758,17 @@ class CaveRenderer(
         val cyl = shapeCylinder ?: return
         val arrow = shapeArrow ?: return
         val slab = shapeSlab ?: return
-        val wing = shapeWing ?: return
         val spike = shapeSpike ?: return
         val boulder = shapeBoulder ?: return
         val post = shapePost ?: return
         val stalactite = shapeStalactite ?: return
+        val murcielago = shapeMurcielago ?: return
+        val ala = shapeWing ?: return
+        val rastrero = shapeRastreroCuerpo ?: return
+        val pata = shapeRastreroPata ?: return
+        val torso = shapeGuardianTorso ?: return
+        val cabeza = shapeGuardianCabeza ?: return
+        val brazo = shapeGuardianBrazo ?: return
 
         val cull = when (save.settings.quality) { 0 -> 22f; 1 -> 28f; 2 -> 34f; else -> 42f }
         val cull2 = cull * cull
@@ -754,8 +779,10 @@ class CaveRenderer(
         }
 
         gem.begin(); cone.begin(); coneD.begin(); boxS.begin(); cyl.begin(); arrow.begin()
-        slab.begin(); wing.begin(); spike.begin(); boulder.begin(); post.begin()
+        slab.begin(); ala.begin(); spike.begin(); boulder.begin(); post.begin()
         stalactite.begin()
+        murcielago.begin(); rastrero.begin(); pata.begin()
+        torso.begin(); cabeza.begin(); brazo.begin()
         val C = GameSession.CELL
         val m = s.maze
 
@@ -1009,34 +1036,44 @@ class CaveRenderer(
             val flash = golpe * 1.9f + herido * 0.22f
             when (e.kind) {
                 com.mggx.laberinto.maze.MazeGenerator.EnemyKind.MURCIELAGO -> {
-                    boulder.add(ex2, ey, ez2, 0.24f, 0.20f + golpe * 0.7f, 0.16f, 0.19f, flash, r, e.fase, 0f, 1f)
-                    wing.add(ex2 - rgtX * 0.26f, ey + 0.03f, ez2 - rgtZ * 0.26f, 0.62f,
-                        0.26f + golpe * 0.6f, 0.19f, 0.22f, flash, r, e.fase, 2f, 1f)
-                    wing.add(ex2 + rgtX * 0.26f, ey + 0.03f, ez2 + rgtZ * 0.26f, 0.62f,
-                        0.26f + golpe * 0.6f, 0.19f, 0.22f, flash, r, e.fase + 3.14f, 2f, 1f)
-                    gem.add(ex2 + fwdX * 0.14f - rgtX * 0.06f, ey + 0.05f, ez2 + fwdZ * 0.14f - rgtZ * 0.06f,
-                        0.035f, 1f, 0.42f, 0.30f, ojo, 0f, 0f, 0f, 1f)
-                    gem.add(ex2 + fwdX * 0.14f + rgtX * 0.06f, ey + 0.05f, ez2 + fwdZ * 0.14f + rgtZ * 0.06f,
-                        0.035f, 1f, 0.42f, 0.30f, ojo, 0f, 0f, 0f, 1f)
+                    // Cuerpo de una sola pieza (con hocico y orejas) mirando al
+                    // frente, y las dos alas colgadas de los hombros. La del
+                    // lado izquierdo es la misma malla girada media vuelta, con
+                    // el aleteo desfasado para que no batan como un solo panel.
+                    murcielago.add(ex2, ey, ez2, 0.40f,
+                        0.21f + golpe * 0.7f, 0.16f, 0.19f, flash, r, e.fase, 0f, 1f)
+                    ala.add(ex2 + rgtX * 0.07f, ey + 0.05f, ez2 + rgtZ * 0.07f, 0.44f,
+                        0.28f + golpe * 0.6f, 0.20f, 0.23f, flash, r, e.fase, 2f, 1f)
+                    ala.add(ex2 - rgtX * 0.07f, ey + 0.05f, ez2 - rgtZ * 0.07f, 0.44f,
+                        0.28f + golpe * 0.6f, 0.20f, 0.23f, flash,
+                        r + Math.PI.toFloat(), e.fase + 3.14f, 2f, 1f)
+                    gem.add(ex2 + fwdX * 0.15f - rgtX * 0.05f, ey + 0.06f, ez2 + fwdZ * 0.15f - rgtZ * 0.05f,
+                        0.030f, 1f, 0.42f, 0.30f, ojo, 0f, 0f, 0f, 1f)
+                    gem.add(ex2 + fwdX * 0.15f + rgtX * 0.05f, ey + 0.06f, ez2 + fwdZ * 0.15f + rgtZ * 0.05f,
+                        0.030f, 1f, 0.42f, 0.30f, ojo, 0f, 0f, 0f, 1f)
                 }
                 com.mggx.laberinto.maze.MazeGenerator.EnemyKind.RASTRERO -> {
-                    // Cuerpo largo de tres tramos que ondula al avanzar.
+                    // Cuerpo largo de tres placas de caparazon que ondulan al
+                    // avanzar, cada vez mas chicas hacia la cola.
                     for (k in 0 until 3) {
                         val off = 0.30f - k * 0.30f
-                        boxS.add(
-                            ex2 + fwdX * off, ey + 0.24f - k * 0.03f, ez2 + fwdZ * off,
-                            0.46f - k * 0.08f,
+                        rastrero.add(
+                            ex2 + fwdX * off, ey + 0.20f - k * 0.03f, ez2 + fwdZ * off,
+                            0.46f - k * 0.09f,
                             0.74f + golpe * 0.26f, 0.71f - golpe * 0.3f, 0.62f - golpe * 0.3f,
                             flash, r, e.fase + k * 0.8f, 3f, 1f
                         )
                     }
+                    // Cuatro patas quebradas. Las de un lado van giradas media
+                    // vuelta para que la rodilla apunte para afuera en los dos.
                     for (k in 0 until 4) {
                         val a = if (k < 2) 0.22f else -0.16f
                         val lado = if (k % 2 == 0) -1f else 1f
-                        cyl.add(
-                            ex2 + fwdX * a + rgtX * 0.24f * lado, ey,
-                            ez2 + fwdZ * a + rgtZ * 0.24f * lado,
-                            0.26f, 0.62f, 0.60f, 0.52f, 0f, r, e.fase, 0f, 1f
+                        pata.add(
+                            ex2 + fwdX * a + rgtX * 0.13f * lado, ey,
+                            ez2 + fwdZ * a + rgtZ * 0.13f * lado,
+                            0.34f, 0.60f, 0.58f, 0.50f, 0f,
+                            r + (if (lado > 0f) 0f else Math.PI.toFloat()), e.fase, 0f, 1f
                         )
                     }
                     // Es ciego: en vez de ojos tiene dos antenas que tantean.
@@ -1046,15 +1083,20 @@ class CaveRenderer(
                         0.05f, 0.95f, 0.86f, 0.52f, ojo * 0.6f, 0f, 0f, 0f, 1f)
                 }
                 com.mggx.laberinto.maze.MazeGenerator.EnemyKind.GUARDIAN -> {
-                    boulder.add(ex2, ey + 0.42f, ez2, 0.86f, th.rockR * 0.8f + golpe * 0.5f, th.rockG * 0.8f, th.rockB * 0.82f, flash, r, 0f, 0f, 1f)
-                    boulder.add(ex2, ey + 1.02f, ez2, 0.52f, th.rockR * 0.9f + golpe * 0.5f, th.rockG * 0.9f, th.rockB * 0.92f, flash, r + 0.8f, 0f, 0f, 1f)
-                    boulder.add(ex2 - rgtX * 0.42f, ey + 0.62f, ez2 - rgtZ * 0.42f, 0.34f,
-                        th.rockR * 0.75f, th.rockG * 0.75f, th.rockB * 0.78f, 0f, r + 2f, 0f, 0f, 1f)
-                    boulder.add(ex2 + rgtX * 0.42f, ey + 0.62f, ez2 + rgtZ * 0.42f, 0.34f,
-                        th.rockR * 0.75f, th.rockG * 0.75f, th.rockB * 0.78f, 0f, r + 3f, 0f, 0f, 1f)
-                    gem.add(ex2 + fwdX * 0.24f - rgtX * 0.11f, ey + 1.10f, ez2 + fwdZ * 0.24f - rgtZ * 0.11f,
+                    // Torso tallado, cabeza hundida entre los hombros y dos
+                    // brazos de roca colgando: se lee como un cuerpo y no como
+                    // tres piedras apiladas.
+                    torso.add(ex2, ey + 0.62f, ez2, 1.05f,
+                        th.rockR * 0.8f + golpe * 0.5f, th.rockG * 0.8f, th.rockB * 0.82f, flash, r, 0f, 0f, 1f)
+                    cabeza.add(ex2, ey + 1.18f, ez2, 0.50f,
+                        th.rockR * 0.88f + golpe * 0.5f, th.rockG * 0.88f, th.rockB * 0.90f, flash, r, 0f, 0f, 1f)
+                    brazo.add(ex2 - rgtX * 0.44f, ey + 0.66f, ez2 - rgtZ * 0.44f, 0.72f,
+                        th.rockR * 0.75f + golpe * 0.4f, th.rockG * 0.75f, th.rockB * 0.78f, flash, r, 0f, 0f, 1f)
+                    brazo.add(ex2 + rgtX * 0.44f, ey + 0.66f, ez2 + rgtZ * 0.44f, 0.72f,
+                        th.rockR * 0.75f + golpe * 0.4f, th.rockG * 0.75f, th.rockB * 0.78f, flash, r, 0f, 0f, 1f)
+                    gem.add(ex2 + fwdX * 0.22f - rgtX * 0.10f, ey + 1.20f, ez2 + fwdZ * 0.22f - rgtZ * 0.10f,
                         0.055f, 1f, 0.62f, 0.22f, ojo, 0f, 0f, 0f, 1f)
-                    gem.add(ex2 + fwdX * 0.24f + rgtX * 0.11f, ey + 1.10f, ez2 + fwdZ * 0.24f + rgtZ * 0.11f,
+                    gem.add(ex2 + fwdX * 0.22f + rgtX * 0.10f, ey + 1.20f, ez2 + fwdZ * 0.22f + rgtZ * 0.10f,
                         0.055f, 1f, 0.62f, 0.22f, ojo, 0f, 0f, 0f, 1f)
                 }
             }
@@ -1124,8 +1166,10 @@ class CaveRenderer(
         subirLuces(p)
 
         gem.draw(); cone.draw(); coneD.draw(); boxS.draw(); cyl.draw(); arrow.draw()
-        slab.draw(); wing.draw(); spike.draw(); boulder.draw(); post.draw()
+        slab.draw(); ala.draw(); spike.draw(); boulder.draw(); post.draw()
         stalactite.draw()
+        murcielago.draw(); rastrero.draw(); pata.draw()
+        torso.draw(); cabeza.draw(); brazo.draw()
     }
 
     private fun drawDecals(s: GameSession, fogDensity: Float, brightness: Float) {
