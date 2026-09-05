@@ -118,8 +118,13 @@ class PlayerStats(private val save: SaveData) {
     /** Hasta donde llega el golpe, en metros. */
     val alcanceGolpe: Float =
         (armaItem?.effect?.charges ?: GOLPE_BASE_ALCANCE_CM) / 100f
-    /** Cuanto empuja al bicho, en metros por segundo. */
-    val empujeGolpe: Float = 3.4f + danoGolpe * 0.07f
+    /**
+     * Cuanto empuja al bicho, en metros por segundo. No puede ser tan fuerte
+     * que el bicho quede afuera de rango de mordida mientras dura el
+     * aturdimiento del golpe: si empuja demasiado, atacar termina siendo la
+     * forma de no recibir nunca un mordisco, y eso deja de sentirse pelea.
+     */
+    val empujeGolpe: Float = 2.2f + danoGolpe * 0.07f
 
     /** Indice de guantes cosmeticos (0..4). */
     val gloveStyle: Int = (ItemCatalog.get(save.cosmeticGloves)?.effect?.magnitude ?: 0f).toInt()

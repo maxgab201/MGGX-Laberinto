@@ -31,7 +31,7 @@ object WorldMesh {
 
     /** Cuanto se abolla la roca hacia adentro y hacia afuera, en metros. */
     private const val BULTO_PARED = 0.30f
-    private const val BULTO_PISO = 0.13f
+    internal const val BULTO_PISO = 0.13f
     private const val BULTO_TECHO = 0.34f
 
     /** Capas del atlas de texturas. */
@@ -73,12 +73,30 @@ object WorldMesh {
     }
 
     /** Dos octavas: bultos grandes y grumos chicos. */
-    private fun roca(x: Float, y: Float, z: Float): Float =
+    internal fun roca(x: Float, y: Float, z: Float): Float =
         ruido(x * 0.62f, y * 0.62f, z * 0.62f) * 0.72f +
             ruido(x * 1.7f + 11f, y * 1.7f, z * 1.7f - 7f) * 0.28f
 
     /** Altura del piso en el centro de una casilla (para apoyar objetos). */
     fun floorHeight(maze: Maze, gx: Int, gy: Int): Float = maze.floorY(gx, gy)
+
+    /**
+     * Altura real del piso en un punto (x,z) cualquiera, con la misma
+     * abolladura de ruido que dibuja [cara]. [floorHeight] da la altura
+     * TEORICA y plana de la casilla; el piso que de verdad se ve puede estar
+     * hasta [BULTO_PISO] por encima o por debajo de eso, maximo justo en el
+     * centro de la casilla. Sirve para apoyar decals (marcas de tiza, rastro
+     * de pisadas) sobre la roca real y que no queden enterrados.
+     */
+    fun realFloorHeight(maze: Maze, x: Float, z: Float): Float {
+        val gx = (x / CELL).toInt().coerceIn(0, maze.gw - 1)
+        val gy = (z / CELL).toInt().coerceIn(0, maze.gh - 1)
+        val fy = maze.floorY(gx, gy)
+        val s = ((x - gx * CELL) / CELL).coerceIn(0f, 1f)
+        val t = ((z - gy * CELL) / CELL).coerceIn(0f, 1f)
+        val apaga = sin(PI.toFloat() * s) * sin(PI.toFloat() * t)
+        return fy + roca(x, fy, z) * (-BULTO_PISO) * apaga
+    }
 
     /** Altura del techo en el centro de una casilla. */
     fun ceilHeight(maze: Maze, gx: Int, gy: Int): Float = maze.ceilY(gx, gy)

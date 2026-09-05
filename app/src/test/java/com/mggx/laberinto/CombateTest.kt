@@ -288,4 +288,61 @@ class CombateTest {
         ).toInt()
         assertTrue("a mano limpia hacen falta $golpes golpes, son demasiados", golpes <= 3)
     }
+
+    // ------------------------------------------------------ mordida (bug real)
+
+    /**
+     * Planta un bicho pegado al jugador, bien adentro del rango de mordida
+     * (no del rango de golpe, que es mas largo). Sirve para probar que la
+     * mordida en si funciona de punta a punta, pasando por GameSession.update().
+     */
+    private fun bichoBienCerca(
+        s: GameSession,
+        kind: MazeGenerator.EnemyKind = MazeGenerator.EnemyKind.MURCIELAGO
+    ): Enemy {
+        val e = s.enemies.firstOrNull { it.kind == kind }
+            ?: error("el nivel de prueba no tiene un ${kind.name}")
+        e.x = s.posX + 0.30f
+        e.z = s.posZ
+        e.altura = s.posY + (if (e.vuela) 1.45f else 0f)
+        return e
+    }
+
+    @Test
+    fun elBichoMuerdeAlJugadorPasivoDePuntaAPunta() {
+        // El bug que reporto el jugador: "los bichos no hacen dano". Esto
+        // prueba la mordida de verdad, pasando por GameSession.update() (no
+        // por EnemyBrain aislado), sin que el jugador ataque nunca.
+        val save = perfil()
+        val s = sesionCon(save, MazeGenerator.EnemyKind.MURCIELAGO)
+        bichoBienCerca(s)
+        val vidaInicial = s.health
+        repeat(600) {
+            bichoBienCerca(s)
+            s.update(1f / 60f, GameSession.Input())
+        }
+        assertTrue(
+            "un murcielago pegado al jugador durante 10s no le bajo la vida",
+            s.health < vidaInicial
+        )
+    }
+
+    @Test
+    fun elBichoSiguePudiendoMorderDurranteElCombateActivo() {
+        // Guardrail de balance: el aturdimiento/empuje del golpe no puede
+        // dejar al bicho sin NINGUNA chance de morder mientras el jugador
+        // pelea, o "pegar" se vuelve la forma de no recibir nunca dano.
+        val save = perfil()
+        val s = sesionCon(save, MazeGenerator.EnemyKind.MURCIELAGO)
+        bichoEnfrente(s)
+        val vidaInicial = s.health
+        repeat(300) {
+            if (s.puedeGolpear()) s.golpear()
+            s.update(1f / 60f, GameSession.Input())
+        }
+        assertTrue(
+            "peleando activamente 5s el bicho nunca consiguio morder",
+            s.health < vidaInicial
+        )
+    }
 }

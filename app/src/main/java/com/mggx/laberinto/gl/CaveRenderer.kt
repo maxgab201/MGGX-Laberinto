@@ -10,7 +10,6 @@ import com.mggx.laberinto.maze.MazeGenerator
 import java.util.concurrent.ConcurrentLinkedQueue
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
@@ -33,6 +32,22 @@ class CaveRenderer(
     companion object {
         /** Tiene que coincidir con el MAX_LUCES de los shaders. */
         const val MAX_LUCES = 8
+
+        // Radio en metros de cada pickup (el octaedro base de shapeGem mide
+        // radio 1.0, asi que esto ES el radio real del objeto). Antes eran
+        // 0.155/0.255/0.34 - el Vetagris llegaba a medir lo mismo que el
+        // cuerpo entero del jugador.
+        const val ESCALA_ECO = 0.075f
+        const val ESCALA_ECO_GRANDE = 0.12f
+        const val ESCALA_VETAGRIS = 0.16f
+
+        /** Radio de la punta de una estalactita/estalagmita de bioma cueva. */
+        const val RADIO_ESTALACTITA = 0.13f
+
+        /** Escala base de la llama de una antorcha (antes de multiplicar por fl). */
+        const val ESCALA_LLAMA = 0.085f
+        /** Altura del poste de la antorcha (coincide con el cyl.add de abajo). */
+        const val ALTO_POSTE_ANTORCHA = 0.42f
     }
 
     /** Estado de entrada compartido con la vista (se escribe desde el hilo de UI). */
@@ -286,6 +301,9 @@ class CaveRenderer(
     private var shapeBoulder: InstancedShape? = null
     /** Poste fino: los parantes de los marcos de la mina. */
     private var shapePost: InstancedShape? = null
+    /** Estalactita: punta fina colgando del techo (no confundir con shapeConeDown,
+     * que sigue siendo el sombrero corto y ancho de los hongos gigantes). */
+    private var shapeStalactite: InstancedShape? = null
 
     // ------------------------------------------------------------ brazos
     private val armsVao = IntArray(1)
@@ -590,10 +608,15 @@ class CaveRenderer(
         shapeGem?.release(); shapeCone?.release(); shapeConeDown?.release()
         shapeBox?.release(); shapeCylinder?.release(); shapeArrow?.release()
         shapeSlab?.release(); shapeWing?.release(); shapeSpike?.release()
-        shapeBoulder?.release(); shapePost?.release()
+        shapeBoulder?.release(); shapePost?.release(); shapeStalactite?.release()
         shapeGem = InstancedShape(PropMeshes.octahedron(1.5f), 1400)
-        shapeCone = InstancedShape(PropMeshes.cone(7, 1f, 0.42f, false), 340)
+        // Estalagmita (hacia arriba): antes radio 0.42 con altura 1, una
+        // relacion de "gorro de fiesta" (2.4:1). Ahora una punta de verdad.
+        shapeCone = InstancedShape(PropMeshes.cone(8, 1f, RADIO_ESTALACTITA, false), 340)
+        // El sombrero corto y ancho del hongo gigante SIGUE usando esta malla
+        // (queda igual). La estalactita de bioma cueva pasa a shapeStalactite.
         shapeConeDown = InstancedShape(PropMeshes.cone(7, 1f, 0.36f, true), 340)
+        shapeStalactite = InstancedShape(PropMeshes.cone(8, 1f, RADIO_ESTALACTITA, true), 340)
         shapeBox = InstancedShape(PropMeshes.box(1f, 1f, 1f), 700)
         shapeCylinder = InstancedShape(PropMeshes.cylinder(7, 1f, 0.1f), 900)
         shapeArrow = InstancedShape(PropMeshes.arrow(), 4)
@@ -720,6 +743,7 @@ class CaveRenderer(
         val spike = shapeSpike ?: return
         val boulder = shapeBoulder ?: return
         val post = shapePost ?: return
+        val stalactite = shapeStalactite ?: return
 
         val cull = when (save.settings.quality) { 0 -> 22f; 1 -> 28f; 2 -> 34f; else -> 42f }
         val cull2 = cull * cull
@@ -731,6 +755,7 @@ class CaveRenderer(
 
         gem.begin(); cone.begin(); coneD.begin(); boxS.begin(); cyl.begin(); arrow.begin()
         slab.begin(); wing.begin(); spike.begin(); boulder.begin(); post.begin()
+        stalactite.begin()
         val C = GameSession.CELL
         val m = s.maze
 
@@ -743,11 +768,11 @@ class CaveRenderer(
             val fy = WorldMesh.floorHeight(s.maze, pk.gx, pk.gy)
             when (pk.kind) {
                 GameSession.PickupKind.ECO ->
-                    gem.add(x, fy + 0.62f, z, 0.155f, 0.98f, 0.78f, 0.36f, 0.55f, pk.bob * 1.4f, pk.bob, 1f, 1f)
+                    gem.add(x, fy + 0.62f, z, ESCALA_ECO, 0.98f, 0.78f, 0.36f, 0.55f, pk.bob * 1.4f, pk.bob, 1f, 1f)
                 GameSession.PickupKind.ECO_GRANDE ->
-                    gem.add(x, fy + 0.72f, z, 0.255f, 1.0f, 0.86f, 0.42f, 0.85f, pk.bob * 1.1f, pk.bob, 1f, 1f)
+                    gem.add(x, fy + 0.72f, z, ESCALA_ECO_GRANDE, 1.0f, 0.86f, 0.42f, 0.85f, pk.bob * 1.1f, pk.bob, 1f, 1f)
                 GameSession.PickupKind.VETAGRIS ->
-                    gem.add(x, fy + 0.80f, z, 0.34f, 0.80f, 0.92f, 1.0f, 1.05f, pk.bob * 0.8f, pk.bob, 1f, 1f)
+                    gem.add(x, fy + 0.80f, z, ESCALA_VETAGRIS, 0.80f, 0.92f, 1.0f, 1.05f, pk.bob * 0.8f, pk.bob, 1f, 1f)
                 GameSession.PickupKind.COFRE -> {
                     boxS.add(x, fy + 0.30f, z, 0.62f, 0.36f, 0.24f, 0.14f, 0.04f, pk.bob * 0.15f, pk.bob, 0f, 1f)
                     boxS.add(x, fy + 0.60f, z, 0.30f, 0.86f, 0.66f, 0.24f, 0.20f, pk.bob * 0.15f, pk.bob, 0f, 1f)
@@ -793,7 +818,7 @@ class CaveRenderer(
                     if ((gx + gy) % 2 == 0) {
                         cone.add(x, fy, z, h, t.rockR * 1.15f, t.rockG * 1.15f, t.rockB * 1.15f, 0f, giro, 0f, 0f, 1f)
                     } else {
-                        coneD.add(x, WorldMesh.ceilHeight(s.maze, gx, gy), z, h * 0.78f,
+                        stalactite.add(x, WorldMesh.ceilHeight(s.maze, gx, gy), z, h * 0.78f,
                             t.rockR * 0.95f, t.rockG * 0.95f, t.rockB * 0.95f, 0f,
                             ((gx * 13 + gy * 29) % 20) * 0.31f, 0f, 0f, 1f)
                     }
@@ -814,10 +839,16 @@ class CaveRenderer(
             else if (m.isSolid(gx, gy + 1)) oz = C * 0.38f
             val tx = x + ox; val tz = z + oz
             val baseY = WorldMesh.floorHeight(s.maze, gx, gy) + 1.75f
-            cyl.add(tx, baseY, tz, 0.42f, 0.28f, 0.19f, 0.12f, 0.02f, 0f, 0f, 0f, 1f)
+            cyl.add(tx, baseY, tz, ALTO_POSTE_ANTORCHA, 0.28f, 0.19f, 0.12f, 0.02f, 0f, 0f, 0f, 1f)
             val ph = ((gx * 41 + gy * 7) % 30) * 0.21f
             val fl = 0.86f + 0.14f * sin((time * 7f + ph).toDouble()).toFloat()
-            gem.add(tx, baseY + 0.50f, tz, 0.17f * fl, 1.0f, 0.62f, 0.22f, 1.35f, time * 2.1f + ph, ph, 1f, 1f)
+            // Apoyada en la punta del poste (ALTO_POSTE_ANTORCHA), no
+            // penetrandolo: antes la llama media 3.6x el ancho del poste y se
+            // le hundia adentro ~17cm.
+            gem.add(
+                tx, baseY + ALTO_POSTE_ANTORCHA + 0.13f, tz, ESCALA_LLAMA * fl,
+                1.0f, 0.62f, 0.22f, 1.35f, time * 2.1f + ph, ph, 1f, 1f
+            )
         }
 
         // --- ambientacion: cristales, rocas, hongos y marcos de madera
@@ -1094,6 +1125,7 @@ class CaveRenderer(
 
         gem.draw(); cone.draw(); coneD.draw(); boxS.draw(); cyl.draw(); arrow.draw()
         slab.draw(); wing.draw(); spike.draw(); boulder.draw(); post.draw()
+        stalactite.draw()
     }
 
     private fun drawDecals(s: GameSession, fogDensity: Float, brightness: Float) {
@@ -1101,9 +1133,12 @@ class CaveRenderer(
         var quads = 0
         val threadOn = s.effects.isActive(com.mggx.laberinto.game.EffectType.HILO_ARIADNA)
 
-        fun quad(x: Float, z: Float, gx: Int, gy: Int, size: Float, r: Float, g: Float, b: Float, a: Float) {
+        fun quad(x: Float, z: Float, size: Float, r: Float, g: Float, b: Float, a: Float) {
             if (quads >= decalCapacity) return
-            val y = WorldMesh.floorHeight(s.maze, gx, gy) + 0.022f
+            // Apoyado en la altura REAL del piso (con su abolladura de
+            // ruido), no en el plano teorico: si no, en buena parte de cada
+            // casilla la marca queda tapada por la roca (hasta 13cm de bulto).
+            val y = WorldMesh.realFloorHeight(s.maze, x, z) + 0.02f
             val h = size * 0.5f
             val v = floatArrayOf(
                 x - h, y, z - h, 0f, 0f,
@@ -1123,21 +1158,17 @@ class CaveRenderer(
         for (tp in s.trail) {
             val dx = tp.x - px; val dz = tp.z - pz
             if (dx * dx + dz * dz > 900f) continue
-            val gx = (tp.x / GameSession.CELL).toInt()
-            val gy = (tp.z / GameSession.CELL).toInt()
             val alpha = if (threadOn) 0.55f else (tp.life / s.stats.trailSeconds).coerceIn(0f, 1f) * 0.32f
-            if (threadOn) quad(tp.x, tp.z, gx, gy, 1.05f, 0.45f, 0.95f, 0.75f, alpha)
-            else quad(tp.x, tp.z, gx, gy, 0.72f, 0.72f, 0.66f, 0.52f, alpha)
+            if (threadOn) quad(tp.x, tp.z, 1.05f, 0.45f, 0.95f, 0.75f, alpha)
+            else quad(tp.x, tp.z, 0.72f, 0.72f, 0.66f, 0.52f, alpha)
         }
         val markColors = arrayOf(
             floatArrayOf(1f, 0.85f, 0.35f), floatArrayOf(0.45f, 0.9f, 1f),
             floatArrayOf(0.6f, 1f, 0.55f), floatArrayOf(1f, 0.55f, 0.75f)
         )
         for (mk in s.marks) {
-            val gx = (mk.x / GameSession.CELL).toInt()
-            val gy = (mk.z / GameSession.CELL).toInt()
             val c = markColors[mk.colorIndex % markColors.size]
-            quad(mk.x, mk.z, gx, gy, 1.5f, c[0], c[1], c[2], 0.78f)
+            quad(mk.x, mk.z, 1.5f, c[0], c[1], c[2], 0.78f)
         }
         if (quads == 0) return
 
@@ -1190,21 +1221,28 @@ class CaveRenderer(
         fun armMatrix(out: FloatArray, side: Float) {
             // Solo el brazo derecho pega; el izquierdo acompana apenas.
             val mio = if (side > 0f) swing else swing * 0.22f
+            val pose = BrazoAnim.pose(side, mio, sway, bob, breathe)
             Matrix.setIdentityM(out, 0)
-            Matrix.translateM(
-                out, 0,
-                side * (0.258f + sway * side * 0.5f) - side * mio * 0.16f,
-                -0.196f + bob + breathe + mio * 0.10f,
-                -0.48f - abs(sway) * 0.4f + mio * 0.20f
-            )
+            Matrix.translateM(out, 0, pose.tx, pose.ty, pose.tz)
             // El brazo entra desde la esquina de abajo: se abre hacia afuera con
             // el giro en Y y baja apenas con el de X, para que se vea el dorso
-            // de la mano y los dedos sin mirarlos de punta.
-            Matrix.rotateM(out, 0, side * -27f + side * mio * 22f, 0f, 1f, 0f)
-            Matrix.rotateM(out, 0, 3f + bob * 80f - mio * 46f, 1f, 0f, 0f)
-            Matrix.rotateM(out, 0, side * 14f - side * mio * 30f, 0f, 0f, 1f)
-            val esc = 0.95f + mio * 0.10f
-            Matrix.scaleM(out, 0, esc, esc, esc)
+            // de la mano y los dedos sin mirarlos de punta. Esta es la
+            // orientacion de REPOSO: sigue pivotando cerca de la muneca (el
+            // origen de la malla), que es donde se ve bien.
+            Matrix.rotateM(out, 0, pose.rotYReposo, 0f, 1f, 0f)
+            Matrix.rotateM(out, 0, pose.rotXReposo, 1f, 0f, 0f)
+            Matrix.rotateM(out, 0, pose.rotZReposo, 0f, 0f, 1f)
+            // El giro EXTRA del golpe pivotea en el codo (mucho mas lejos del
+            // origen), no en la muneca: si rotara ahi, todo el antebrazo
+            // describiria un arco de medio metro para llegar al mismo angulo.
+            if (mio != 0f) {
+                Matrix.translateM(out, 0, 0f, 0f, BrazoAnim.PIVOTE_CODO_Z)
+                Matrix.rotateM(out, 0, pose.rotYSwing, 0f, 1f, 0f)
+                Matrix.rotateM(out, 0, pose.rotXSwing, 1f, 0f, 0f)
+                Matrix.rotateM(out, 0, pose.rotZSwing, 0f, 0f, 1f)
+                Matrix.translateM(out, 0, 0f, 0f, -BrazoAnim.PIVOTE_CODO_Z)
+            }
+            Matrix.scaleM(out, 0, pose.escala, pose.escala, pose.escala)
         }
         armMatrix(armMatL, -1f)
         armMatrix(armMatR, 1f)

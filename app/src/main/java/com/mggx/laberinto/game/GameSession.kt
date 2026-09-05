@@ -214,7 +214,6 @@ class GameSession(
     var freeSonarTimer = 0f; private set
 
     private var timerFrozen = 0f
-    private var hurtCooldown = 0f
     private var sinceDamage = 0f
     private var bobPhase = 0f
     private var stepAccum = 0f
@@ -371,7 +370,6 @@ class GameSession(
         if (golpeRecarga > 0f) golpeRecarga -= dt
         if (golpeAnim > 0f) golpeAnim = max(0f, golpeAnim - dt / DURACION_SWING)
         if (phaseWindow > 0f) phaseWindow -= dt
-        if (hurtCooldown > 0f) hurtCooldown -= dt
         sinceDamage += dt
 
         // --- cronometro (se puede congelar)
@@ -887,7 +885,6 @@ class GameSession(
     }
 
     private fun mordidaDe(e: Enemy) {
-        if (effects.isActive(EffectType.INMUNE_TRAMPAS)) return
         var dmg = e.kind.dano * (1f + level * 0.010f)
         dmg *= stats.damageTaken
         dmg *= (1f - effects.magnitude(EffectType.RESISTENCIA, 0f))
