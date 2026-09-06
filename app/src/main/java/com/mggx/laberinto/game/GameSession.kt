@@ -4,6 +4,8 @@ import com.mggx.laberinto.core.SaveData
 import com.mggx.laberinto.maze.CaveTheme
 import com.mggx.laberinto.maze.Maze
 import com.mggx.laberinto.maze.MazeGenerator
+import com.mggx.laberinto.net.MatchLink
+import com.mggx.laberinto.net.NetProtocol
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -154,6 +156,23 @@ class GameSession(
     val rocks: List<Int> = blueprint.rocks
     val mushrooms: List<Int> = blueprint.mushrooms
     val beams: List<Int> = blueprint.beams
+
+    // ---------------------------------------------------------- de a varios
+    /**
+     * Enlace con la sala, si esta partida es de a varios. En una partida
+     * solitaria queda en null y nada de lo que sigue se ejecuta.
+     */
+    var red: MatchLink? = null
+
+    /**
+     * Cooperativo: estas caido esperando que un companiero te levante. No te
+     * podes mover, pero seguis viendo (y sigue corriendo el reloj).
+     */
+    var caido: Boolean = false
+        private set
+
+    /** Indice de casilla, que es como viajan los hechos del mundo por la red. */
+    private fun indiceDe(gx: Int, gy: Int): Int = gy * maze.gw + gx
 
     /** Bichos vivos del nivel y su cabeza compartida. */
     val enemies: List<Enemy> = blueprint.enemies.mapIndexed { i, e ->
@@ -370,6 +389,8 @@ class GameSession(
         if (golpeRecarga > 0f) golpeRecarga -= dt
         if (golpeAnim > 0f) golpeAnim = max(0f, golpeAnim - dt / DURACION_SWING)
         if (phaseWindow > 0f) phaseWindow -= dt
+        if (esperaLevantada > 0f) esperaLevantada -= dt
+        if (recargaRevivir > 0f) recargaRevivir -= dt
         sinceDamage += dt
 
         // --- cronometro (se puede congelar)
@@ -383,11 +404,18 @@ class GameSession(
         yawDeg = normalizeAngle(yawDeg - input.lookX * lookMul)
         pitchDeg = (pitchDeg + input.lookY * lookMul).coerceIn(-82f, 82f)
 
-        // --- movimiento
-        moveStep(dt, input)
+        // --- movimiento. Caido se sigue mirando alrededor, pero no se camina:
+        // por eso la camara de arriba si se movio y esto no.
+        if (!caido) moveStep(dt, input)
+
+        // --- la sala, si esta partida es de a varios
+        pasoDeRed(dt)
 
         // --- regeneracion / desgaste
-        if (stats.regenPerSecond > 0f && sinceDamage > 2.5f && health < stats.maxHealth) {
+        // Tirado en el piso no se regenera: si no, con una reliquia de
+        // regeneracion el caido llegaba a la vida llena mirando el techo, y
+        // la media barra con la que te levantan no significaba nada.
+        if (!caido && stats.regenPerSecond > 0f && sinceDamage > 2.5f && health < stats.maxHealth) {
             health = min(stats.maxHealth, health + stats.regenPerSecond * dt)
         }
 
@@ -414,8 +442,8 @@ class GameSession(
             if (nt <= 0f) toasts.removeAt(i) else toasts[i] = m to nt
         }
 
-        // --- llegada
-        if (hypot(exitWorldX - posX, exitWorldZ - posZ) <= EXIT_RADIUS) win()
+        // --- llegada. Caido no se sale: primero que te levanten.
+        if (!caido && hypot(exitWorldX - posX, exitWorldZ - posZ) <= EXIT_RADIUS) win()
     }
 
     private fun normalizeAngle(a: Float): Float {
@@ -715,6 +743,9 @@ class GameSession(
 
     private fun collect(p: Pickup, bonus: Float) {
         p.taken = true
+        // Avisar antes de repartir: para los demas este objeto ya no esta,
+        // aunque los ecos me los lleve yo.
+        red?.avisarTomado(indiceDe(p.gx, p.gy))
         when (p.kind) {
             PickupKind.ECO -> {
                 var v = 5
@@ -865,6 +896,22 @@ class GameSession(
     /** Bichos que ahora mismo te estan persiguiendo. */
     fun enemigosAlerta(): Int = enemies.count { it.alerta && it.vivo }
 
+    /**
+     * Los bichos.
+     *
+     * OJO, limitacion conocida del modo de a varios: los bichos NO viajan por
+     * la red. Nacen en el mismo lugar en los dos telefonos (la cueva es la
+     * misma), pero de ahi en mas cada uno corre su propia cabeza y persigue a
+     * su propio jugador, asi que al rato estan en lugares distintos en cada
+     * pantalla.
+     *
+     * Es a proposito y no un olvido: sincronizarlos significa mandar la
+     * posicion de veinte bichos diez veces por segundo, y ademas decidir cual
+     * de los dos telefonos manda (hoy no hay ninguno que mande sobre el otro).
+     * Eso es otro laburo entero. Para jugar con amigos alcanza asi: lo que si
+     * esta sincronizado es todo lo que deja marca en el mundo (las monedas,
+     * las paredes rotas, las trampas) y donde esta cada uno.
+     */
     private fun updateEnemies(dt: Float, input: Input) {
         if (enemies.isEmpty()) return
         // Arrastrandose con Paso de Sombra directamente no te ven.
@@ -913,6 +960,7 @@ class GameSession(
     private fun triggerTrap(t: TrapInstance) {
         t.cooldown = 2.5f
         t.revealed = true
+        red?.avisarTrampa(indiceDe(t.gx, t.gy))
         if (undoTrapCharges > 0) {
             undoTrapCharges--
             toast("El Cristal de Retroceso te salvo")
@@ -946,6 +994,10 @@ class GameSession(
 
     fun applyDamage(amount: Float) {
         if (amount <= 0f) return
+        // Al caido no se le pega mas: ya esta en el piso esperando que lo
+        // levanten, y si siguiera recibiendo dano el primer bicho que pase lo
+        // mandaria a PERDIDO sin que nadie pueda hacer nada.
+        if (caido) return
         health -= amount
         damageTakenTotal += amount
         sinceDamage = 0f
@@ -1067,6 +1119,7 @@ class GameSession(
         pickCharges--
         geometryDirty = true
         maze.refreshSolution()
+        red?.avisarRoto(indiceDe(target.first, target.second))
         toast("Pared rota")
         play(Sfx.ROMPER)
         return true
@@ -1104,10 +1157,172 @@ class GameSession(
     fun canBreakWall(): Boolean = pickCharges > 0 && wallAhead() != null
     fun canPhase(): Boolean = phaseCharges > 0 && wallAhead() != null
 
+    // ------------------------------------------------------------ de a varios
+
+    /**
+     * Un paso de sala: manda lo tuyo, aplica lo de los demas y hace cumplir
+     * las reglas del modo. En una partida solitaria no hace nada.
+     */
+    private fun pasoDeRed(dt: Float) {
+        val r = red ?: return
+        for (m in r.bombear(dt, posX, posY, posZ, yawDeg, postura.ordinal)) {
+            aplicarDeOtro(m)
+        }
+        when (r.match.modo) {
+            NetProtocol.Modo.CARRERA -> {
+                // El primero que sale corta la partida para todos. Al que no
+                // gano le queda lo que junto, igual que si se hubiera vuelto.
+                if (phase == Phase.JUGANDO && r.match.ganador() != null && !llegaste) {
+                    val g = r.match.ganador()
+                    toast("Gano ${g?.nombre ?: "el otro"}")
+                    phase = Phase.PERDIDO
+                    guardarExploracion()
+                    play(Sfx.PERDER)
+                }
+            }
+            NetProtocol.Modo.COOPERATIVO -> {
+                if (!caido) levantarCaidosCerca(r)
+                // Si cayeron todos no hay quien levante a nadie: se termino.
+                if (caido && r.match.equipoCaido() && phase == Phase.JUGANDO) {
+                    toast("Cayeron todos")
+                    phase = Phase.PERDIDO
+                    guardarExploracion()
+                    play(Sfx.PERDER)
+                }
+            }
+        }
+    }
+
+    /**
+     * Mantiene viva la sala cuando la partida no esta corriendo (pausa).
+     *
+     * Sin esto, abrir el mapa 15 segundos te sacaba de la sala: el companiero
+     * dejaba de recibir latidos tuyos y te daba por ido.
+     */
+    fun latirRed(dt: Float) {
+        val r = red ?: return
+        for (m in r.latir(dt)) aplicarDeOtro(m)
+    }
+
+    /** Un hecho del mundo que hizo otro y me tiene que cambiar la cueva. */
+    private fun aplicarDeOtro(m: NetProtocol.Mensaje) {
+        if (m.de == red?.yo) return
+        when (m.tipo) {
+            NetProtocol.Tipo.TOMAR -> {
+                val i = m.entero(0)
+                for (p in pickups) {
+                    if (p.taken || indiceDe(p.gx, p.gy) != i) continue
+                    p.taken = true
+                    // En cooperativo la plata es de los dos, que es lo que
+                    // promete el modo: lo que levanta uno lo cobran todos. En
+                    // carrera no, ahi cada uno junta lo suyo.
+                    if (red?.match?.modo == NetProtocol.Modo.COOPERATIVO) {
+                        when (p.kind) {
+                            PickupKind.ECO -> ecosCollected += 5
+                            PickupKind.ECO_GRANDE -> ecosCollected += 25
+                            PickupKind.VETAGRIS -> vetagrisCollected += 1
+                            // El cofre reparte un botin al azar que solo sabe
+                            // el que lo abrio, asi que se paga el minimo.
+                            PickupKind.COFRE -> ecosCollected += 40
+                        }
+                        toast("Tu companiero encontro algo  (+compartido)")
+                    }
+                    break
+                }
+            }
+            NetProtocol.Tipo.ROMPER -> {
+                val i = m.entero(0)
+                val gx = i % maze.gw
+                val gy = i / maze.gw
+                if (maze.isSolid(gx, gy)) {
+                    maze.setSolid(gx, gy, false)
+                    if (!maze.isSolid(gx, gy)) {
+                        geometryDirty = true
+                        maze.refreshSolution()
+                    }
+                }
+            }
+            NetProtocol.Tipo.TRAMPA -> {
+                // Una trampa que ya salto otro queda descubierta y descargada
+                // para todos: es la misma trampa.
+                val i = m.entero(0)
+                for (t in traps) {
+                    if (indiceDe(t.gx, t.gy) == i) { t.revealed = true; t.cooldown = 2.5f; break }
+                }
+            }
+            NetProtocol.Tipo.REVIVIR -> {
+                // Si todavia no cumpliste el tiempo en el piso, el pedido se
+                // ignora: el companiero lo va a repetir mientras siga al lado.
+                if (m.arg(0) == red?.yo && caido && esperaLevantada <= 0f) levantarme()
+            }
+            NetProtocol.Tipo.LLEGADA -> {
+                if (red?.match?.modo == NetProtocol.Modo.COOPERATIVO && phase == Phase.JUGANDO) {
+                    toast("${red?.match?.jugador(m.de)?.nombre ?: "Tu companiero"} salio")
+                }
+            }
+            else -> Unit
+        }
+    }
+
+    /**
+     * Cooperativo: al acercarte a un caido, lo levantas.
+     *
+     * Aca solo se PIDE: el que decide si se levanta es el propio caido, que
+     * es el unico que sabe cuanto lleva en el piso. Si se marcara aca que ya
+     * esta levantado, los dos telefonos quedarian contando cosas distintas.
+     */
+    private fun levantarCaidosCerca(r: MatchLink) {
+        if (recargaRevivir > 0f) return
+        for (j in r.match.otros()) {
+            if (!j.caido || j.sinPose) continue
+            if (hypot(j.x - posX, j.z - posZ) > RADIO_LEVANTAR) continue
+            r.avisarRevivir(j.id)
+            recargaRevivir = 0.5f
+            break
+        }
+    }
+
+    /** Te levantaron: volves a la vida con media barra. */
+    private fun levantarme() {
+        caido = false
+        health = max(health, stats.maxHealth * 0.5f)
+        // Avisar que ya estas de pie: el que te levanto no da por hecho que
+        // funciono, justamente porque podias estar todavia sin poder.
+        red?.avisarDePie()
+        toast("Te levantaron!")
+        play(Sfx.USAR)
+    }
+
+    /** Ya llegaste a la salida (en carrera, el que llega primero gana). */
+    private var llegaste = false
+
+    /**
+     * Segundos que faltan para que te puedan levantar.
+     *
+     * Sin esta espera el cooperativo no tiene sentido: dos que van pegados se
+     * levantan en el mismo frame en que caen y no pierden nunca. Con unos
+     * segundos en el piso, caer cuesta algo y hay que ir a buscar al otro.
+     */
+    private var esperaLevantada = 0f
+
+    /** Para no mandar un pedido de levantada en cada frame. */
+    private var recargaRevivir = 0f
+
+    /** Cuanto se queda uno en el piso antes de que lo puedan levantar. */
+    private val ESPERA_LEVANTADA = 2.5f
+
+    /** Cerca de cuantos metros hay que estar para levantar a un caido. */
+    private val RADIO_LEVANTAR = 1.5f
+
+    /** Segundos que te faltan tirado antes de que te puedan levantar. */
+    fun esperaParaLevantarte(): Float = max(0f, esperaLevantada)
+
     // --------------------------------------------------------- fin de nivel
 
     private fun win() {
         if (phase != Phase.JUGANDO) return
+        llegaste = true
+        red?.avisarLlegada(elapsedMs)
         phase = Phase.GANADO
         guardarExploracion()
         play(Sfx.GANAR)
@@ -1115,6 +1330,20 @@ class GameSession(
 
     private fun lose() {
         if (phase != Phase.JUGANDO) return
+        val r = red
+        // En cooperativo no se pierde de a uno: quedas caido, seguis viendo, y
+        // un companiero que se te acerque te levanta. Si caen todos, ahi si se
+        // termina (lo resuelve pasoDeRed, que es quien ve el estado de todos).
+        if (r != null && r.match.modo == NetProtocol.Modo.COOPERATIVO && !caido) {
+            caido = true
+            health = 0f
+            velX = 0f; velZ = 0f
+            esperaLevantada = ESPERA_LEVANTADA
+            r.avisarCaido()
+            toast("Caiste. Esperá que te levanten")
+            play(Sfx.PERDER)
+            return
+        }
         phase = Phase.PERDIDO
         health = 0f
         guardarExploracion()
@@ -1126,7 +1355,20 @@ class GameSession(
         if (stats.mapaPersistente) save.rememberExplored(level, revealed)
     }
 
-    fun forceLose() { lose() }
+    /**
+     * Abandonar el nivel a proposito, desde el menu de pausa.
+     *
+     * No pasa por [lose]: en cooperativo esa via te deja caido esperando que
+     * te levanten, con lo cual el boton "Abandonar" no abandonaba nada.
+     */
+    fun forceLose() {
+        if (phase != Phase.JUGANDO) return
+        caido = false
+        phase = Phase.PERDIDO
+        health = 0f
+        guardarExploracion()
+        play(Sfx.PERDER)
+    }
 
     /** Recompensa final. Se llama una sola vez desde la pantalla de resultado. */
     class Reward(
@@ -1158,7 +1400,12 @@ class GameSession(
         return if (phase == Phase.GANADO) {
             save.addEcos(r.totalEcos)
             if (r.vetagris > 0) save.addVetagris(r.vetagris)
-            save.onLevelCompleted(level, elapsedMs, steps)
+            // En una sala el nivel lo elige el anfitrion, y puede estar muy
+            // por encima del tuyo. Ganarlo cuenta como victoria y te avanza
+            // uno, pero no te regala de golpe los veinte niveles que no
+            // jugaste: el progreso sigue siendo tuyo, no del que te invito.
+            val acreditable = if (red != null) level.coerceAtMost(save.maxLevel) else level
+            save.onLevelCompleted(acreditable, elapsedMs, steps)
             if (stats.vetagrisIncome) save.consumeVetagrisCounter()
             r
         } else {

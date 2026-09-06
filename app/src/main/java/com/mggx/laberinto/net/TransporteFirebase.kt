@@ -50,8 +50,48 @@ class TransporteFirebase(codigoSala: String) : Transporte {
         override fun onCancelled(error: DatabaseError) = Unit
     }
 
+    /**
+     * La consulta filtrada, si hizo falta una: hay que soltarla al cerrar.
+     *
+     * Va declarada ANTES del init a proposito: en Kotlin las propiedades se
+     * inicializan en el orden en que estan escritas, asi que si estuviera
+     * abajo su "= null" correria DESPUES del init y borraria la consulta que
+     * el init acaba de guardar, dejando el listener colgado para siempre.
+     */
+    @Volatile private var consulta: com.google.firebase.database.Query? = null
+
     init {
-        raiz.addChildEventListener(listener)
+        // Al suscribirse, Firebase entrega PRIMERO todo lo que ya estaba en el
+        // nodo, y recien despues lo que va llegando. Eso es justo lo que no se
+        // quiere: si alguien uso esta misma sala hace un rato, entrarian los
+        // mensajes de esa partida vieja, y un "arranque" viejo te tira solo a
+        // una cueva que ya termino.
+        //
+        // La solucion no usa relojes (el del telefono y el del servidor nunca
+        // coinciden del todo): los ids que genera push() se ordenan solos por
+        // tiempo, asi que alcanza con mirar cual es el ultimo que ya estaba y
+        // pedir de ahi en adelante.
+        raiz.orderByKey().limitToLast(1)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    if (!abierto) return
+                    val ultimoViejo = snapshot.children.lastOrNull()?.key
+                    if (ultimoViejo == null) {
+                        // Sala limpia: no hay nada viejo de lo que cuidarse.
+                        raiz.addChildEventListener(listener)
+                    } else {
+                        consulta = raiz.orderByKey().startAfter(ultimoViejo)
+                        consulta?.addChildEventListener(listener)
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    // Sin permiso de lectura no hay sala posible, pero es
+                    // mejor escuchar de mas que no escuchar nada.
+                    if (!abierto) return
+                    raiz.addChildEventListener(listener)
+                }
+            })
     }
 
     override fun enviar(texto: String) {
@@ -87,6 +127,11 @@ class TransporteFirebase(codigoSala: String) : Transporte {
 
     override fun cerrar() {
         abierto = false
+        // Se saca de las dos: segun como haya arrancado (sala limpia o con
+        // mensajes viejos), el listener quedo colgado del nodo o de la
+        // consulta filtrada.
         raiz.removeEventListener(listener)
+        consulta?.removeEventListener(listener)
+        consulta = null
     }
 }

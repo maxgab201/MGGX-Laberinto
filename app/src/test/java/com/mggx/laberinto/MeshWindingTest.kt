@@ -6,6 +6,7 @@ import com.mggx.laberinto.gl.PropMeshes
 import com.mggx.laberinto.gl.StructureMeshes
 import com.mggx.laberinto.gl.WorldMesh
 import com.mggx.laberinto.maze.MazeGenerator
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.sqrt
@@ -123,6 +124,41 @@ class MeshWindingTest {
             val malas = contarInvertidos(g.vertices, g.indices, 6, 3)
             assertTrue("$nombre tiene $malas triangulos dados vuelta", malas == 0)
         }
+    }
+
+    @Test
+    fun losCompanierosDeSalaMiranParaAfuera() {
+        val formas = mapOf(
+            "cuerpo de minero" to com.mggx.laberinto.gl.PlayerMeshes.mineroCuerpo(),
+            "casco de minero" to com.mggx.laberinto.gl.PlayerMeshes.mineroCasco()
+        )
+        for ((nombre, g) in formas) {
+            assertTrue("$nombre esta vacio", g.indices.size > 30)
+            val malas = contarInvertidos(g.vertices, g.indices, 6, 3)
+            assertTrue("$nombre tiene $malas triangulos dados vuelta", malas == 0)
+        }
+    }
+
+    @Test
+    fun elCompanieroTieneProporcionDePersonaYNoDeBicho() {
+        // Se lo dibuja escalando por su altura en metros, asi que el modelo
+        // tiene que medir 1 de alto y ser bastante mas angosto que alto: si
+        // fuera cuadrado, un companiero de 1,72 m mediria 1,72 de ancho.
+        val g = com.mggx.laberinto.gl.PlayerMeshes.mineroCuerpo()
+        var minY = Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
+        var maxAncho = 0f
+        var i = 0
+        while (i < g.vertices.size) {
+            val x = g.vertices[i]; val y = g.vertices[i + 1]; val z = g.vertices[i + 2]
+            if (y < minY) minY = y
+            if (y > maxY) maxY = y
+            if (kotlin.math.abs(x) > maxAncho) maxAncho = kotlin.math.abs(x)
+            if (kotlin.math.abs(z) > maxAncho) maxAncho = kotlin.math.abs(z)
+            i += 6
+        }
+        assertEquals("no se apoya en cero: se hundiria en el piso", 0f, minY, 1e-4f)
+        assertTrue("no mide una unidad de alto (mide $maxY)", maxY in 0.85f..1.0f)
+        assertTrue("es mas ancho que una persona", maxAncho * 2f < maxY * 0.75f)
     }
 
     @Test

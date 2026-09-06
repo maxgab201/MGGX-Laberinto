@@ -617,3 +617,55 @@ fun formatLongTime(ms: Long): String {
     val m = (total % 3600) / 60
     return if (h > 0) "${h} h ${m} min" else "${m} min"
 }
+
+/**
+ * Campo de texto con la pinta del resto del juego.
+ *
+ * Es el unico del juego (se usa para el nombre y el codigo de sala), asi que
+ * esta armado sobre BasicTextField en vez de traerse Material entero: lo
+ * unico que hace falta es una linea de texto adentro de una placa de piedra.
+ */
+@Composable
+fun CaveTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    maxChars: Int = 24,
+    centrado: Boolean = false,
+    fontSize: androidx.compose.ui.unit.TextUnit = 15.sp,
+    mayusculas: Boolean = false
+) {
+    Box(
+        modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Cave.Void.copy(alpha = 0.55f))
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        contentAlignment = if (centrado) Alignment.Center else Alignment.CenterStart
+    ) {
+        if (value.isEmpty() && placeholder.isNotEmpty()) {
+            Text(
+                placeholder, fontSize = fontSize, color = Cave.TextFaint,
+                maxLines = 1, textAlign = if (centrado) TextAlign.Center else TextAlign.Start
+            )
+        }
+        androidx.compose.foundation.text.BasicTextField(
+            value = value,
+            onValueChange = { nuevo ->
+                // El recorte se hace aca y no en el que llama: asi ningun uso
+                // se puede olvidar y terminar con un nombre de 300 letras.
+                val limpio = nuevo.replace("\n", "").take(maxChars)
+                onValueChange(if (mayusculas) limpio.uppercase() else limpio)
+            },
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(
+                color = Cave.Text,
+                fontSize = fontSize,
+                letterSpacing = if (centrado) 4.sp else 0.sp,
+                textAlign = if (centrado) TextAlign.Center else TextAlign.Start
+            ),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(Cave.Amber),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}

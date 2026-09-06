@@ -54,6 +54,20 @@ class SaveData private constructor(private val store: Store) {
     /** Arma que llevas en la mano. Vacio = a mano limpia. */
     var armaEquipada: String = ""; private set
 
+    /**
+     * Como te ven los demas en una sala de multijugador. Vacio = todavia no
+     * elegiste ninguno y se usa uno por defecto.
+     */
+    var nombreJugador: String = ""; private set
+
+    /** Cambia el nombre con el que entras a las salas. */
+    fun setNombreJugador(n: String) {
+        // El mismo recorte que hace el protocolo: si no, el nombre se veria
+        // de una forma en tu pantalla y de otra en la del de al lado.
+        nombreJugador = com.mggx.laberinto.net.NetProtocol.limpiar(n)
+        save()
+    }
+
     // --- estadisticas
     var totalRuns: Int = 0; private set
     var totalWins: Int = 0; private set
@@ -376,6 +390,7 @@ class SaveData private constructor(private val store: Store) {
         cosmeticGloves = "cos_guantes_cuero"; cosmeticLight = "cos_luz_calida"
         cosmeticSkin = "skin_minero"
         armaEquipada = ""
+        nombreJugador = ""
         totalRuns = 0; totalWins = 0; totalDeaths = 0; totalEcosGanados = 0
         bestTimeMs = 0; totalPlayMs = 0; totalSteps = 0; levelsSinceVetagris = 0
         exploredLevel = 0; exploredMask = ""
@@ -396,6 +411,7 @@ class SaveData private constructor(private val store: Store) {
         root.put("light", cosmeticLight)
         root.put("skin", cosmeticSkin)
         root.put("arma", armaEquipada)
+        root.put("nombre", nombreJugador)
         root.put("owned", JSONObject(owned as Map<*, *>))
         root.put("stock", JSONObject(stock as Map<*, *>))
         root.put("relics", JSONArray(equippedRelics))
@@ -444,6 +460,7 @@ class SaveData private constructor(private val store: Store) {
             cosmeticLight = root.optString("light", "cos_luz_calida")
             cosmeticSkin = root.optString("skin", "skin_minero")
             armaEquipada = root.optString("arma", "")
+            nombreJugador = root.optString("nombre", "")
             exploredLevel = root.optInt("expLevel", 0)
             exploredMask = root.optString("expMask", "")
 

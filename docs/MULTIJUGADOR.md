@@ -1,9 +1,8 @@
 # Cómo armar el multijugador de MGGX Laberinto
 
-Esta es la guía para cuando quieras terminar el modo de a varios. Está escrita
-para que la puedas seguir vos, sin dar por sentado que sabés de redes. Lo que
-ya está hecho está hecho y probado; lo que falta está en el orden en que
-conviene hacerlo.
+El modo de a varios **está terminado y probado**. Esta guía cuenta cómo
+funciona, qué hace falta de tu lado para que ande (crear una cuenta de
+Firebase, que son cinco minutos en la web) y qué limitaciones conocidas tiene.
 
 ---
 
@@ -34,8 +33,12 @@ y que un servidor gratis te aguanta muchísimas partidas.
 | `app/src/main/java/com/mggx/laberinto/net/TransporteFirebase.kt` | **El relay de verdad**, sobre Firebase Realtime Database. Ya implementa `Transporte`: solo falta que crees tu proyecto de Firebase (paso 1 de abajo). |
 | `app/src/test/java/com/mggx/laberinto/MultijugadorTest.kt` | Los tests. Ya arman una partida de dos jugadores completa, sin red. |
 | `app/src/test/java/com/mggx/laberinto/RelayFirebaseTest.kt` | Tests del path de sala, el saneo de código y la política de poda. |
+| `app/src/main/java/com/mggx/laberinto/net/MatchLink.kt` | El puente entre la partida y la red: manda tu posición, avisa los hechos del mundo y aplica lo que llega. |
+| `app/src/main/java/com/mggx/laberinto/net/CodigoSala.kt` | El código de 4 letras para invitar, y el id de cada jugador. |
+| `app/src/main/java/com/mggx/laberinto/gl/PlayerMeshes.kt` | El cuerpo y el casco con que se dibuja al compañero. |
+| `app/src/test/java/com/mggx/laberinto/PartidaEnRedTest.kt` | Dos partidas de verdad conectadas entre sí, jugando. |
 | `tools/probar_relay.py` | Prueba contra tu Firebase de verdad: simula dos jugadores y verifica que los mensajes viajen. Correlo con `python3 tools/probar_relay.py`. |
-| `app/src/main/java/com/mggx/laberinto/ui/screens/MultiplayerScreen.kt` | La pantalla de "próximamente" que hoy ve el jugador. |
+| `app/src/main/java/com/mggx/laberinto/ui/screens/MultiplayerScreen.kt` | La sala: crear una, entrar con un código, ver quién está y arrancar. |
 
 La pieza clave es la interfaz `Transporte`, que tiene tres métodos: `enviar`,
 `recibir` y `cerrar`. **Todo el resto del juego ya está escrito contra esa
@@ -44,7 +47,7 @@ del juego para que la conexión de verdad funcione.
 
 ---
 
-## 3. Qué falta, en orden
+## 3. Cómo está armado, paso por paso
 
 ### Paso 1 — El relay (la parte de red) — YA ESTÁ ESCRITO, falta tu cuenta
 
@@ -153,67 +156,64 @@ nomás.
 > pasa nada: son bases distintas, con reglas propias.) Para que convivan, hay
 > que agregar a las reglas el bloque de la otra app junto al de `salas`.
 
-### Paso 2 — La pantalla de sala
+### Paso 2 — La pantalla de sala — HECHO
 
-Reemplazá el contenido de `MultiplayerScreen.kt` por:
+`MultiplayerScreen.kt` ya es la sala de verdad. Tiene:
 
-- un campo para el **nombre**;
+- un campo para el **nombre** (se guarda en el perfil);
 - un botón **Crear sala**, que inventa un código de 4 letras y lo muestra
   grande para dictárselo a un amigo;
 - un campo y un botón **Entrar a una sala** con el código;
-- la lista de quién está adentro (sale de `MatchState.todos()`);
+- la lista de quién está adentro, que se actualiza sola;
 - el selector de **modo** (Carrera o Cooperativo), que solo toca el anfitrión;
 - un botón **Empezar**, también solo del anfitrión, que manda
   `NetProtocol.arranque(...)` con el modo, el nivel y una semilla al azar.
 
+El código de 4 letras no usa I, O, 0 ni 1: son las que se confunden al
+dictarlas en voz alta, que es exactamente como se pasa un código de sala.
+
 El código de sala no hace falta guardarlo en ningún lado: es el nombre del
 canal de Firebase (`salas/CODIGO/msgs`), nada más.
 
-### Paso 3 — Conectar la partida
+### Paso 3 — Conectar la partida — HECHO
 
-En `MggxApp.kt`, cuando llegue el mensaje `ARRANQUE`:
+Lo hace `MatchLink`, que es el puente entre la partida y la red.
+`GameSession` tiene un campo `red` que en una partida solitaria queda en null
+(y entonces nada de esto corre).
 
-```kotlin
-val s = GameSession(save, match.nivel, match.semilla)
-```
+Mientras se juega, solo:
 
-Y nada más. El mismo nivel y la misma semilla en los dos teléfonos dan la misma
-cueva: eso ya está probado en los tests.
+- **cada 100 ms** manda tu posición, tu ángulo y tu postura, y solo si algo
+  cambió: quieto mirando el mapa no gasta mensajes;
+- avisa cada hecho del mundo en el momento en que pasa (agarré esta moneda,
+  rompí esta pared, pisé esta trampa, llegué, me caí);
+- **cada 3 segundos** manda un latido, que además repite quién sos, para el
+  que entró después y no vio tu presentación.
 
-Después, mientras se juega:
+Al revés, todo lo que llega se aplica solo: la moneda que levantó el otro
+desaparece de tu cueva, la pared que rompió se te abre, y en cooperativo la
+plata que junta uno la cobran los dos.
 
-- **cada 100 ms**, mandá `NetProtocol.pose(...)` con tu posición, tu ángulo y tu
-  postura;
-- cada vez que agarres algo, mandá `tomar(indice)`; cuando rompas una pared,
-  `romper(indice)`; cuando pises una trampa, `trampa(indice)`;
-- cuando llegues a la salida, `llegada(tiempo)`.
+### Paso 4 — Dibujar al otro — HECHO
 
-Y al revés: aplicá todo lo que llegue con `match.aplicar(texto)`, y antes de
-dibujar un objeto fijate si su casilla está en `match.objetosTomados`.
+El compañero se dibuja con cuerpo, casco y la lucecita del casco (que además
+dice para dónde está mirando), con el color del traje de su skin. Si está
+agachado se lo ve más bajo, y si está caído queda tirado y apagado.
 
-### Paso 4 — Dibujar al otro
+Las poses llegan 10 veces por segundo y la pantalla dibuja 60, así que no se
+lo pone en la posición que llegó: la posición dibujada va corriendo atrás de
+la real, y el ojo lee eso como caminar.
 
-En `CaveRenderer.drawProps` hay un bloque que dibuja los bichos armándolos con
-cuerpos, cabezas y ojos. Copiá esa idea para los compañeros: cuerpo, casco y
-una lucecita de antorcha, con los colores de su skin (`JugadorRemoto.skin`).
+### Paso 5 — Las reglas de cada modo — HECHO
 
-Para que no se vea a los saltos, no lo pongas en la posición que llegó: movelo
-hacia ella suavizando, algo así como
-
-```kotlin
-p.x += (objetivoX - p.x) * (12f * dt).coerceAtMost(1f)
-```
-
-Eso solo ya alcanza para que se vea natural aunque lleguen 10 mensajes por
-segundo.
-
-### Paso 5 — Las reglas de cada modo
-
-- **Carrera**: cuando alguien manda `LLEGADA`, la partida termina para todos y
-  gana el del menor tiempo (`match.ganador()`). Los ecos se los lleva cada uno.
-- **Cooperativo**: cuando alguien queda en `CAIDO`, sigue viendo pero no se
-  mueve; otro que se le acerque a menos de 1,5 m manda `revivir(suId)` y lo
-  levanta. Si `match.equipoCaido()` da verdadero, perdieron todos.
+- **Carrera**: el primero que sale gana y a los demás se les termina la
+  partida ahí mismo. Los ecos se los lleva cada uno.
+- **Cooperativo**: el que se queda sin vida no pierde: queda tirado, sigue
+  viendo y puede seguir mirando alrededor para guiar al otro. Un compañero que
+  se le acerque a menos de 1,5 m lo levanta con media barra de vida, pero
+  recién después de que pase unos segundos en el piso (si no, dos que van
+  pegados no perderían nunca). Al caído no se le puede pegar más ni se cura
+  solo. Si caen todos los que están en la cueva, ahí sí perdieron todos.
 
 ---
 
@@ -231,6 +231,14 @@ segundo.
   querés partidas públicas, el que manda "llegué a la salida en 3 segundos"
   puede estar mintiendo. La solución es que el anfitrión valide, y eso es
   bastante más laburo. Para jugar con conocidos, así está bien.
+- **Los bichos no viajan por la red.** Nacen en el mismo lugar en los dos
+  teléfonos (la cueva es la misma), pero de ahí en más cada uno corre su
+  propia cabeza y persigue a su propio jugador: al rato están en lugares
+  distintos en cada pantalla. Es a propósito. Sincronizarlos es mandar la
+  posición de veinte bichos diez veces por segundo y además decidir cuál de
+  los dos teléfonos manda, que es otro laburo entero. Lo que SÍ está
+  sincronizado es todo lo que deja marca en el mundo (monedas, paredes rotas,
+  trampas) y dónde está cada uno.
 - **Las reglas de Firebase quedan abiertas.** Como no hay login, cualquiera que
   se entere del código de sala puede mandar mensajes ahí. Para jugar con
   amigos no es problema; si algún día abrís partidas públicas, ahí sí conviene

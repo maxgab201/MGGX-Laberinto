@@ -320,6 +320,44 @@ fun GameHud(
             )
         }
 
+        // ------------------------------------------------- caido (cooperativo)
+        //
+        // Sin este cartel el jugador no entiende nada: la pantalla sigue
+        // andando pero el personaje no camina, y parece que se colgo el juego.
+        if (session.caido && !paused) {
+            val espera = session.esperaParaLevantarte()
+            val companieros = session.red?.match?.otros()?.count { !it.caido } ?: 0
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Cave.Bad.copy(alpha = 0.20f)),
+                contentAlignment = Alignment.Center
+            ) {
+                StonePanel(Modifier.width(420.dp), glow = Cave.Bad) {
+                    Column(
+                        Modifier.padding(22.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("Estás en el piso", style = MaterialTheme.typography.headlineLarge)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            when {
+                                espera > 0.1f -> "Aguantá ${espera.toInt() + 1}..."
+                                companieros > 0 -> "Que un compañero se te acerque para levantarte."
+                                else -> "No queda nadie de pie que te pueda levantar."
+                            },
+                            style = MaterialTheme.typography.titleMedium, color = Cave.TextDim
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Podés seguir mirando alrededor para guiarlo.",
+                            style = MaterialTheme.typography.bodyMedium, color = Cave.TextFaint
+                        )
+                    }
+                }
+            }
+        }
+
         // ---------------------------------------------------------- pausa
         if (paused) {
             Box(

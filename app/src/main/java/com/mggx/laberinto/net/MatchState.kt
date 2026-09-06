@@ -66,6 +66,47 @@ class JugadorRemoto(
     var tiempoFinal: Long = 0L
     /** Segundos desde el ultimo mensaje suyo: sirve para echar a los colgados. */
     var silencio: Float = 0f
+
+    /**
+     * Donde se lo DIBUJA, que no es lo mismo que donde esta.
+     *
+     * Las poses llegan 10 veces por segundo y la pantalla dibuja 60: si se lo
+     * pusiera en la posicion que llego, se veria teletransportarse. Estas van
+     * corriendo atras de las de arriba, y el ojo lee eso como caminar.
+     */
+    var dibX: Float = 0f
+    var dibY: Float = 0f
+    var dibZ: Float = 0f
+    var dibYaw: Float = 0f
+
+    /** True hasta que llega su primera pose: antes de eso no hay que dibujarlo. */
+    var sinPose: Boolean = true
+        private set
+
+    /** Guarda una pose recien llegada. */
+    fun pose(nx: Float, ny: Float, nz: Float, nyaw: Float, npostura: Int) {
+        x = nx; y = ny; z = nz; yaw = nyaw; postura = npostura
+        if (sinPose) {
+            // La primera no se suaviza: aparece donde esta, no viene volando
+            // desde el cero del mapa.
+            dibX = nx; dibY = ny; dibZ = nz; dibYaw = nyaw
+            sinPose = false
+        }
+    }
+
+    /** Acerca la posicion dibujada a la real. [k] es cuanto del camino recorre. */
+    fun suavizar(k: Float) {
+        if (sinPose) return
+        dibX += (x - dibX) * k
+        dibY += (y - dibY) * k
+        dibZ += (z - dibZ) * k
+        // El angulo se interpola por el lado corto: si no, al cruzar de 359 a
+        // 1 grado el companiero pega un giro completo para el otro lado.
+        var d = yaw - dibYaw
+        while (d > 180f) d -= 360f
+        while (d < -180f) d += 360f
+        dibYaw += d * k
+    }
 }
 
 /**
@@ -89,7 +130,17 @@ class MatchState(val yo: String) {
     var arrancada: Boolean = false
         private set
 
+    /**
+     * La gente de la sala.
+     *
+     * Se toca desde DOS hilos: el de OpenGL (que corre la partida y aplica lo
+     * que llega) y el de la interfaz (que pinta la lista de la sala y el
+     * cartel de caido). Sin el candado, que a alguien se le corte el internet
+     * justo mientras se dibuja la lista revienta la app con una
+     * ConcurrentModificationException.
+     */
     private val jugadores = LinkedHashMap<String, JugadorRemoto>()
+    private val candado = Any()
 
     /** Casillas cuyo objeto ya agarro alguien. */
     val objetosTomados = HashSet<Int>()
@@ -98,22 +149,43 @@ class MatchState(val yo: String) {
     /** Trampas que alguien ya salto. */
     val trampasSaltadas = HashSet<Int>()
 
-    fun otros(): List<JugadorRemoto> = jugadores.values.filter { it.id != yo }
-    fun todos(): List<JugadorRemoto> = jugadores.values.toList()
-    fun jugador(id: String): JugadorRemoto? = jugadores[id]
-    fun cantidad(): Int = jugadores.size
+    // Todo lo que recorre la lista devuelve una COPIA: asi el que la recibe
+    // la puede recorrer tranquilo aunque mientras tanto entre o salga alguien.
+    fun otros(): List<JugadorRemoto> =
+        synchronized(candado) { jugadores.values.filter { it.id != yo } }
+    fun todos(): List<JugadorRemoto> = synchronized(candado) { jugadores.values.toList() }
+    fun jugador(id: String): JugadorRemoto? = synchronized(candado) { jugadores[id] }
+    fun cantidad(): Int = synchronized(candado) { jugadores.size }
 
     /** Quien va ganando la carrera: el primero que salio. */
-    fun ganador(): JugadorRemoto? =
+    fun ganador(): JugadorRemoto? = synchronized(candado) {
         jugadores.values.filter { it.tiempoFinal > 0L }.minByOrNull { it.tiempoFinal }
+    }
 
-    /** En cooperativo se pierde recien cuando cayeron todos. */
-    fun equipoCaido(): Boolean =
-        jugadores.isNotEmpty() && jugadores.values.all { it.caido }
+    /**
+     * En cooperativo se pierde recien cuando cayeron todos los que estan
+     * jugando.
+     *
+     * "Los que estan jugando" son los que ya mandaron una pose, o sea los que
+     * de verdad bajaron a la cueva. El que se queda en la pantalla de sala
+     * (entro tarde, cuando la partida ya habia arrancado) no manda poses, y
+     * si contara aca nunca estaria caido: los que si estan abajo quedarian
+     * congelados para siempre, sin poder moverse ni terminar la partida.
+     */
+    fun equipoCaido(): Boolean = synchronized(candado) {
+        // Uno mismo cuenta siempre: las poses propias viajan a los demas, no
+        // a la copia local, asi que la entrada de uno nunca tiene pose. Sin
+        // esta excepcion, el que juega solo en cooperativo se quedaria caido
+        // para siempre esperando a un companiero que no existe.
+        val enLaCueva = jugadores.values.filter { !it.sinPose || it.id == yo }
+        enLaCueva.isNotEmpty() && enLaCueva.all { it.caido }
+    }
 
     fun aplicar(texto: String): NetProtocol.Mensaje? {
         val m = NetProtocol.decodificar(texto) ?: return null
-        val p = jugadores.getOrPut(m.de) { JugadorRemoto(m.de, m.de, "skin_minero") }
+        val p = synchronized(candado) {
+            jugadores.getOrPut(m.de) { JugadorRemoto(m.de, m.de, "skin_minero") }
+        }
         p.silencio = 0f
 
         when (m.tipo) {
@@ -122,29 +194,46 @@ class MatchState(val yo: String) {
                 p.skin = m.arg(1).ifBlank { "skin_minero" }
             }
             NetProtocol.Tipo.ARRANQUE -> {
+                val nuevoNivel = m.entero(1).coerceAtLeast(1)
+                val nuevaSemilla = m.largo(2)
+                // Un ARRANQUE repetido con el mismo nivel y la misma semilla
+                // es una RETRANSMISION, no una partida nueva. El anfitrion lo
+                // repite mientras juega para enganchar al que se lo perdio, y
+                // volver a aplicarlo aca borraria lo que ya paso en la cueva
+                // (quien esta caido, quien salio y en cuanto tiempo).
+                if (arrancada && nuevoNivel == nivel && nuevaSemilla == semilla) return m
                 modo = runCatching { NetProtocol.Modo.valueOf(m.arg(0)) }
                     .getOrDefault(NetProtocol.Modo.CARRERA)
-                nivel = m.entero(1).coerceAtLeast(1)
-                semilla = m.largo(2)
+                nivel = nuevoNivel
+                semilla = nuevaSemilla
                 arrancada = true
                 // Una partida nueva empieza con el mundo limpio: si quedaran
                 // las monedas de la anterior, aparecerian ya levantadas.
                 objetosTomados.clear()
                 paredesRotas.clear()
                 trampasSaltadas.clear()
-                for (j in jugadores.values) { j.caido = false; j.tiempoFinal = 0L }
+                for (j in todos()) { j.caido = false; j.tiempoFinal = 0L }
             }
-            NetProtocol.Tipo.POSE -> {
-                p.x = m.num(0); p.y = m.num(1); p.z = m.num(2)
-                p.yaw = m.num(3); p.postura = m.entero(4).coerceIn(0, 2)
-            }
+            NetProtocol.Tipo.POSE ->
+                p.pose(m.num(0), m.num(1), m.num(2), m.num(3), m.entero(4).coerceIn(0, 2))
             NetProtocol.Tipo.TOMAR -> objetosTomados.add(m.entero(0))
             NetProtocol.Tipo.ROMPER -> paredesRotas.add(m.entero(0))
             NetProtocol.Tipo.TRAMPA -> trampasSaltadas.add(m.entero(0))
             NetProtocol.Tipo.LLEGADA -> if (p.tiempoFinal == 0L) p.tiempoFinal = m.largo(0)
             NetProtocol.Tipo.CAIDO -> p.caido = true
-            NetProtocol.Tipo.REVIVIR -> jugadores[m.arg(0)]?.caido = false
-            NetProtocol.Tipo.SALIR -> jugadores.remove(m.de)
+            NetProtocol.Tipo.REVIVIR -> {
+                // Ojo con quien lo manda: un REVIVIR de OTRO es un pedido
+                // ("levantate"), y el caido lo puede ignorar si todavia lleva
+                // poco tiempo en el piso. Solo cuenta como hecho el que manda
+                // el propio caido ("ya estoy de pie").
+                //
+                // Sin esta distincion los dos telefonos terminan contando
+                // cosas distintas: uno lo da por levantado y el otro lo sigue
+                // viendo tirado, y entonces equipoCaido() no se cumple nunca
+                // y la partida no puede terminar.
+                if (m.arg(0) == m.de) p.caido = false
+            }
+            NetProtocol.Tipo.SALIR -> synchronized(candado) { jugadores.remove(m.de) }
             NetProtocol.Tipo.PING -> Unit
         }
         return m
@@ -153,17 +242,22 @@ class MatchState(val yo: String) {
     /** Suma el tiempo y echa a los que dejaron de dar senales de vida. */
     fun envejecer(dt: Float): List<String> {
         val idos = ArrayList<String>()
-        for (j in jugadores.values.toList()) {
+        for (j in todos()) {
             if (j.id == yo) continue
             j.silencio += dt
-            if (j.silencio > TIEMPO_MUERTO) { jugadores.remove(j.id); idos.add(j.id) }
+            if (j.silencio > TIEMPO_MUERTO) {
+                synchronized(candado) { jugadores.remove(j.id) }
+                idos.add(j.id)
+            }
         }
         return idos
     }
 
     /** Me anoto a mi mismo en la sala. */
     fun entrarYo(nombre: String, skin: String) {
-        val p = jugadores.getOrPut(yo) { JugadorRemoto(yo, nombre, skin) }
+        val p = synchronized(candado) {
+            jugadores.getOrPut(yo) { JugadorRemoto(yo, nombre, skin) }
+        }
         p.nombre = NetProtocol.limpiar(nombre).ifBlank { yo }
         p.skin = skin
     }

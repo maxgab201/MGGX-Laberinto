@@ -48,6 +48,7 @@ import com.mggx.laberinto.core.SaveData
 import com.mggx.laberinto.game.GameSession
 import com.mggx.laberinto.gl.CaveRenderer
 import com.mggx.laberinto.input.GamepadBridge
+import com.mggx.laberinto.net.TransporteFirebase
 import com.mggx.laberinto.maze.CaveTheme
 import com.mggx.laberinto.ui.screens.GameHud
 import com.mggx.laberinto.ui.screens.LobbyScreen
@@ -91,6 +92,11 @@ fun MggxApp(
     var result by remember { mutableStateOf<ResultData?>(null) }
     var selectedSlotCycle by remember { mutableIntStateOf(0) }
     var showTutorial by remember { mutableStateOf(!save.settings.tutorialDone) }
+    /** Sala de multijugador de la partida en curso, o null si se juega solo. */
+    var salaEnCurso by remember { mutableStateOf<com.mggx.laberinto.net.MatchLink?>(null) }
+    var semillaDeSala by remember { mutableStateOf(0L) }
+    /** Nivel que reparte el anfitrion. Es el de la sala, no el desbloqueado. */
+    var nivelDeSala by remember { mutableIntStateOf(1) }
 
     val context = LocalContext.current
 
@@ -154,6 +160,32 @@ fun MggxApp(
         // antes se ignoraba el parametro y se leia save.currentLevel, asi que
         // cualquier llamada que se olvidara de fijarlo arrancaba otro nivel.
         save.setCurrentLevel(level)
+        // Esta es una partida solitaria: si venias de una sala, se cierra.
+        // Sin esto, "Reintentar" despues de una carrera dejaria la sala
+        // abierta mandando poses de una partida que ya no existe.
+        salaEnCurso?.cerrar()
+        salaEnCurso = null
+        loading = true
+        paused = false
+        input.paused = true
+        result = null
+        screen = Screen.JUEGO
+    }
+
+    /**
+     * Arranca una partida de a varios: el mismo nivel y la MISMA semilla que
+     * repartio el anfitrion, que es lo que hace que los dos telefonos armen
+     * exactamente la misma cueva.
+     */
+    fun startNetLevel(link: com.mggx.laberinto.net.MatchLink, nivel: Int, semilla: Long) {
+        if (loading) return
+        // OJO: el nivel de la sala NO pasa por save.setCurrentLevel, que lo
+        // recorta al maximo que uno tenga desbloqueado. Si el anfitrion baja
+        // al 20 y el invitado tiene hasta el 5, el recorte le armaria otra
+        // cueva y se cae toda la idea de "misma semilla, mismo laberinto".
+        salaEnCurso = link
+        semillaDeSala = semilla
+        nivelDeSala = nivel
         loading = true
         paused = false
         input.paused = true
@@ -163,8 +195,12 @@ fun MggxApp(
 
     LaunchedEffect(screen, loading) {
         if (screen == Screen.JUEGO && loading) {
-            val lvl = save.currentLevel
-            val s = withContext(Dispatchers.Default) { GameSession(save, lvl) }
+            val sala = salaEnCurso
+            val lvl = if (sala != null) nivelDeSala else save.currentLevel
+            val s = withContext(Dispatchers.Default) {
+                if (sala != null) GameSession(save, lvl, semillaDeSala).also { it.red = sala }
+                else GameSession(save, lvl)
+            }
             session = s
             renderer.setSession(s)
             audio.setTrack(CaveAudio.Track.CUEVA, s.theme)
@@ -181,6 +217,9 @@ fun MggxApp(
     }
 
     fun leaveGame(toScreen: Screen) {
+        // Al volver al lobby se corta la sala: la partida en red termino.
+        salaEnCurso?.cerrar()
+        salaEnCurso = null
         // La vitrina del lobby tiene que rearmarse: la sesion que quedaba es la
         // que se acaba de jugar, con las monedas ya levantadas y las trampas
         // descubiertas. Poner el nivel en 0 fuerza una cueva nueva.
@@ -198,13 +237,22 @@ fun MggxApp(
 
     fun finishRun(s: GameSession) {
         val reward = s.settle() ?: return
+        // Se avisa que te vas antes de armar el resultado: el companiero deja
+        // de verte de una, sin esperar los 12 segundos del que se cuelga.
+        salaEnCurso?.cerrar()
+        salaEnCurso = null
         result = ResultData(
             won = s.phase == GameSession.Phase.GANADO,
             level = s.level,
             reward = reward,
             timeMs = s.elapsedMs,
             steps = s.steps,
-            nextLevel = save.currentLevel
+            nextLevel = save.currentLevel,
+            // El nivel de una sala lo elige el anfitrion y puede estar por
+            // encima del que uno tiene desbloqueado. "Reintentar" carga el
+            // mas alto que uno SI pueda jugar solo: si no, la pantalla decia
+            // "nivel 30" y arrancaba otro completamente distinto.
+            reintentar = s.level.coerceAtMost(save.maxLevel)
         )
         input.paused = true
         pad.inGame = false
@@ -309,7 +357,17 @@ fun MggxApp(
                     onMultiplayer = { screen = Screen.MULTIJUGADOR }
                 )
                 Screen.MULTIJUGADOR -> MultiplayerScreen(
-                    onBack = { screen = Screen.LOBBY; refresh++ }
+                    save = save,
+                    abrirTransporte = { codigo ->
+                        // Si Firebase no esta configurado (falta el
+                        // google-services.json), esto devuelve null y la
+                        // pantalla avisa en vez de reventar.
+                        runCatching { TransporteFirebase(codigo) }.getOrNull()
+                    },
+                    onBack = { screen = Screen.LOBBY; refresh++ },
+                    onArrancarPartida = { link, nivel, semilla ->
+                        startNetLevel(link, nivel, semilla)
+                    }
                 )
                 Screen.TIENDA -> ShopScreen(
                     save = save, refreshKey = refresh,
@@ -363,7 +421,7 @@ fun MggxApp(
                             reward = r.reward,
                             timeMs = r.timeMs, steps = r.steps, nextLevel = r.nextLevel,
                             onNext = { startLevel(r.nextLevel) },
-                            onRetry = { startLevel(r.level) },
+                            onRetry = { startLevel(r.reintentar) },
                             onLobby = { screen = Screen.LOBBY; refresh++ },
                             onShop = { screen = Screen.TIENDA; refresh++ }
                         )
@@ -417,6 +475,8 @@ fun MggxApp(
 private class ResultData(
     val won: Boolean,
     val level: Int,
+    /** Nivel que carga el boton "Reintentar" (puede no ser el jugado). */
+    val reintentar: Int,
     val reward: GameSession.Reward,
     val timeMs: Long,
     val steps: Int,

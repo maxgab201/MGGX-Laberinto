@@ -174,13 +174,39 @@ class MultijugadorTest {
         val m = MatchState("uno")
         m.entrarYo("Maxi", "skin_minero")
         m.aplicar(NetProtocol.unirse("dos", "Colo", "skin_minero").codificar())
+        // La pose es lo que dice que bajo a la cueva de verdad: el que se
+        // quedo en la pantalla de sala no cuenta para el fin de la partida.
+        m.aplicar(NetProtocol.pose("dos", 5f, 0f, 5f, 0f, 0).codificar())
         m.aplicar(NetProtocol.caido("dos").codificar())
         assertFalse("con uno solo caido no se pierde", m.equipoCaido())
         m.aplicar(NetProtocol.caido("uno").codificar())
         assertTrue(m.equipoCaido())
-        // Y levantar a uno saca al equipo de la lona.
-        m.aplicar(NetProtocol.revivir("uno", "dos").codificar())
+        // Y levantar a uno saca al equipo de la lona. Ojo con quien manda el
+        // mensaje: el que vale es el del PROPIO caido diciendo "ya estoy de
+        // pie", porque es el unico que sabe si pudo levantarse.
+        m.aplicar(NetProtocol.revivir("dos", "dos").codificar())
         assertFalse(m.equipoCaido())
+    }
+
+    @Test
+    fun elPedidoDeLevantarANoEsLoMismoQueHaberseLevantado() {
+        // "levantate" lo manda el que esta al lado; "ya estoy de pie" lo manda
+        // el caido. Solo el segundo cambia el estado: si el pedido contara,
+        // los dos telefonos quedarian contando cosas distintas cuando el
+        // caido todavia no puede levantarse.
+        val m = MatchState("uno")
+        m.entrarYo("Maxi", "skin_minero")
+        m.aplicar(NetProtocol.unirse("dos", "Colo", "skin_minero").codificar())
+        m.aplicar(NetProtocol.caido("dos").codificar())
+        assertTrue(m.jugador("dos")!!.caido)
+
+        // Un tercero pide que lo levanten: sigue en el piso.
+        m.aplicar(NetProtocol.revivir("uno", "dos").codificar())
+        assertTrue("un pedido lo dio por levantado", m.jugador("dos")!!.caido)
+
+        // El propio caido avisa que ya esta: ahora si.
+        m.aplicar(NetProtocol.revivir("dos", "dos").codificar())
+        assertFalse(m.jugador("dos")!!.caido)
     }
 
     @Test

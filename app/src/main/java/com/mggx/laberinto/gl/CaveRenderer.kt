@@ -339,6 +339,10 @@ class CaveRenderer(
     private var shapeEstacion: InstancedShape? = null
     private var shapeObelisco: InstancedShape? = null
     /** Poste fino: los parantes de los marcos de la mina. */
+    /** Los companieros de sala. Solo se usan en partida de a varios. */
+    private var shapeMinero: InstancedShape? = null
+    private var shapeCasco: InstancedShape? = null
+
     private var shapePost: InstancedShape? = null
     /** Estalactita: punta fina colgando del techo. */
     private var shapeStalactite: InstancedShape? = null
@@ -500,6 +504,9 @@ class CaveRenderer(
             s.update(dt, gi)
         } else {
             input.consumeLook()
+            // En pausa la partida se congela, pero la SALA no: hay que seguir
+            // latiendo o los demas te dan por ido y te sacan de la lista.
+            if (!vitrina) s.latirRed(dt)
         }
         s.drainSounds().forEach { soundOut.add(it) }
 
@@ -652,6 +659,7 @@ class CaveRenderer(
         shapeAntorcha?.release(); shapeLlama?.release(); shapeCristal?.release()
         shapeCofre?.release(); shapeHongo?.release(); shapePincho?.release()
         shapeEstacion?.release(); shapeObelisco?.release()
+        shapeMinero?.release(); shapeCasco?.release()
         shapeGem = InstancedShape(PropMeshes.octahedron(1.5f), 1400)
         // Estalagmita (hacia arriba): antes radio 0.42 con altura 1, una
         // relacion de "gorro de fiesta" (2.4:1). Ahora una punta de verdad.
@@ -679,6 +687,10 @@ class CaveRenderer(
         shapePincho = InstancedShape(StructureMeshes.pincho(), 300)
         shapeEstacion = InstancedShape(StructureMeshes.estacionCarburo(), 60)
         shapeObelisco = InstancedShape(StructureMeshes.obeliscoSalida(), 4)
+        // Companieros de sala: en una partida solitaria no se usan nunca, pero
+        // salen baratos (una sala no tiene mas de un punado de jugadores).
+        shapeMinero = InstancedShape(PlayerMeshes.mineroCuerpo(), 16)
+        shapeCasco = InstancedShape(PlayerMeshes.mineroCasco(), 16)
     }
 
     private fun buildArms() {
@@ -810,6 +822,8 @@ class CaveRenderer(
         val pincho = shapePincho ?: return
         val estacion = shapeEstacion ?: return
         val obelisco = shapeObelisco ?: return
+        val minero = shapeMinero ?: return
+        val casco = shapeCasco ?: return
 
         val cull = when (save.settings.quality) { 0 -> 22f; 1 -> 28f; 2 -> 34f; else -> 42f }
         val cull2 = cull * cull
@@ -826,6 +840,7 @@ class CaveRenderer(
         torso.begin(); cabeza.begin(); brazo.begin()
         antorcha.begin(); llama.begin(); cristal.begin(); cofre.begin()
         hongo.begin(); pincho.begin(); estacion.begin(); obelisco.begin()
+        minero.begin(); casco.begin()
         val C = GameSession.CELL
         val m = s.maze
 
@@ -1171,6 +1186,56 @@ class CaveRenderer(
             }
         }
 
+        // --- los companieros de sala
+        //
+        // Se los dibuja en la posicion SUAVIZADA (dibX/dibZ), no en la que
+        // llego: las poses vienen 10 veces por segundo y la pantalla dibuja
+        // 60, asi que con la posicion cruda se los veria teletransportarse.
+        s.red?.let { red ->
+            for (j in red.match.otros()) {
+                if (j.sinPose) continue
+                if (!near(j.dibX, j.dibZ)) continue
+
+                // Alto segun como venga: parado, agachado o arrastrandose. El
+                // caido va bien bajo, para que se lea de una que esta en el
+                // piso esperando que lo levanten.
+                val alto = when {
+                    j.caido -> 0.34f
+                    j.postura == 2 -> 0.80f
+                    j.postura == 1 -> 1.15f
+                    else -> 1.72f
+                }
+                val traje = tinteDeSkin(j.skin)
+                // Al caido se le apaga el color: esta tirado, no laburando.
+                val apagado = if (j.caido) 0.45f else 1f
+                // El giro va en RADIANES: es lo que espera el shader, igual
+                // que el rumbo de los bichos. El yaw del jugador viene en
+                // grados, asi que se convierte una vez y se usa para todo.
+                val yr = Math.toRadians(j.dibYaw.toDouble())
+                val giro = yr.toFloat()
+                minero.add(
+                    j.dibX, j.dibY, j.dibZ, alto,
+                    traje[0] * apagado, traje[1] * apagado, traje[2] * apagado,
+                    0f, giro, 0f, 0f, 1f
+                )
+                casco.add(
+                    j.dibX, j.dibY + alto * 0.88f, j.dibZ, alto * 0.30f,
+                    1.00f, 0.74f, 0.16f, if (j.caido) 0.10f else 0.35f,
+                    giro, 0f, 0f, 1f
+                )
+                // Su lamparita de casco: ademas de ubicarlo en un pasillo
+                // oscuro, dice para donde esta mirando.
+                if (!j.caido) {
+                    gem.add(
+                        j.dibX + sin(yr).toFloat() * 0.20f,
+                        j.dibY + alto * 0.92f,
+                        j.dibZ + cos(yr).toFloat() * 0.20f,
+                        0.07f, 1f, 0.90f, 0.55f, 1.7f, 0f, 0f, 0f, 1f
+                    )
+                }
+            }
+        }
+
         // --- flecha de la brujula
         if (s.isCompassOn()) {
             // Flota delante del jugador y apunta siempre a la salida.
@@ -1219,6 +1284,23 @@ class CaveRenderer(
         torso.draw(); cabeza.draw(); brazo.draw()
         antorcha.draw(); llama.draw(); cristal.draw(); cofre.draw()
         hongo.draw(); pincho.draw(); estacion.draw(); obelisco.draw()
+        minero.draw(); casco.draw()
+    }
+
+    /**
+     * Color del traje de una skin, para pintar a un companiero de sala.
+     *
+     * Sale del mismo catalogo con el que se pinta uno a si mismo (ver
+     * PlayerStats.suitTint), asi el que se compro el traje de Vetagris lo ve
+     * puesto tambien el de al lado. Si la skin no existe (un cliente mas
+     * nuevo, un mensaje raro), se cae al traje del minero de turno.
+     */
+    private fun tinteDeSkin(skin: String): FloatArray {
+        val color = com.mggx.laberinto.game.ItemCatalog.get(skin)?.effect?.color2 ?: 0xFF60422AL
+        // Pasa por sRgbLineal como todos los colores del juego. Sin esa
+        // conversion el mismo traje se veia como tres veces mas claro en el
+        // companiero que en las manos de uno.
+        return sRgbLineal(color)
     }
 
     private fun drawDecals(s: GameSession, fogDensity: Float, brightness: Float) {
