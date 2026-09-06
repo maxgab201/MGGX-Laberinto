@@ -34,6 +34,7 @@ y que un servidor gratis te aguanta muchísimas partidas.
 | `app/src/main/java/com/mggx/laberinto/net/TransporteFirebase.kt` | **El relay de verdad**, sobre Firebase Realtime Database. Ya implementa `Transporte`: solo falta que crees tu proyecto de Firebase (paso 1 de abajo). |
 | `app/src/test/java/com/mggx/laberinto/MultijugadorTest.kt` | Los tests. Ya arman una partida de dos jugadores completa, sin red. |
 | `app/src/test/java/com/mggx/laberinto/RelayFirebaseTest.kt` | Tests del path de sala, el saneo de código y la política de poda. |
+| `tools/probar_relay.py` | Prueba contra tu Firebase de verdad: simula dos jugadores y verifica que los mensajes viajen. Correlo con `python3 tools/probar_relay.py`. |
 | `app/src/main/java/com/mggx/laberinto/ui/screens/MultiplayerScreen.kt` | La pantalla de "próximamente" que hoy ve el jugador. |
 
 La pieza clave es la interfaz `Transporte`, que tiene tres métodos: `enviar`,
@@ -139,12 +140,18 @@ nomás.
    `.gitignore`: no se sube al repositorio, queda solo en este entorno).
 2. Se compila (`./gradlew assembleDebug`): el `build.gradle.kts` ya detecta
    el archivo solo y activa el plugin de Google.
-3. Se prueba que ande de verdad: con `TransporteFirebase("SALA1")` desde dos
-   instancias (simulando dos jugadores en la misma sala), una manda un `PING`
-   con `enviar(NetProtocol.ping(miId).codificar())` y la otra lo tiene que ver
-   aparecer en `recibir()`. Si algo falla (reglas mal pegadas, paquete mal
-   escrito), se avisa exactamente qué corregir en la consola de Firebase. Con
-   eso ya está resuelta la parte difícil.
+3. Se prueba que ande de verdad con `python3 tools/probar_relay.py`, que
+   simula dos jugadores en la misma sala hablando el protocolo real: uno
+   manda, el otro tiene que recibir. Si algo falla (reglas mal pegadas, falta
+   el índice, paquete mal escrito), el script dice exactamente qué corregir
+   en la consola de Firebase. Con eso ya está resuelta la parte difícil.
+
+> **Si reusaste un proyecto de Firebase que ya tenías para otra cosa**, ojo con
+> un detalle: las reglas del punto 3 reemplazan a las que hubiera antes en la
+> Realtime Database, y solo dejan pasar `salas/*/msgs`. Si la otra app usaba
+> Realtime Database, se quedó sin permisos. (Si usaba Firestore o Storage no
+> pasa nada: son bases distintas, con reglas propias.) Para que convivan, hay
+> que agregar a las reglas el bloque de la otra app junto al de `salas`.
 
 ### Paso 2 — La pantalla de sala
 

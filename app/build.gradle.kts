@@ -7,10 +7,9 @@ plugins {
 }
 
 // El plugin de Google Services necesita su google-services.json (la
-// configuracion del proyecto de Firebase) para poder correr. Todavia no lo
-// creaste (ver docs/MULTIJUGADOR.md), asi que el plugin se aplica SOLO si el
-// archivo ya esta: mientras tanto el proyecto sigue compilando igual, nomas
-// que TransporteFirebase no tiene con que conectarse de verdad.
+// configuracion del proyecto de Firebase) para poder correr. Si todavia no
+// esta (ver docs/MULTIJUGADOR.md), el plugin no se aplica: el proyecto
+// compila igual, nomas que TransporteFirebase no tiene con que conectarse.
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
 }
@@ -143,3 +142,38 @@ val checkShaders by tasks.registering {
 }
 
 tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(checkShaders) }
+
+/**
+ * Arma la version de debug del google-services.json.
+ *
+ * La app de debug se instala con el applicationId terminado en ".debug" (ver
+ * el buildType de arriba), justamente para poder tener la de prueba y la
+ * definitiva instaladas al mismo tiempo. Pero el archivo que baja la consola
+ * de Firebase trae registrado un solo package, el de la version definitiva, y
+ * el plugin de Google corta el build si no encuentra el que le corresponde a
+ * la variante que esta compilando.
+ *
+ * En vez de tener que registrar una segunda app en la consola, se genera aca
+ * la copia para debug: mismo proyecto, misma base de datos, con el package
+ * name que el plugin espera. Al ser el mismo proyecto, las dos versiones
+ * comparten las salas, que es lo que uno quiere para probar.
+ */
+val googleServicesDebug by tasks.registering {
+    val origen = file("google-services.json")
+    val destino = file("src/debug/google-services.json")
+    onlyIf { origen.exists() }
+    inputs.files(origen)
+    outputs.file(destino)
+    doLast {
+        destino.parentFile.mkdirs()
+        destino.writeText(
+            origen.readText().replace(
+                "\"package_name\": \"com.mggx.laberinto\"",
+                "\"package_name\": \"com.mggx.laberinto.debug\""
+            )
+        )
+    }
+}
+
+tasks.matching { it.name == "processDebugGoogleServices" }
+    .configureEach { dependsOn(googleServicesDebug) }
