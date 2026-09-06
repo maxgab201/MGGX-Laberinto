@@ -358,12 +358,8 @@ fun MggxApp(
                 )
                 Screen.MULTIJUGADOR -> MultiplayerScreen(
                     save = save,
-                    abrirTransporte = { codigo ->
-                        // Si Firebase no esta configurado (falta el
-                        // google-services.json), esto devuelve null y la
-                        // pantalla avisa en vez de reventar.
-                        runCatching { TransporteFirebase(codigo) }.getOrNull()
-                    },
+                    abrirTransporte = { codigo -> abrirSala(context, codigo) },
+                    diagnostico = { diagnosticoFirebase(context) },
                     onBack = { screen = Screen.LOBBY; refresh++ },
                     onArrancarPartida = { link, nivel, semilla ->
                         startNetLevel(link, nivel, semilla)
@@ -600,4 +596,58 @@ private fun TutorialLine(icon: IconId, title: String, text: String) {
             Text(text, style = MaterialTheme.typography.bodyMedium, color = Cave.TextDim)
         }
     }
+}
+
+/**
+ * Abre la sala de multijugador, o devuelve el motivo por el que no pudo.
+ *
+ * Antes esto era un `runCatching { ... }.getOrNull()` y la pantalla siempre
+ * decia "fijate que tengas internet", que es una conclusion apurada: la
+ * conexion todavia no se intento siquiera. Si algo falla aca es porque la app
+ * no encuentra la configuracion de Firebase, y eso no tiene nada que ver con
+ * la senal del telefono. Ahora vuelve el motivo de verdad, que es lo unico
+ * que sirve para arreglarlo.
+ */
+private fun abrirSala(
+    context: android.content.Context,
+    codigo: String
+): Pair<com.mggx.laberinto.net.Transporte?, String?> {
+    // Normalmente de esto se encarga solo un ContentProvider que Firebase
+    // mete en el manifest, pero hay telefonos (y arranques raros) donde no
+    // llega a correr. Llamarlo a mano es inofensivo: si ya estaba iniciado
+    // no hace nada, y si faltara la configuracion devuelve null en vez de
+    // reventar.
+    val app = runCatching {
+        com.google.firebase.FirebaseApp.getInstance()
+    }.getOrElse {
+        runCatching { com.google.firebase.FirebaseApp.initializeApp(context) }.getOrNull()
+    }
+    if (app == null) {
+        return null to "Esta version se compilo sin la configuracion de Firebase " +
+            "(falta google-services.json). El multijugador no puede andar."
+    }
+    return try {
+        com.mggx.laberinto.net.TransporteFirebase(codigo) to null
+    } catch (t: Throwable) {
+        // El mensaje crudo del SDK: feo de leer, pero dice exactamente que
+        // falta (la URL de la base, el permiso, la app sin registrar).
+        null to "No se pudo abrir la sala: ${t.javaClass.simpleName}: ${t.message}"
+    }
+}
+
+/**
+ * Que ve la app de su propia configuracion de Firebase.
+ *
+ * Se muestra en la pantalla de multijugador cuando algo falla. Es la
+ * diferencia entre "no anda" y saber en un vistazo si el problema es que la
+ * app no encuentra la base, si apunta a otro proyecto, o si el paquete no es
+ * el que esta registrado en la consola.
+ */
+private fun diagnosticoFirebase(context: android.content.Context): String {
+    val app = runCatching { com.google.firebase.FirebaseApp.getInstance() }.getOrNull()
+        ?: return "Firebase: NO iniciado | Paquete: ${context.packageName}"
+    val o = app.options
+    return "Base: ${o.databaseUrl ?: "(ninguna)"} | " +
+        "Proyecto: ${o.projectId ?: "(ninguno)"} | " +
+        "Paquete: ${context.packageName}"
 }

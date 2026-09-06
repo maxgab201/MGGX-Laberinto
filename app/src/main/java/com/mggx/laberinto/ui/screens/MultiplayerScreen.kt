@@ -61,7 +61,10 @@ import kotlin.random.Random
 @Composable
 fun MultiplayerScreen(
     save: SaveData,
-    abrirTransporte: (String) -> Transporte?,
+    /** Devuelve el transporte, o null y el motivo por el que no se pudo. */
+    abrirTransporte: (String) -> Pair<Transporte?, String?>,
+    /** Que ve la app de su config de Firebase. Se muestra si algo falla. */
+    diagnostico: () -> String,
     onBack: () -> Unit,
     onArrancarPartida: (MatchLink, Int, Long) -> Unit
 ) {
@@ -77,9 +80,12 @@ fun MultiplayerScreen(
     val nivel = save.currentLevel
 
     fun entrarA(codigo: String, comoAnfitrion: Boolean) {
-        val t = abrirTransporte(codigo)
+        val (t, motivo) = abrirTransporte(codigo)
         if (t == null) {
-            error = "No se pudo abrir la sala. Fijate que tengas internet."
+            // El motivo de verdad, no una suposicion: antes decia siempre
+            // "fijate que tengas internet", que mandaba a buscar el problema
+            // al lugar equivocado.
+            error = motivo ?: "No se pudo abrir la sala."
             return
         }
         error = null
@@ -152,7 +158,20 @@ fun MultiplayerScreen(
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         CaveIcon(IconId.CALAVERA, size = 20.dp, tint = Cave.Bad, accent = Cave.Bad)
                         Spacer(Modifier.width(10.dp))
-                        Text(error ?: "", style = MaterialTheme.typography.bodyMedium, color = Cave.Text)
+                        Column {
+                            Text(
+                                error ?: "", style = MaterialTheme.typography.bodyMedium,
+                                color = Cave.Text
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            // Lo que la app ve de su propia configuracion. Sin
+                            // esto, "no anda" no se puede arreglar: no hay
+                            // forma de saber si le falta la base, si apunta a
+                            // otro proyecto o si el paquete no coincide.
+                            Text(
+                                diagnostico(), fontSize = 11.sp, color = Cave.TextFaint
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.height(10.dp))
