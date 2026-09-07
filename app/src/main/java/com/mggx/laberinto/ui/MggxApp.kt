@@ -623,8 +623,19 @@ private fun abrirSala(
         runCatching { com.google.firebase.FirebaseApp.initializeApp(context) }.getOrNull()
     }
     if (app == null) {
-        return null to "Esta version se compilo sin la configuracion de Firebase " +
-            "(falta google-services.json). El multijugador no puede andar."
+        // Sin esto el cartel decia siempre "se compilo sin el
+        // google-services.json", que es una conclusion y no un dato: son dos
+        // problemas distintos con arreglos distintos. Si el APK viene sin la
+        // configuracion hay que recompilarlo; si la trae y aun asi Firebase no
+        // arranca, recompilar no cambia nada y el laburo esta en otro lado.
+        return null to if (appIdDeFirebase(context) == null) {
+            "Este APK se compilo sin la configuracion de Firebase " +
+                "(falta google-services.json). Hay que compilarlo de nuevo con " +
+                "el archivo puesto: el multijugador no puede andar."
+        } else {
+            "La configuracion de Firebase esta en el APK, pero el SDK no " +
+                "arranco igual. Probá cerrar la app del todo y volver a abrirla."
+        }
     }
     return try {
         com.mggx.laberinto.net.TransporteFirebase(codigo) to null
@@ -645,9 +656,26 @@ private fun abrirSala(
  */
 private fun diagnosticoFirebase(context: android.content.Context): String {
     val app = runCatching { com.google.firebase.FirebaseApp.getInstance() }.getOrNull()
-        ?: return "Firebase: NO iniciado | Paquete: ${context.packageName}"
+        ?: return "Firebase: NO iniciado | " +
+            "Config en el APK: ${if (appIdDeFirebase(context) != null) "SI" else "NO"} | " +
+            "Paquete: ${context.packageName}"
     val o = app.options
     return "Base: ${o.databaseUrl ?: "(ninguna)"} | " +
         "Proyecto: ${o.projectId ?: "(ninguno)"} | " +
         "Paquete: ${context.packageName}"
+}
+
+/**
+ * El id de app de Firebase tal como quedo adentro del APK, o null si no esta.
+ *
+ * Es la misma pregunta que se hace el SDK al arrancar, hecha aparte: el plugin
+ * de Google convierte el google-services.json en <string> comunes, y el SDK los
+ * busca de nombre. Preguntarlo por separado es lo que permite distinguir "el
+ * APK salio sin la configuracion" de "la configuracion esta y el problema es
+ * otro", que desde afuera se ven igual: multijugador que no abre.
+ */
+private fun appIdDeFirebase(context: android.content.Context): String? {
+    val id = context.resources.getIdentifier("google_app_id", "string", context.packageName)
+    if (id == 0) return null
+    return runCatching { context.getString(id) }.getOrNull()?.takeIf { it.isNotBlank() }
 }
