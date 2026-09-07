@@ -231,14 +231,21 @@ la real, y el ojo lee eso como caminar.
   querés partidas públicas, el que manda "llegué a la salida en 3 segundos"
   puede estar mintiendo. La solución es que el anfitrión valide, y eso es
   bastante más laburo. Para jugar con conocidos, así está bien.
-- **Los bichos no viajan por la red.** Nacen en el mismo lugar en los dos
-  teléfonos (la cueva es la misma), pero de ahí en más cada uno corre su
-  propia cabeza y persigue a su propio jugador: al rato están en lugares
-  distintos en cada pantalla. Es a propósito. Sincronizarlos es mandar la
-  posición de veinte bichos diez veces por segundo y además decidir cuál de
-  los dos teléfonos manda, que es otro laburo entero. Lo que SÍ está
-  sincronizado es todo lo que deja marca en el mundo (monedas, paredes rotas,
-  trampas) y dónde está cada uno.
+- **Los bichos los mueve el anfitrión.** El que armó la sala corre la cabeza de
+  los bichos y reparte dónde está cada uno unas siete veces por segundo; los
+  demás los copian. Van sólo los que están cerca de alguien (26 m): los del
+  otro extremo de la cueva no se ven, y mandarlos sería pagar mensajes por
+  cuerpos que nadie mira. Los que quedan afuera se siguen moviendo por su
+  cuenta en cada teléfono y se acomodan solos cuando alguien se les acerca.
+- **La vida de los bichos no viaja.** El daño lo resuelve cada teléfono contra
+  su propio jugador, así que pegar y recibir no dependen de que llegue un
+  mensaje. La contra: si vos volteás un bicho, el anfitrión lo sigue teniendo
+  en pie hasta que se entera por su lado; al revés se ve al toque, porque el
+  que copia le cree.
+- **Si el anfitrión se va, los bichos se quedan sin quien los mueva.** Todavía
+  no hay un reemplazo automático: los que quedan los ven quietos hasta que
+  vuelvan a la sala. Es la limitación más grande que queda del modo de a
+  varios.
 - **Las reglas de Firebase quedan abiertas.** Como no hay login, cualquiera que
   se entere del código de sala puede mandar mensajes ahí. Para jugar con
   amigos no es problema; si algún día abrís partidas públicas, ahí sí conviene

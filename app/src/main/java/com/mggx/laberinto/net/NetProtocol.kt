@@ -49,6 +49,15 @@ object NetProtocol {
         REVIVIR("UP"),
         /** Se fue de la sala. */
         SALIR("LEAVE"),
+        /**
+         * Donde estan los bichos. Lo manda SOLO el anfitrion.
+         *
+         * Los bichos nacen iguales en los dos telefonos (la cueva es la misma)
+         * pero de ahi en mas cada cabeza decide por su cuenta, asi que al rato
+         * estaban en lugares distintos en cada pantalla. Con esto hay uno solo
+         * que decide y los demas lo copian.
+         */
+        BICHOS("MOBS"),
         /** Latido para saber que sigue conectado. */
         PING("PING");
 
@@ -134,6 +143,46 @@ object NetProtocol {
 
     fun llegada(id: String, milisegundos: Long) =
         Mensaje(Tipo.LLEGADA, id, listOf(milisegundos.toString()))
+
+    /**
+     * Donde estan los bichos, varios por mensaje.
+     *
+     * Cada bicho ocupa un campo suelto en vez de un mensaje propio: veinte
+     * mensajes por vuelta serian veinte escrituras en el relay, y el plan
+     * gratis se mide justamente en eso.
+     */
+    fun bichos(id: String, cuadros: List<String>) = Mensaje(Tipo.BICHOS, id, cuadros)
+
+    /** Un bicho de la sala, tal como viaja adentro de un [bichos]. */
+    data class Bicho(
+        val indice: Int, val x: Float, val z: Float,
+        val alerta: Boolean, val vivo: Boolean
+    )
+
+    /**
+     * Escribe un bicho en un solo campo.
+     *
+     * Va separado por comas, no por la barra vertical, porque la barra ya
+     * separa los campos del mensaje. Sale de 19 caracteres en el peor caso
+     * (indice de tres cifras y coordenadas de tres), y [limpiar] recorta a 24:
+     * entra con lugar de sobra, y BichosTest lo deja clavado.
+     */
+    fun cuadroDeBicho(indice: Int, x: Float, z: Float, alerta: Boolean, vivo: Boolean): String {
+        val banderas = (if (alerta) 1 else 0) or (if (vivo) 0 else 2)
+        return "$indice,${fmt(x)},${fmt(z)},$banderas"
+    }
+
+    /** Lee un campo escrito por [cuadroDeBicho], o null si viene roto. */
+    fun leerCuadroDeBicho(campo: String): Bicho? {
+        val p = campo.split(',')
+        if (p.size != 4) return null
+        val i = p[0].toIntOrNull() ?: return null
+        if (i < 0) return null
+        val x = p[1].toFloatOrNull() ?: return null
+        val z = p[2].toFloatOrNull() ?: return null
+        val b = p[3].toIntOrNull() ?: return null
+        return Bicho(i, x, z, alerta = (b and 1) != 0, vivo = (b and 2) == 0)
+    }
 
     fun caido(id: String) = Mensaje(Tipo.CAIDO, id, emptyList())
     fun revivir(id: String, aQuien: String) = Mensaje(Tipo.REVIVIR, id, listOf(aQuien))

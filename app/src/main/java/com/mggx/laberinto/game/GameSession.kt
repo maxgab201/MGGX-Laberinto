@@ -64,6 +64,14 @@ class GameSession(
          * lado: hay que apuntarle al bicho, pero no al pixel.
          */
         const val COS_CONO_GOLPE = 0.55f
+        /**
+         * A cuantos metros de alguien tiene que estar un bicho para que el
+         * anfitrion lo reparta por la red.
+         *
+         * Un poco mas que lo que se alcanza a ver, para que ya venga acomodado
+         * cuando aparece y no se corrija delante de los ojos.
+         */
+        const val REPARTO_BICHOS = 26f
         /** Cuanto dura la animacion del swing, en segundos. */
         const val DURACION_SWING = 0.26f
     }
@@ -899,18 +907,20 @@ class GameSession(
     /**
      * Los bichos.
      *
-     * OJO, limitacion conocida del modo de a varios: los bichos NO viajan por
-     * la red. Nacen en el mismo lugar en los dos telefonos (la cueva es la
-     * misma), pero de ahi en mas cada uno corre su propia cabeza y persigue a
-     * su propio jugador, asi que al rato estan en lugares distintos en cada
-     * pantalla.
+     * En una sala los mueve el anfitrion y los demas los copian. Antes cada
+     * telefono corria su propia cabeza y, aunque nacian en el mismo lugar (la
+     * cueva es la misma), al rato estaban en lugares distintos en cada
+     * pantalla: uno esquivaba un murcielago que el otro no veia ahi.
      *
-     * Es a proposito y no un olvido: sincronizarlos significa mandar la
-     * posicion de veinte bichos diez veces por segundo, y ademas decidir cual
-     * de los dos telefonos manda (hoy no hay ninguno que mande sobre el otro).
-     * Eso es otro laburo entero. Para jugar con amigos alcanza asi: lo que si
-     * esta sincronizado es todo lo que deja marca en el mundo (las monedas,
-     * las paredes rotas, las trampas) y donde esta cada uno.
+     * Lo que NO viaja es la vida de cada bicho: el dano lo resuelve cada uno
+     * contra su propio jugador, asi que pegar no depende de que llegue un
+     * mensaje. La contra es que si vos lo volteas, el que manda lo sigue
+     * teniendo en pie un rato hasta que se entera; al reves si se ve al toque,
+     * porque el que copia se lo cree.
+     *
+     * Y para elegir a quien perseguir, ahora hay mas de uno a quien: el bicho
+     * se queda con el que tenga mas cerca y no lo suelta hasta que se le va de
+     * veras (ver AGUANTE en EnemyBrain).
      */
     private fun updateEnemies(dt: Float, input: Input) {
         if (enemies.isEmpty()) return
@@ -918,6 +928,17 @@ class GameSession(
         val invisible = stats.invisibleArrastrandose && postura == Postura.ARRASTRANDOSE
         val ruidoso = (input.running || save.settings.autoRun) &&
             (abs(input.moveX) > 0.02f || abs(input.moveY) > 0.02f) && postura.puedeCorrer
+        val r = red
+        // En una sala los bichos los mueve el anfitrion y los demas copian.
+        // Jugando solo no hay a quien copiarle, asi que los mueve uno.
+        val mando = r == null || r.anfitrion
+
+        // El que copia pone primero a los bichos donde dijo el anfitrion, y
+        // recien despues corre el cerebro: asi el resto de la vuelta (la
+        // mordida, la altura, a quien mira) se resuelve sobre la posicion
+        // buena y no sobre la del cuadro anterior.
+        if (r != null && !mando) copiarBichosDelAnfitrion(r)
+
         brain.update(
             dt = dt,
             enemigos = enemies,
@@ -927,8 +948,74 @@ class GameSession(
             ruidoso = ruidoso,
             cell = CELL,
             pisoDe = { gx, gy -> maze.floorY(gx, gy) },
-            muerde = { e -> mordidaDe(e) }
+            muerde = { e -> mordidaDe(e) },
+            yoId = r?.yo ?: "yo",
+            companieros = companierosComoPresa(r),
+            moverlos = mando
         )
+
+        if (r != null && mando && r.tocaRepartirBichos()) r.repartirBichos(cuadrosDeBichos())
+    }
+
+    /**
+     * Los companieros de sala, vistos como presa.
+     *
+     * Al caido se lo saca: en cooperativo queda tirado esperando que lo
+     * levanten, y un bicho dandole vueltas alrededor mientras tanto no agrega
+     * nada. Del sigilo del otro no se sabe nada desde aca (es su telefono el
+     * que lleva sus efectos), asi que se lo toma como visible: equivocarse
+     * para este lado hace que un bicho lo persiga de mas, que es mucho menos
+     * raro de ver que uno que lo atraviesa sin registrarlo.
+     */
+    private fun companierosComoPresa(r: MatchLink?): List<ObjetivoBicho> {
+        if (r == null) return emptyList()
+        return r.match.otros()
+            .filter { !it.sinPose && !it.caido }
+            .map { ObjetivoBicho(it.id, it.x, it.z, detectable = true, ruidoso = false) }
+    }
+
+    /**
+     * Arma la foto de los bichos que le toca repartir al anfitrion.
+     *
+     * Van solo los que estan cerca de alguien: los del otro extremo de la
+     * cueva no se ven, y mandarlos seria pagar mensajes por cuerpos que nadie
+     * esta mirando. Los que quedan afuera siguen moviendose en cada telefono
+     * por su cuenta, y cuando alguien se les acerca vuelven a entrar en la
+     * tanda y se acomodan solos.
+     */
+    private fun cuadrosDeBichos(): List<String> {
+        val r = red ?: return emptyList()
+        val gente = ArrayList<Pair<Float, Float>>()
+        gente.add(posX to posZ)
+        for (o in r.match.otros()) if (!o.sinPose) gente.add(o.x to o.z)
+
+        val out = ArrayList<String>()
+        for ((i, e) in enemies.withIndex()) {
+            val cerca = gente.any { (gx, gz) -> e.distanciaA(gx, gz) <= REPARTO_BICHOS }
+            if (!cerca) continue
+            out.add(NetProtocol.cuadroDeBicho(i, e.x, e.z, e.alerta, e.vivo))
+        }
+        return out
+    }
+
+    /**
+     * Pone los bichos donde dijo el anfitrion.
+     *
+     * Se usa la posicion suavizada y no la cruda: las tandas llegan siete
+     * veces por segundo y la pantalla dibuja sesenta, asi que la cruda se
+     * veria a los saltos. Un bicho que el anfitrion da por muerto se voltea
+     * tambien aca, para que no quede uno peleando contra un cuerpo que del
+     * otro lado ya no existe.
+     */
+    private fun copiarBichosDelAnfitrion(r: MatchLink) {
+        if (!r.match.hayBichos()) return
+        for ((i, e) in enemies.withIndex()) {
+            val b = r.match.bicho(i) ?: continue
+            e.x = b.dibX
+            e.z = b.dibZ
+            e.alerta = b.alerta
+            if (!b.vivo && e.vivo) e.darPorVolteado()
+        }
     }
 
     private fun mordidaDe(e: Enemy) {
