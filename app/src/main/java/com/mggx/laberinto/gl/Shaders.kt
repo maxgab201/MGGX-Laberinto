@@ -80,6 +80,7 @@ uniform int uNumLuces;
 // GGX + Schlick Fresnel + Smith visibility, evaluated in linear light.
 vec3 surfaceLight(vec3 base, float rough, float metal, vec3 n, vec3 v, vec3 l, vec3 radiance) {
     float nl = max(dot(n, l), 0.0);
+    if (uQuality == 0) return base * radiance * nl;
     float nv = max(dot(n, v), 0.001);
     vec3 h = (v + l) / max(length(v + l), 0.0001);
     float nh = max(dot(n, h), 0.0);
@@ -276,6 +277,7 @@ uniform int uNumLuces;
 // GGX + Schlick Fresnel + Smith visibility, evaluated in linear light.
 vec3 surfaceLight(vec3 base, float rough, float metal, vec3 n, vec3 v, vec3 l, vec3 radiance) {
     float nl = max(dot(n, l), 0.0);
+    if (uQuality == 0) return base * radiance * nl;
     float nv = max(dot(n, v), 0.001);
     vec3 h = (v + l) / max(length(v + l), 0.0001);
     float nh = max(dot(n, h), 0.0);

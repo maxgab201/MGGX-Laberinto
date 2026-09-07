@@ -23,6 +23,14 @@ class Enemy(
 ) {
     /** Te esta persiguiendo. */
     var alerta: Boolean = false
+    /**
+     * A quien esta persiguiendo, cuando hay mas de uno en la cueva.
+     *
+     * Se guarda el id y no el jugador porque el que persigue se puede ir de la
+     * sala en cualquier momento, y un bicho no tiene por que quedarse con una
+     * referencia viva a alguien que ya no esta.
+     */
+    var objetivoId: String? = null
     /** Segundos que le quedan de interes antes de volver a lo suyo. */
     var interes: Float = 0f
     /** Segundos hasta que pueda volver a pegarte. */
@@ -82,8 +90,36 @@ class Enemy(
         return false
     }
 
+    /**
+     * Lo da por volteado sin premio ni festejo.
+     *
+     * Es para el que copia una muerte que decidio otro telefono: los ecos se
+     * los lleva el que le pego, no el que se entera. Ademas baja la vida de
+     * verdad, que es lo que corta el asunto: quedarse solo con el aviso haria
+     * que se lo diera por muerto en cada cuadro, una y otra vez.
+     */
+    fun darPorVolteado() { vida = 0f }
+
     fun distanciaA(px: Float, pz: Float): Float = hypot(px - x, pz - z)
 }
+
+/**
+ * Alguien a quien un bicho puede perseguir: uno mismo o un companiero de sala.
+ *
+ * Es una foto, no el jugador: el cerebro no tiene por que saber si atras de
+ * esto hay una partida local o alguien del otro lado de la red.
+ */
+data class ObjetivoBicho(
+    val id: String,
+    val x: Float,
+    val z: Float,
+    /** Si se lo puede ver ahora mismo (sigilo, invisibilidad, postura). */
+    val detectable: Boolean,
+    /** Si esta corriendo: es lo unico que oyen los rastreros ciegos. */
+    val ruidoso: Boolean,
+    /** Un caido no se persigue: ya esta en el piso. */
+    val enPie: Boolean = true
+)
 
 /**
  * La inteligencia de los bichos, aparte de la sesion para poder probarla sola.
@@ -95,12 +131,29 @@ class Enemy(
 class EnemyBrain(private val maze: Maze, seed: Long) {
 
     private val rnd = Random(seed xor 0x5DEECE66DL)
-    private var campo: IntArray? = null
-    private var campoDesde: Int = -1
+    /**
+     * Un campo de distancias por cada casilla desde la que se persigue.
+     *
+     * Con un solo jugador esto era una sola tabla; con la sala hay una por
+     * cada uno al que alguien este persiguiendo. Se tiran todas juntas cada
+     * [PERIODO] en vez de envejecer una por una: son cuentas de un milisegundo
+     * y llevarles la edad por separado costaria mas que rehacerlas.
+     */
+    private val campos = HashMap<Int, IntArray>()
     private var refresco: Float = 0f
 
     /** Cada cuanto se recalcula el campo de distancias, en segundos. */
     private val PERIODO = 0.30f
+
+    /**
+     * Cuanto mas lejos que su alcance puede irse el perseguido antes de que el
+     * bicho lo suelte y mire quien le queda mas cerca.
+     *
+     * Es lo que hace que un bicho no cambie de presa a cada paso (persigue al
+     * que eligio aunque el otro pase un momento mas cerca) pero tampoco se
+     * quede clavado con alguien que ya se le escapo por el otro pasillo.
+     */
+    private val AGUANTE = 1.6f
 
     /**
      * Un paso de simulacion.
@@ -118,21 +171,39 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
         ruidoso: Boolean,
         cell: Float,
         pisoDe: (Int, Int) -> Float,
+        /** Como se llama uno mismo en la sala. En partida solitaria da igual. */
+        yoId: String = "yo",
+        /** Los demas de la sala, que tambien son presa. */
+        companieros: List<ObjetivoBicho> = emptyList(),
+        /**
+         * Si esta partida es la que decide donde estan los bichos.
+         *
+         * En una sala manda el anfitrion y los demas copian: si cada telefono
+         * los moviera por su cuenta, las posiciones que llegan y las que
+         * calcula cada uno se pelearian y los bichos temblarian en el lugar.
+         * El que copia igual corre todo lo demas (el reloj de la mordida, la
+         * altura, quien le pega a quien), porque el dano lo sigue resolviendo
+         * cada uno contra su propio jugador.
+         */
+        moverlos: Boolean = true,
+        // Va ultimo a proposito: asi se puede pasar como bloque suelto atras
+        // del parentesis, que es como lo llaman la partida y los tests.
         muerde: (Enemy) -> Unit
     ) {
         if (enemigos.isEmpty()) return
 
-        val pgx = (px / cell).toInt().coerceIn(0, maze.gw - 1)
-        val pgy = (pz / cell).toInt().coerceIn(0, maze.gh - 1)
-        val pIdx = maze.index(pgx, pgy)
+        // Uno mismo es un objetivo mas. Va primero para que, con dos igual de
+        // cerca, el bicho se decida siempre por el mismo lado en los dos
+        // telefonos en vez de sortearlo segun como quedo ordenada la lista.
+        val objetivos = ArrayList<ObjetivoBicho>(companieros.size + 1)
+        objetivos.add(ObjetivoBicho(yoId, px, pz, detectable, ruidoso, enPie = true))
+        objetivos.addAll(companieros.filter { it.id != yoId })
 
         refresco -= dt
-        if (refresco <= 0f || campo == null || campoDesde != pIdx) {
+        if (refresco <= 0f) {
             refresco = PERIODO
-            campoDesde = pIdx
-            campo = maze.bfsDistances(pgx, pgy)
+            campos.clear()
         }
-        val d = campo!!
 
         for (e in enemigos) {
             if (!e.vivo) continue
@@ -151,17 +222,29 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
                 }
             }
 
-            val dist = e.distanciaA(px, pz)
             val alcance = e.kind.alcance * alcanceEscala
-            val loNota = detectable && dist <= alcance &&
-                (!e.kind.soloOye || ruidoso || dist <= alcance * 0.35f)
 
+            // A quien persigue. Primero se le da la chance de seguir con el que
+            // ya venia: si eligiera el mas cercano en cada cuadro, dos que
+            // corren juntos lo harian girar la cabeza sin avanzar hacia
+            // ninguno. Lo suelta recien cuando ese se le fue de veras, y ahi
+            // si mira quien le quedo mas cerca.
+            val fiel = objetivos.firstOrNull {
+                it.id == e.objetivoId && it.enPie &&
+                    e.distanciaA(it.x, it.z) <= alcance * AGUANTE
+            }
+            val presa = fiel ?: objetivos
+                .filter { it.enPie && loNota(e, it, alcance) }
+                .minByOrNull { e.distanciaA(it.x, it.z) }
+            e.objetivoId = presa?.id
+
+            val loNota = presa != null && loNota(e, presa, alcance)
             if (loNota) {
                 e.alerta = true
                 e.interes = if (e.kind.guardian) 2.5f else 4.5f
             } else if (e.interes > 0f) {
                 e.interes -= dt
-                if (e.interes <= 0f) e.alerta = false
+                if (e.interes <= 0f) { e.alerta = false; e.objetivoId = null }
             }
 
             // El guardian no sale de su pedazo de cueva.
@@ -169,13 +252,18 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
                 (e.nidoGx + 0.5f) * cell - e.x,
                 (e.nidoGy + 0.5f) * cell - e.z
             )
-            if (e.kind.guardian && lejosDelNido > cell * 2.2f) e.alerta = false
+            if (e.kind.guardian && lejosDelNido > cell * 2.2f) {
+                e.alerta = false
+                e.objetivoId = null
+            }
 
             // Aturdido no avanza: el golpe le gana la pulseada y se separa.
-            if (e.aturdido <= 0f) {
-                val objetivo = if (e.alerta) siguientePaso(e, d, cell, px, pz) else vagar(e, cell)
-                if (objetivo != null) {
-                    mover(e, objetivo.first, objetivo.second, e.kind.velocidad * dt, cell)
+            if (moverlos && e.aturdido <= 0f) {
+                val hacia = if (e.alerta && presa != null) {
+                    siguientePaso(e, campoHacia(presa, cell), cell, presa.x, presa.z)
+                } else vagar(e, cell)
+                if (hacia != null) {
+                    mover(e, hacia.first, hacia.second, e.kind.velocidad * dt, cell)
                 }
             }
 
@@ -184,11 +272,43 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
             val gy = (e.z / cell).toInt().coerceIn(0, maze.gh - 1)
             e.altura = pisoDe(gx, gy) + if (e.vuela) 1.45f else 0f
 
-            if (e.aturdido <= 0f && dist <= pRadio + e.kind.radio + 0.18f && e.recarga <= 0f) {
+            // La mordida se mide siempre contra el jugador de ESTE telefono,
+            // persiga a quien persiga: un bicho que te pasa por encima yendo a
+            // buscar a tu companiero te muerde igual. Ademas es lo que hace
+            // que el dano no dependa de la red: cada uno resuelve el suyo.
+            if (e.aturdido <= 0f && e.recarga <= 0f &&
+                e.distanciaA(px, pz) <= pRadio + e.kind.radio + 0.18f
+            ) {
                 e.recarga = e.kind.recarga
                 muerde(e)
             }
         }
+    }
+
+    /**
+     * Si el bicho registra a este objetivo ahora mismo.
+     *
+     * El rastrero ciego es el caso raro: no ve, oye. Solo nota al que corre,
+     * salvo que lo tenga tan encima que ya no haga falta oirlo.
+     */
+    private fun loNota(e: Enemy, o: ObjetivoBicho, alcance: Float): Boolean {
+        if (!o.detectable) return false
+        val d = e.distanciaA(o.x, o.z)
+        if (d > alcance) return false
+        return !e.kind.soloOye || o.ruidoso || d <= alcance * 0.35f
+    }
+
+    /**
+     * El campo de distancias hasta este objetivo, calculado la primera vez que
+     * alguien lo persigue en esta tanda.
+     *
+     * Dos bichos detras del mismo jugador comparten la tabla: el precio es un
+     * BFS por perseguido, no por bicho.
+     */
+    private fun campoHacia(o: ObjetivoBicho, cell: Float): IntArray {
+        val gx = (o.x / cell).toInt().coerceIn(0, maze.gw - 1)
+        val gy = (o.z / cell).toInt().coerceIn(0, maze.gh - 1)
+        return campos.getOrPut(maze.index(gx, gy)) { maze.bfsDistances(gx, gy) }
     }
 
     /**
@@ -288,3 +408,4 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
         val DY = intArrayOf(0, 0, 1, -1)
     }
 }
+

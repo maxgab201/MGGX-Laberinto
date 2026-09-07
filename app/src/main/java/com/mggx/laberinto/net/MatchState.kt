@@ -112,6 +112,32 @@ class JugadorRemoto(
 }
 
 /**
+ * Un bicho, tal como lo reparte el anfitrion.
+ *
+ * Guarda aparte donde se lo dibuja, por el mismo motivo que [JugadorRemoto]:
+ * las tandas llegan unas siete veces por segundo y la pantalla dibuja sesenta.
+ */
+class BichoRemoto(var x: Float, var z: Float) {
+    var alerta: Boolean = false
+    var vivo: Boolean = true
+    var dibX: Float = x
+    var dibZ: Float = z
+
+    fun poner(nx: Float, nz: Float, nalerta: Boolean, nvivo: Boolean) {
+        // Un salto grande no se suaviza: es un bicho que aparecio de nuevo o
+        // que el anfitrion reubico, y arrastrarlo por media cueva se veria
+        // peor que ponerlo donde esta.
+        if (kotlin.math.hypot(nx - x, nz - z) > 4f) { dibX = nx; dibZ = nz }
+        x = nx; z = nz; alerta = nalerta; vivo = nvivo
+    }
+
+    fun suavizar(k: Float) {
+        dibX += (x - dibX) * k
+        dibZ += (z - dibZ) * k
+    }
+}
+
+/**
  * El estado compartido de una partida en red.
  *
  * No dibuja ni juega: recibe mensajes y deja el estado prolijo para que la
@@ -143,6 +169,26 @@ class MatchState(val yo: String) {
      */
     private val jugadores = LinkedHashMap<String, JugadorRemoto>()
     private val candado = Any()
+
+    /**
+     * Donde dijo el anfitrion que estan los bichos, por indice en la lista.
+     *
+     * El indice sirve de nombre porque los bichos nacen de la misma semilla en
+     * los dos telefonos y nunca se sacan de la lista al morir (se quedan con
+     * vida en cero), asi que el numero de cada uno es el mismo de los dos
+     * lados de la sala.
+     */
+    private val bichos = HashMap<Int, BichoRemoto>()
+
+    /** Copia de los bichos repartidos. Vacio si nadie los reparte todavia. */
+    fun bichos(): Map<Int, BichoRemoto> = synchronized(candado) { HashMap(bichos) }
+    fun bicho(indice: Int): BichoRemoto? = synchronized(candado) { bichos[indice] }
+    fun hayBichos(): Boolean = synchronized(candado) { bichos.isNotEmpty() }
+
+    /** Acerca los bichos dibujados a donde dijo el anfitrion que estan. */
+    fun suavizarBichos(k: Float) {
+        synchronized(candado) { for (b in bichos.values) b.suavizar(k) }
+    }
 
     /** Casillas cuyo objeto ya agarro alguien. */
     val objetosTomados = HashSet<Int>()
@@ -214,10 +260,21 @@ class MatchState(val yo: String) {
                 objetosTomados.clear()
                 paredesRotas.clear()
                 trampasSaltadas.clear()
+                // Los bichos de la cueva anterior no tienen nada que ver con
+                // los de esta: dejarlos poblaria el nivel nuevo de fantasmas
+                // parados donde estaban los del anterior.
+                synchronized(candado) { bichos.clear() }
                 for (j in todos()) { j.caido = false; j.tiempoFinal = 0L }
             }
             NetProtocol.Tipo.POSE ->
                 p.pose(m.num(0), m.num(1), m.num(2), m.num(3), m.entero(4).coerceIn(0, 2))
+            NetProtocol.Tipo.BICHOS -> synchronized(candado) {
+                for (campo in m.args) {
+                    val b = NetProtocol.leerCuadroDeBicho(campo) ?: continue
+                    bichos.getOrPut(b.indice) { BichoRemoto(b.x, b.z) }
+                        .poner(b.x, b.z, b.alerta, b.vivo)
+                }
+            }
             NetProtocol.Tipo.TOMAR -> objetosTomados.add(m.entero(0))
             NetProtocol.Tipo.ROMPER -> paredesRotas.add(m.entero(0))
             NetProtocol.Tipo.TRAMPA -> trampasSaltadas.add(m.entero(0))

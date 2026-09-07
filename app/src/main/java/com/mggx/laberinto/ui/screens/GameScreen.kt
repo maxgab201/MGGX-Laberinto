@@ -310,6 +310,7 @@ fun GameHud(
         // ------------------------------------------------- botones de accion
         if (!paused) {
             ActionButtons(
+                dispatch = dispatch,
                 save = save,
                 session = session,
                 input = input,
@@ -514,6 +515,7 @@ private fun ActionButtons(
     input: CaveRenderer.InputState,
     selectedSlot: Int,
     onSelectSlot: (Int) -> Unit,
+    dispatch: (() -> Unit) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val s = save.settings

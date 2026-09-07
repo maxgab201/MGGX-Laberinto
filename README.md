@@ -48,9 +48,8 @@ proximo descenso.
   del personaje). Ninguno repite efecto.
 - **Lobby en 3D**: detras de los paneles se ve, en vivo, la cueva a la que vas
   a bajar.
-- **Multijugador preparado**: el protocolo y el estado de sala estan escritos y
-  probados; falta la conexion. La guia para terminarlo esta en
-  `docs/MULTIJUGADOR.md`.
+- **Multijugador**: carrera y cooperativo mediante Firebase Realtime Database.
+  La configuracion debe incluirse al compilar; ver `docs/MULTIJUGADOR.md`.
 - **Dos monedas propias**: Ecos (comunes) y Vetagris (raros).
 - **Musica y efectos sintetizados en vivo**: drone, pad, melodia pentatonica,
   goteras y un eco largo de caverna. Ni un mp3.
@@ -95,7 +94,7 @@ GITHUB_TOKEN=<tu token> tools/publicar_release.sh 1.0.1
 ## Como se prueba
 
 ```bash
-./gradlew :app:testDebugUnitTest        # 88 tests de logica
+./gradlew :app:testDebugUnitTest        # tests de logica y regresiones graficas
 python3 tools/check_shaders.py          # valida los 10 shaders GLSL
 tools/probar_en_emulador.sh             # lo instala y lo juega de verdad
 ```
@@ -131,3 +130,15 @@ app/src/main/java/com/mggx/laberinto/
   input/     mando fisico
   ui/        Compose: lobby, tienda, equipo, ajustes, HUD e iconos
 ```
+
+
+## Graficos y estabilidad: 1.6.0-alpha1
+
+Ver `docs/GRAFICOS.md` para el alcance visual, fallos corregidos, pruebas y
+limitaciones de esta version. Los workflows generan un APK debug y 24 modelos
+OBJ de inspeccion en el artifact `mggx-graphics-preview`. Los OBJ son geometria;
+los materiales procedurales se aplican en el juego.
+
+Para compilar multijugador en GitHub Actions, configurar `GOOGLE_SERVICES_JSON`
+como secret del repositorio. El workflow de publicacion verifica que exista
+configuracion valida y evita publicar otra release sin conexion Firebase.

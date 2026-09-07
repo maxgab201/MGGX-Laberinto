@@ -34,6 +34,20 @@ class MatchLink(
          */
         const val CADA_PING = 3f
         /**
+         * Cada cuanto el anfitrion reparte donde estan los bichos.
+         *
+         * Mas espaciado que las poses a proposito: son muchos mas cuerpos y no
+         * son la parte que el ojo mira de cerca. Con el suavizado del dibujo
+         * alcanza para que se vean caminando y no dando saltos.
+         */
+        const val CADA_BICHOS = 0.15f
+        /**
+         * Cuantos bichos entran en un mensaje. Con veinte bichos son dos
+         * mensajes por vuelta en vez de veinte: el plan gratis del relay se
+         * mide en escrituras, no en bytes.
+         */
+        const val BICHOS_POR_MENSAJE = 12
+        /**
          * Cuanto se mueve por segundo la posicion dibujada hacia la que
          * llego. Suaviza el salto entre mensaje y mensaje.
          */
@@ -50,6 +64,7 @@ class MatchLink(
 
     private var desdePose = 0f
     private var desdePing = 0f
+    private var desdeBichos = 0f
 
     /** Ultima pose mandada, para no repetir mensajes cuando estas quieto. */
     private var ultX = Float.NaN
@@ -102,6 +117,28 @@ class MatchLink(
         match.aplicar(m.codificar())
     }
 
+    /**
+     * True cuando toca repartir los bichos, y solo para el anfitrion.
+     *
+     * Se pregunta en vez de mandarse solo porque armar los cuadros cuesta
+     * (hay que recorrer todos los bichos y redondear sus posiciones), y a
+     * sesenta cuadros por segundo eso seria tirar trabajo a la basura nueve
+     * de cada diez veces.
+     */
+    fun tocaRepartirBichos(): Boolean {
+        if (!anfitrion || cerrado || desdeBichos < CADA_BICHOS) return false
+        desdeBichos = 0f
+        return true
+    }
+
+    /** Reparte donde estan los bichos. Lo ignora el que no es anfitrion. */
+    fun repartirBichos(cuadros: List<String>) {
+        if (!anfitrion || cerrado || cuadros.isEmpty()) return
+        for (lote in cuadros.chunked(BICHOS_POR_MENSAJE)) {
+            enviar(NetProtocol.bichos(yo, lote))
+        }
+    }
+
     fun avisarCaido() {
         val m = NetProtocol.caido(yo)
         enviar(m)
@@ -146,6 +183,12 @@ class MatchLink(
         // La postura entra en la cuenta aunque no muevas un dedo: agacharse
         // sin caminar tambien es un cambio, y si no viajara el companiero te
         // seguiria dibujando parado, atravesando el techo bajo.
+        //
+        // La altura tambien, y por el mismo motivo: saltar en el lugar no
+        // cambia ni x, ni z, ni el angulo, ni la postura. Sin mirarla, un
+        // salto quieto contaba como estar quieto y no se mandaba nada: la y
+        // viajaba en el mensaje, pero el mensaje no salia, y el companiero te
+        // veia pegado al piso todo el salto.
         val quieto = !ultX.isNaN() && postura == ultPostura &&
             abs(x - ultX) < 0.02f && abs(y - ultY) < 0.02f &&
             abs(z - ultZ) < 0.02f && abs(yaw - ultYaw) < 0.7f
@@ -184,7 +227,12 @@ class MatchLink(
         for (texto in transporte.recibir()) {
             // Se mira ANTES de aplicar: aplicar el propio SALIR y despues
             // descartarlo no sirve de nada, el borrado ya paso.
-            if (NetProtocol.decodificar(texto)?.de == yo) continue
+            val m = NetProtocol.decodificar(texto)
+            if (m?.de == yo) continue
+            // El anfitrion es el que reparte los bichos: si ademas se copiara
+            // los que le mandan, dos cabezas estarian moviendo los mismos
+            // cuerpos y se pelearian tironeandolos.
+            if (anfitrion && m?.tipo == NetProtocol.Tipo.BICHOS) continue
             match.aplicar(texto)?.let { llegados.add(it) }
         }
 
@@ -192,6 +240,7 @@ class MatchLink(
         desdePose += dt
         desdePing += dt
         desdePoseCompleta += dt
+        desdeBichos += dt
         if (mandarPose != null && desdePose >= CADA_POSE) {
             desdePose = 0f
             mandarPose()
@@ -221,6 +270,7 @@ class MatchLink(
         // --- la posicion que se dibuja persigue a la que llego
         val k = (SUAVIZADO * dt).coerceIn(0f, 1f)
         for (j in match.otros()) j.suavizar(k)
+        if (!anfitrion) match.suavizarBichos(k)
 
         return llegados
     }

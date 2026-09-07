@@ -37,6 +37,13 @@ class NetworkRegressionTest {
         assertTrue(peer.recibir().mapNotNull { NetProtocol.decodificar(it) }.any { it.tipo==NetProtocol.Tipo.POSE })
     }
 
+    @Test fun nonFiniteEnemyCoordinatesAreRejected() {
+        for (value in listOf("NaN", "Infinity", "-Infinity")) {
+            assertNull(NetProtocol.leerCuadroDeBicho("0,$value,1,0"))
+            assertNull(NetProtocol.leerCuadroDeBicho("0,1,$value,0"))
+        }
+    }
+
     @Test fun nonFiniteNumbersNeverEnterPlayerCoordinates() {
         for (value in listOf("NaN","Infinity","-Infinity")) {
             val message=NetProtocol.decodificar("1|POSE|peer|$value|0|0|0|0")!!

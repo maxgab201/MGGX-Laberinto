@@ -35,6 +35,16 @@ jobs:
       - name: Preparar el SDK de Android
         uses: android-actions/setup-android@v3
 
+      # app/google-services.json esta en .gitignore (es la config del proyecto
+      # de Firebase de cada uno), asi que el checkout no lo trae. Sin este paso
+      # el APK compila igual pero sale sin Firebase adentro, y el multijugador
+      # arranca diciendo que falta la configuracion. Por eso corta el build en
+      # vez de publicar una release con el modo de a varios roto.
+      - name: Poner la configuracion de Firebase
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: python3 tools/configure_firebase.py --required
+
       - name: Version
         id: v
         run: |
@@ -86,11 +96,6 @@ jobs:
           fi
           echo "nombre=$NOMBRE" >> "$GITHUB_OUTPUT"
 
-      - name: Configurar Firebase para la publicacion
-        env:
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: python3 tools/configure_firebase.py --required
-
       - name: Tests
         run: ./gradlew :app:testDebugUnitTest --console=plain
 
@@ -107,6 +112,25 @@ jobs:
             | grep -i 'SHA-256 digest' | head -1 | awk '{print $NF}')"
           echo "huella=$HUELLA" >> "$GITHUB_OUTPUT"
           echo "peso=$(du -h "MGGX-Laberinto-$V.apk" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      # Que el archivo estuviera al compilar no prueba que haya llegado adentro
+      # del APK: el limpiador de recursos (isShrinkResources) no ve que el SDK
+      # busque esos <string> de nombre, y se los puede llevar. Es justo la clase
+      # de error que no se nota hasta que alguien abre el multijugador en el
+      # telefono, asi que se mira el APK que se esta por publicar, no el build.
+      - name: Controlar que el APK lleve la configuracion de Firebase
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          APPID="$(jq -r '.client[0].client_info.mobilesdk_app_id' app/google-services.json)"
+          rm -rf /tmp/apkchk && mkdir -p /tmp/apkchk
+          unzip -o -q "MGGX-Laberinto-$V.apk" resources.arsc -d /tmp/apkchk
+          if ! strings /tmp/apkchk/resources.arsc | grep -qF "$APPID"; then
+            echo "El APK salio SIN la configuracion de Firebase ($APPID no esta"
+            echo "en sus recursos). Publicarlo asi seria publicar el multijugador"
+            echo "roto, asi que se corta aca."
+            exit 1
+          fi
+          echo "El APK lleva la configuracion de Firebase."
 
       - name: Publicar la release
         env:

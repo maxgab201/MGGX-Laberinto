@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Los datos del google-services.json no llegan al codigo como constantes: el
+  plugin de Google los convierte en <string> y el SDK de Firebase los busca
+  DE NOMBRE en tiempo de ejecucion (getIdentifier("google_app_id", ...)).
+
+  Para el limpiador de recursos (isShrinkResources) esa referencia no existe:
+  ve unos strings que nadie usa y se los puede llevar puestos. Si eso pasa,
+  FirebaseApp.initializeApp() devuelve null y el multijugador arranca diciendo
+  que falta la configuracion, aunque el google-services.json estuviera al
+  compilar. Esta lista es lo que le dice "estos no los toques".
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@string/google_app_id,
+                @string/google_api_key,
+                @string/google_crash_reporting_api_key,
+                @string/firebase_database_url,
+                @string/project_id,
+                @string/gcm_defaultSenderId,
+                @string/google_storage_bucket,
+                @string/default_web_client_id" />
+
