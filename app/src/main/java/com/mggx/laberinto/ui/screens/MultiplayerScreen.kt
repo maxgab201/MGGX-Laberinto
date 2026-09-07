@@ -153,36 +153,35 @@ fun MultiplayerScreen(
             }
             Spacer(Modifier.height(14.dp))
 
-            if (error != null) {
-                StonePanel(Modifier.fillMaxWidth(), glow = Cave.Bad) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        CaveIcon(IconId.CALAVERA, size = 20.dp, tint = Cave.Bad, accent = Cave.Bad)
-                        Spacer(Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                error ?: "", style = MaterialTheme.typography.bodyMedium,
-                                color = Cave.Text
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            // Lo que la app ve de su propia configuracion. Sin
-                            // esto, "no anda" no se puede arreglar: no hay
-                            // forma de saber si le falta la base, si apunta a
-                            // otro proyecto o si el paquete no coincide.
-                            Text(
-                                diagnostico(), fontSize = 11.sp, color = Cave.TextFaint
-                            )
-                        }
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-            }
-
             Row(Modifier.fillMaxSize()) {
                 // ------------------------------------------- columna izquierda
                 Column(
                     Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    if (error != null) {
+                        StonePanel(Modifier.fillMaxWidth(), glow = Cave.Bad) {
+                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                CaveIcon(IconId.CALAVERA, size = 20.dp, tint = Cave.Bad, accent = Cave.Bad)
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        error ?: "", style = MaterialTheme.typography.bodyMedium,
+                                        color = Cave.Text
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    // Lo que la app ve de su propia configuracion. Sin
+                                    // esto, "no anda" no se puede arreglar: no hay
+                                    // forma de saber si le falta la base, si apunta a
+                                    // otro proyecto o si el paquete no coincide.
+                                    Text(
+                                        diagnostico(), fontSize = 11.sp, color = Cave.TextFaint
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     if (sala == null) SalaNueva(
                         nombre = nombre,
                         onNombre = { nombre = it },
