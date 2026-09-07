@@ -77,7 +77,7 @@ object NetProtocol {
     data class Mensaje(val tipo: Tipo, val de: String, val args: List<String>) {
 
         fun arg(i: Int): String = args.getOrElse(i) { "" }
-        fun num(i: Int): Float = arg(i).toFloatOrNull() ?: 0f
+        fun num(i: Int): Float = arg(i).toFloatOrNull()?.takeIf { it.isFinite() } ?: 0f
         fun entero(i: Int): Int = arg(i).toIntOrNull() ?: 0
         fun largo(i: Int): Long = arg(i).toLongOrNull() ?: 0L
 
@@ -153,3 +153,4 @@ object NetProtocol {
         return (if (negativo) "-" else "") + "${a / 100}.$dec"
     }
 }
+

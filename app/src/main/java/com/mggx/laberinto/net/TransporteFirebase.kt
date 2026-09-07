@@ -35,19 +35,27 @@ class TransporteFirebase(codigoSala: String) : Transporte {
     private val raiz = FirebaseDatabase.getInstance()
         .getReference(RelayFirebase.pathDeSala(codigoSala))
 
+    @Volatile override var errorActual: String? = null
+        private set
+
+    private fun fallo(mensaje: String) {
+        if (abierto) errorActual = mensaje
+    }
+
     private val cola = ConcurrentLinkedQueue<String>()
     private val enviosHechos = AtomicLong(0)
     @Volatile private var abierto = true
 
     private val listener = object : ChildEventListener {
         override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+            if (!abierto) return
             val texto = snapshot.child("m").getValue(String::class.java) ?: return
             cola.add(texto)
         }
         override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) = Unit
         override fun onChildRemoved(snapshot: DataSnapshot) = Unit
         override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) = Unit
-        override fun onCancelled(error: DatabaseError) = Unit
+        override fun onCancelled(error: DatabaseError) { fallo("Firebase: ${error.message}") }
     }
 
     /**
@@ -86,10 +94,7 @@ class TransporteFirebase(codigoSala: String) : Transporte {
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    // Sin permiso de lectura no hay sala posible, pero es
-                    // mejor escuchar de mas que no escuchar nada.
-                    if (!abierto) return
-                    raiz.addChildEventListener(listener)
+                    fallo("No se pudo leer la sala: ${error.message}")
                 }
             })
     }
@@ -97,6 +102,7 @@ class TransporteFirebase(codigoSala: String) : Transporte {
     override fun enviar(texto: String) {
         if (!abierto) return
         raiz.push().setValue(mapOf("m" to texto, "t" to ServerValue.TIMESTAMP))
+            .addOnFailureListener { fallo("No se pudo enviar: ${it.message}") }
         if (RelayFirebase.tocaPodar(enviosHechos.incrementAndGet())) podarViejos()
     }
 
@@ -114,7 +120,7 @@ class TransporteFirebase(codigoSala: String) : Transporte {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     for (hijo in snapshot.children) hijo.ref.removeValue()
                 }
-                override fun onCancelled(error: DatabaseError) = Unit
+                override fun onCancelled(error: DatabaseError) { fallo("Firebase: ${error.message}") }
             })
     }
 
@@ -133,5 +139,7 @@ class TransporteFirebase(codigoSala: String) : Transporte {
         raiz.removeEventListener(listener)
         consulta?.removeEventListener(listener)
         consulta = null
+        cola.clear()
     }
 }
+

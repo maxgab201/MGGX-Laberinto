@@ -115,6 +115,7 @@ fun MultiplayerScreen(
         while (true) {
             delay(100)
             l.latir(0.1f)
+            l.errorConexion?.let { error = it }
             latido++
             // Si el anfitrion reparte la partida, todos bajan a la cueva.
             if (l.match.arrancada) {
@@ -460,3 +461,4 @@ private fun EnLaSala(
         }
     }
 }
+

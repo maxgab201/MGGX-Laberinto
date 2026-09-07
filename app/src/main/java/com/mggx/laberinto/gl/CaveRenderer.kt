@@ -151,6 +151,7 @@ class CaveRenderer(
     private var albedoTex = 0
     private var normalTex = 0
     private var texturedTheme: CaveTheme? = null
+    private var preparedQuality = -1
 
     // ------------------------------------------------------------ props
     private var shapeGem: InstancedShape? = null
@@ -394,9 +395,14 @@ class CaveRenderer(
      * Tambien vacia la cola: si quedo algun nivel encolado sin levantar, tiene
      * que quedar descartado, nunca pisar al que se pide ahora.
      */
+    private val actions = ConcurrentLinkedQueue<Pair<GameSession, () -> Unit>>()
+
+    fun dispatch(s: GameSession, action: () -> Unit) { actions.add(s to action) }
+
     fun setSession(s: GameSession) {
         ready = false
         soundOut.clear()
+        actions.clear()
         pending.clear()
         pending.add(s)
     }
@@ -461,13 +467,17 @@ class CaveRenderer(
             GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
             return
         }
-        if (swapped || needsRebuild) {
+        if (swapped || needsRebuild || preparedQuality != save.settings.quality) {
             needsRebuild = false
             prepareLevel(s)
             lastFrameNs = 0L
             lastPhase = GameSession.Phase.JUGANDO
             lastHealth = s.health
             ready = true
+        }
+        while (true) {
+            val action = actions.poll() ?: break
+            if (action.first === s && !input.paused && s.phase == GameSession.Phase.JUGANDO) action.second()
         }
         if (s.geometryDirty) {
             s.geometryDirty = false
@@ -613,7 +623,7 @@ class CaveRenderer(
 
     private fun prepareLevel(s: GameSession) {
         armarFaroles(s)
-        if (texturedTheme != s.theme || albedoTex == 0) {
+        if (texturedTheme != s.theme || albedoTex == 0 || preparedQuality != save.settings.quality) {
             if (albedoTex != 0) GLES30.glDeleteTextures(2, intArrayOf(albedoTex, normalTex), 0)
             val r = ProcTextures.build(s.theme, save.settings.quality)
             albedoTex = r.albedoTex
@@ -621,6 +631,7 @@ class CaveRenderer(
             texturedTheme = s.theme
         }
         uploadWorld(WorldMesh.build(s.maze, save.settings.quality))
+        preparedQuality = save.settings.quality
     }
 
     private fun uploadWorld(mesh: WorldMesh.Mesh) {
@@ -650,27 +661,18 @@ class CaveRenderer(
     }
 
     private fun buildShapes() {
-        shapeGem?.release(); shapeCone?.release()
-        shapeBox?.release(); shapeCylinder?.release(); shapeArrow?.release()
-        shapeSlab?.release(); shapeWing?.release()
-        shapeBoulder?.release(); shapePost?.release(); shapeStalactite?.release()
-        shapeMurcielago?.release(); shapeRastreroCuerpo?.release(); shapeRastreroPata?.release()
-        shapeGuardianTorso?.release(); shapeGuardianCabeza?.release(); shapeGuardianBrazo?.release()
-        shapeAntorcha?.release(); shapeLlama?.release(); shapeCristal?.release()
-        shapeCofre?.release(); shapeHongo?.release(); shapePincho?.release()
-        shapeEstacion?.release(); shapeObelisco?.release()
-        shapeMinero?.release(); shapeCasco?.release()
-        shapeGem = InstancedShape(PropMeshes.octahedron(1.5f), 1400)
+        // El contexto anterior ya destruyo sus recursos; no borrar IDs reutilizados.
+        shapeGem = InstancedShape(DetailMeshes.gem(), 1400)
         // Estalagmita (hacia arriba): antes radio 0.42 con altura 1, una
         // relacion de "gorro de fiesta" (2.4:1). Ahora una punta de verdad.
-        shapeCone = InstancedShape(PropMeshes.cone(8, 1f, RADIO_ESTALACTITA, false), 340)
-        shapeStalactite = InstancedShape(PropMeshes.cone(8, 1f, RADIO_ESTALACTITA, true), 340)
-        shapeBox = InstancedShape(PropMeshes.box(1f, 1f, 1f), 700)
+        shapeCone = InstancedShape(DetailMeshes.stalagmite(), 340)
+        shapeStalactite = InstancedShape(DetailMeshes.stalagmite(true), 340)
+        shapeBox = InstancedShape(DetailMeshes.roundedBox(), 700)
         shapeCylinder = InstancedShape(PropMeshes.cylinder(7, 1f, 0.1f), 900)
         shapeArrow = InstancedShape(PropMeshes.arrow(), 4)
-        shapeSlab = InstancedShape(PropMeshes.box(1f, 0.13f, 0.13f), 400)
+        shapeSlab = InstancedShape(DetailMeshes.roundedBox(1f, 0.13f, 0.13f, 0.018f), 400)
         shapeWing = InstancedShape(EnemyMeshes.murcielagoAla(), 200)
-        shapeBoulder = InstancedShape(PropMeshes.octahedron(0.72f), 900)
+        shapeBoulder = InstancedShape(DetailMeshes.boulder(), 900)
         shapePost = InstancedShape(PropMeshes.cylinder(6, 1f, 0.042f), 160)
         // Los bichos: pocos a la vez, asi que alcanza con cupos chicos.
         shapeMurcielago = InstancedShape(EnemyMeshes.murcielagoCuerpo(), 80)
@@ -1277,14 +1279,22 @@ class CaveRenderer(
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotCos"), 0.90f)
         subirLuces(p)
 
-        gem.draw(); cone.draw(); boxS.draw(); cyl.draw(); arrow.draw()
-        slab.draw(); ala.draw(); boulder.draw(); post.draw()
-        stalactite.draw()
-        murcielago.draw(); rastrero.draw(); pata.draw()
-        torso.draw(); cabeza.draw(); brazo.draw()
-        antorcha.draw(); llama.draw(); cristal.draw(); cofre.draw()
-        hongo.draw(); pincho.draw(); estacion.draw(); obelisco.draw()
-        minero.draw(); casco.draw()
+        GLES30.glUniform1i(GLES30.glGetUniformLocation(p, "uQuality"), save.settings.quality)
+        val material = GLES30.glGetUniformLocation(p, "uMaterial")
+        GLES30.glUniform1i(material, 0)
+        cone.draw(); stalactite.draw(); boulder.draw(); torso.draw(); cabeza.draw(); brazo.draw()
+        GLES30.glUniform1i(material, 1)
+        boxS.draw(); slab.draw(); post.draw(); cofre.draw()
+        GLES30.glUniform1i(material, 2)
+        cyl.draw(); arrow.draw(); antorcha.draw(); pincho.draw(); estacion.draw(); casco.draw()
+        GLES30.glUniform1i(material, 3)
+        gem.draw(); cristal.draw(); obelisco.draw()
+        GLES30.glUniform1i(material, 4)
+        ala.draw(); murcielago.draw(); rastrero.draw(); pata.draw(); hongo.draw()
+        GLES30.glUniform1i(material, 5)
+        minero.draw()
+        GLES30.glUniform1i(material, 6)
+        llama.draw()
     }
 
     /**
@@ -1471,3 +1481,4 @@ class CaveRenderer(
         GLES30.glDisable(GLES30.GL_BLEND)
     }
 }
+

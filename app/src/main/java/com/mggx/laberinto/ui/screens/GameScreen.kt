@@ -73,7 +73,8 @@ fun GameHud(
     onPause: () -> Unit,
     onQuit: () -> Unit,
     paused: Boolean,
-    onResume: () -> Unit
+    onResume: () -> Unit,
+    dispatch: (() -> Unit) -> Unit
 ) {
     val s = save.settings
     // Refresco del HUD a ~30 Hz: suficiente para las barras y baratisimo.
@@ -572,27 +573,27 @@ private fun ActionButtons(
                 verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 if (session.chalkCharges > 0) {
                     RoundActionButton(
-                        IconId.TIZA, { session.dropChalk() },
+                        IconId.TIZA, { dispatch { session.dropChalk() } },
                         diameter = (44 * scale).dp, badge = "${session.chalkCharges}"
                     )
                 }
                 if (session.pickCharges > 0) {
                     RoundActionButton(
-                        IconId.PICO, { session.breakWall() },
+                        IconId.PICO, { dispatch { session.breakWall() } },
                         diameter = (44 * scale).dp,
                         enabled = session.canBreakWall(), badge = "${session.pickCharges}"
                     )
                 }
                 if (session.phaseCharges > 0) {
                     RoundActionButton(
-                        IconId.FANTASMA, { session.phaseThrough() },
+                        IconId.FANTASMA, { dispatch { session.phaseThrough() } },
                         diameter = (44 * scale).dp,
                         enabled = session.canPhase(), badge = "${session.phaseCharges}"
                     )
                 }
                 if (session.stats.freeSonarSeconds > 0f) {
                     RoundActionButton(
-                        IconId.DIAPASON, { session.useFreeSonar() },
+                        IconId.DIAPASON, { dispatch { session.useFreeSonar() } },
                         diameter = (44 * scale).dp,
                         enabled = session.freeSonarTimer <= 0f,
                         badge = if (session.freeSonarTimer > 0f) "${session.freeSonarTimer.roundToInt()}" else null
@@ -606,7 +607,7 @@ private fun ActionButtons(
                     verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     RoundActionButton(
                         IconId.LINTERNA,
-                        onClick = { session.toggleLinterna() },
+                        onClick = { dispatch { session.toggleLinterna() } },
                         diameter = (44 * scale).dp,
                         tint = if (session.linternaEncendida) Cave.Amber else Cave.Text,
                         enabled = session.carburo > 0f || session.linternaEncendida,
@@ -665,7 +666,7 @@ private fun ActionButtons(
             // limpia, para que nunca quedes sin forma de defenderte.
             RoundActionButton(
                 ItemCatalog.get(save.armaEquipada)?.icon ?: IconId.PUNO,
-                onClick = { session.golpear() },
+                onClick = { dispatch { session.golpear() } },
                 diameter = (56 * scale).dp,
                 enabled = session.puedeGolpear(),
                 tint = if (session.puedeGolpear()) Cave.Text else Cave.TextFaint,
@@ -675,7 +676,7 @@ private fun ActionButtons(
             // Usar objeto
             RoundActionButton(
                 currentItem?.icon ?: IconId.MOCHILA,
-                onClick = { currentId?.let { session.useItem(it) } },
+                onClick = { currentId?.let { id -> dispatch { session.useItem(id) } } },
                 diameter = (66 * scale).dp,
                 enabled = currentItem != null,
                 badge = currentId?.let { "${save.stockOf(it)}" }
@@ -778,3 +779,4 @@ private fun Minimap(session: GameSession, sem: Semantics, modifier: Modifier = M
         }
     }
 }
+

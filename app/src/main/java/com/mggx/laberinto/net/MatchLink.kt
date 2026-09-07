@@ -42,6 +42,8 @@ class MatchLink(
 
     val match = MatchState(yo)
 
+    val errorConexion: String? get() = transporte.errorActual
+
     /** Se apago la conexion: no se manda ni se recibe nada mas. */
     var cerrado: Boolean = false
         private set
@@ -51,6 +53,8 @@ class MatchLink(
 
     /** Ultima pose mandada, para no repetir mensajes cuando estas quieto. */
     private var ultX = Float.NaN
+    private var ultY = Float.NaN
+    private var desdePoseCompleta = 0f
     private var ultZ = Float.NaN
     private var ultYaw = Float.NaN
     private var ultPostura = -1
@@ -65,7 +69,6 @@ class MatchLink(
     private fun enviar(m: NetProtocol.Mensaje) {
         if (cerrado) return
         transporte.enviar(m.codificar())
-        desdePing = 0f
     }
 
     /** Solo el anfitrion reparte la partida: el mismo nivel y semilla para todos. */
@@ -144,8 +147,11 @@ class MatchLink(
         // sin caminar tambien es un cambio, y si no viajara el companiero te
         // seguiria dibujando parado, atravesando el techo bajo.
         val quieto = !ultX.isNaN() && postura == ultPostura &&
-            abs(x - ultX) < 0.02f && abs(z - ultZ) < 0.02f && abs(yaw - ultYaw) < 0.7f
-        if (!quieto) {
+            abs(x - ultX) < 0.02f && abs(y - ultY) < 0.02f &&
+            abs(z - ultZ) < 0.02f && abs(yaw - ultYaw) < 0.7f
+        if (!quieto || desdePoseCompleta >= CADA_PING) {
+            desdePoseCompleta = 0f
+            ultY = y
             ultX = x; ultZ = z; ultYaw = yaw; ultPostura = postura
             enviar(NetProtocol.pose(yo, x, y, z, yaw, postura))
         }
@@ -185,6 +191,7 @@ class MatchLink(
         // --- lo mio
         desdePose += dt
         desdePing += dt
+        desdePoseCompleta += dt
         if (mandarPose != null && desdePose >= CADA_POSE) {
             desdePose = 0f
             mandarPose()
@@ -196,6 +203,7 @@ class MatchLink(
         // id crudo en vez del nombre. Asi, a los pocos segundos, todos saben
         // el nombre y la skin de todos.
         if (desdePing >= CADA_PING) {
+            desdePing = 0f
             enviar(NetProtocol.unirse(yo, nombre, skin))
             // Y el anfitrion repite ademas el arranque. El ARRANQUE se manda
             // una sola vez, asi que si justo se pierde (o si alguien entro un
@@ -226,3 +234,4 @@ class MatchLink(
         transporte.cerrar()
     }
 }
+

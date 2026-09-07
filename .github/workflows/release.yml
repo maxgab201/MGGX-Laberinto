@@ -86,6 +86,11 @@ jobs:
           fi
           echo "nombre=$NOMBRE" >> "$GITHUB_OUTPUT"
 
+      - name: Configurar Firebase para la publicacion
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: python3 tools/configure_firebase.py --required
+
       - name: Tests
         run: ./gradlew :app:testDebugUnitTest --console=plain
 
@@ -132,3 +137,4 @@ jobs:
           gh release create "v$V" "MGGX-Laberinto-$V.apk" \
             --title "MGGX Laberinto $V - $N" \
             --notes-file /tmp/notas.md
+

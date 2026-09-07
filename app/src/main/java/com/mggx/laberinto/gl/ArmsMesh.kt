@@ -62,30 +62,17 @@ object ArmsMesh {
             val rz = y * sp + z * cp
             return floatArrayOf(x * side, ry, rz)
         }
-        val corners = arrayOf(
-            floatArrayOf(-hx, -hy, -hz), floatArrayOf(hx, -hy, -hz),
-            floatArrayOf(hx, hy, -hz), floatArrayOf(-hx, hy, -hz),
-            floatArrayOf(-hx, -hy, hz), floatArrayOf(hx, -hy, hz),
-            floatArrayOf(hx, hy, hz), floatArrayOf(-hx, hy, hz)
-        )
-        val faces = arrayOf(
-            intArrayOf(4, 5, 6, 7) to floatArrayOf(0f, 0f, 1f),
-            intArrayOf(1, 0, 3, 2) to floatArrayOf(0f, 0f, -1f),
-            intArrayOf(5, 1, 2, 6) to floatArrayOf(1f, 0f, 0f),
-            intArrayOf(0, 4, 7, 3) to floatArrayOf(-1f, 0f, 0f),
-            intArrayOf(3, 7, 6, 2) to floatArrayOf(0f, 1f, 0f),
-            intArrayOf(0, 1, 5, 4) to floatArrayOf(0f, -1f, 0f)
-        )
-        val flip = side < 0f
-        for ((f, nrm) in faces) {
-            val nn = tn(nrm[0], nrm[1], nrm[2])
-            val ids = IntArray(4)
-            for (i in 0 until 4) {
-                val c = corners[f[i]]
-                val p = tx(c[0], c[1], c[2])
-                ids[i] = b.vertex(p[0], p[1], p[2], nn[0], nn[1], nn[2], side)
-            }
-            b.quad(ids[0], ids[1], ids[2], ids[3], flip)
+        val g = DetailMeshes.roundedBox(hx * 2f, hy * 2f, hz * 2f, minOf(hx,hy,hz) * 0.65f)
+        val offset = b.n
+        for (i in g.vertices.indices step 6) {
+            val p = tx(g.vertices[i], g.vertices[i+1], g.vertices[i+2])
+            val n = tn(g.vertices[i+3], g.vertices[i+4], g.vertices[i+5])
+            b.vertex(p[0],p[1],p[2],n[0],n[1],n[2],side)
+        }
+        for (i in g.indices.indices step 3) {
+            b.idx.add(offset + g.indices[i])
+            b.idx.add(offset + g.indices[i + if (side < 0f) 2 else 1])
+            b.idx.add(offset + g.indices[i + if (side < 0f) 1 else 2])
         }
     }
 
@@ -109,8 +96,9 @@ object ArmsMesh {
                 floatArrayOf((cx + cc * r) * side, cy + ss * r * flatten, z)
             fun nrm(cc: Float, ss: Float): FloatArray {
                 val nx = cc; val ny = ss / flatten
-                val l = sqrt(nx * nx + ny * ny).coerceAtLeast(1e-5f)
-                return floatArrayOf(nx / l * side, ny / l, 0f)
+                val nz = -(r1 - r0) / (z1 - z0)
+                val l = sqrt(nx * nx + ny * ny + nz * nz).coerceAtLeast(1e-5f)
+                return floatArrayOf(nx / l * side, ny / l, nz / l)
             }
 
             val n0 = nrm(c0, s0); val n1 = nrm(c1, s1)
@@ -162,3 +150,4 @@ object ArmsMesh {
         return Mesh(b.v.toArray(), b.idx.toArray())
     }
 }
+
