@@ -1,6 +1,24 @@
+# Gradle / Android
 .gradle/
-.kotlin/
 build/
-app/
+app/build/
 local.properties
-.claude/
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Salidas
+*.apk.idsig
+release/
+
+# Config de Firebase de cada uno (ver docs/MULTIJUGADOR.md, paso 1). No tiene
+# nada secreto, pero es la config de TU proyecto: cada quien pone la suya.
+# La de src/debug la genera sola la tarea googleServicesDebug.
+app/google-services.json
+app/src/debug/google-services.json
+
+# Sistema
+.DS_Store
+*.log
