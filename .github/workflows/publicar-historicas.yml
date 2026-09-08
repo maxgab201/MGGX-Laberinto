@@ -1,0 +1,108 @@
+name: Publicar todas las releases
+
+# Manual nomas, con un campo de confirmacion como seguro: sin el "SI" no
+# publica nada. Recorre las 11 versiones documentadas (cada una vive en su
+# propia rama, con RELEASE.md y su APK ya listos) y publica la que falte.
+# La que ya tenga release publicada se saltea sola, asi que correr esto de
+# nuevo no duplica ni rompe nada.
+on:
+  workflow_dispatch:
+    inputs:
+      confirmar:
+        description: 'Escribi SI para publicar las releases que falten'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    if: ${{ github.event.inputs.confirmar == 'SI' || github.event.inputs.confirmar == 'si' }}
+    runs-on: ubuntu-latest
+    strategy:
+      # Si una version tiene algun problema (RELEASE.md mal formado, etc.)
+      # las demas se publican igual: no vale la pena que una sola trabe once.
+      fail-fast: false
+      matrix:
+        include:
+          - version: 1.0.0
+            tag: v1.0
+          - version: 1.1.0
+            tag: v1.1.0
+          - version: 1.2.0
+            tag: v1.2.0
+          - version: 1.3.0
+            tag: v1.3.0
+          - version: 1.3.1
+            tag: v1.3.1
+          - version: 1.3.2
+            tag: v1.3.2
+          - version: 1.4.0
+            tag: v1.4.0
+          - version: 1.5.0
+            tag: v1.5.0
+          - version: 1.5.1
+            tag: v1.5.1
+          - version: 1.5.2
+            tag: v1.5.2
+          - version: 1.5.3
+            tag: v1.5.3
+    steps:
+      # Cada version vive en su propia rama, con su propio RELEASE.md y su
+      # propio apks/*.apk: por eso el checkout apunta a esa rama y no a la
+      # que dispara el workflow.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.version }}
+
+      - name: Ver si ya existe
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ matrix.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "existe=si" >> "$GITHUB_OUTPUT"
+          else
+            echo "existe=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      # El titulo y la descripcion salen de RELEASE.md, que ya tiene el
+      # formato listo (un bloque ``` para el titulo, uno ```markdown para la
+      # descripcion). Van a archivos aparte, no a un output de un solo
+      # renglon: la descripcion tiene varias lineas y algunas comillas.
+      - name: Sacar titulo y notas de RELEASE.md
+        if: steps.check.outputs.existe == 'no'
+        run: |
+          python3 <<'PY'
+          import re
+          texto = open("RELEASE.md", encoding="utf-8").read()
+          m_tit = re.search(r"## Titulo\s*```\s*\n(.*?)\n```", texto, re.S)
+          m_desc = re.search(r"## Descripcion\s*```markdown\s*\n(.*?)\n```", texto, re.S)
+          if not m_tit or not m_desc:
+              raise SystemExit("RELEASE.md no tiene el formato esperado (falta el bloque de Titulo o Descripcion)")
+          open("/tmp/titulo.txt", "w", encoding="utf-8").write(m_tit.group(1).strip())
+          open("/tmp/notas.md", "w", encoding="utf-8").write(m_desc.group(1).strip())
+          PY
+
+      - name: Publicar la release
+        if: steps.check.outputs.existe == 'no'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="$(ls apks/*.apk | head -1)"
+          [ -n "$APK" ] || { echo "no hay ningun .apk en apks/ de esta rama"; exit 1; }
+          TITULO="$(cat /tmp/titulo.txt)"
+          gh release create "${{ matrix.tag }}" "$APK" \
+            --repo "${{ github.repository }}" \
+            --target "${{ matrix.version }}" \
+            --title "$TITULO" \
+            --notes-file /tmp/notas.md
+
+      - name: Resumen
+        if: always()
+        run: |
+          if [ "${{ steps.check.outputs.existe }}" = "si" ]; then
+            echo "- \`${{ matrix.tag }}\` (${{ matrix.version }}): ya existia, no se toco" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- \`${{ matrix.tag }}\` (${{ matrix.version }}): publicada ahora" >> "$GITHUB_STEP_SUMMARY"
+          fi
