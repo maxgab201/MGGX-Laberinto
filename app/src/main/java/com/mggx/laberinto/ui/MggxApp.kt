@@ -94,6 +94,8 @@ fun MggxApp(
     var showTutorial by remember { mutableStateOf(!save.settings.tutorialDone) }
     /** Sala de multijugador de la partida en curso, o null si se juega solo. */
     var salaEnCurso by remember { mutableStateOf<com.mggx.laberinto.net.MatchLink?>(null) }
+    /** El codigo de la sala en curso, para poder volver a mostrarlo. */
+    var codigoDeSala by remember { mutableStateOf("") }
     var semillaDeSala by remember { mutableStateOf(0L) }
     /** Nivel que reparte el anfitrion. Es el de la sala, no el desbloqueado. */
     var nivelDeSala by remember { mutableIntStateOf(1) }
@@ -165,6 +167,7 @@ fun MggxApp(
         // abierta mandando poses de una partida que ya no existe.
         salaEnCurso?.cerrar()
         salaEnCurso = null
+        codigoDeSala = ""
         loading = true
         paused = false
         input.paused = true
@@ -177,13 +180,14 @@ fun MggxApp(
      * repartio el anfitrion, que es lo que hace que los dos telefonos armen
      * exactamente la misma cueva.
      */
-    fun startNetLevel(link: com.mggx.laberinto.net.MatchLink, nivel: Int, semilla: Long) {
+    fun startNetLevel(codigo: String, link: com.mggx.laberinto.net.MatchLink, nivel: Int, semilla: Long) {
         if (loading) return
         // OJO: el nivel de la sala NO pasa por save.setCurrentLevel, que lo
         // recorta al maximo que uno tenga desbloqueado. Si el anfitrion baja
         // al 20 y el invitado tiene hasta el 5, el recorte le armaria otra
         // cueva y se cae toda la idea de "misma semilla, mismo laberinto".
         salaEnCurso = link
+        codigoDeSala = codigo
         semillaDeSala = semilla
         nivelDeSala = nivel
         loading = true
@@ -237,10 +241,12 @@ fun MggxApp(
 
     fun finishRun(s: GameSession) {
         val reward = s.settle() ?: return
-        // Se avisa que te vas antes de armar el resultado: el companiero deja
-        // de verte de una, sin esperar los 12 segundos del que se cuelga.
-        salaEnCurso?.cerrar()
-        salaEnCurso = null
+        // La sala se deja viva si seguia conectada: asi se puede volver a
+        // Multijugador y bajar el proximo nivel con el mismo companero, sin
+        // tener que armar la sala de nuevo. Se cierra explicitamente si el
+        // usuario elige jugar el siguiente nivel solo (startLevel ya lo
+        // hace) o volver al lobby/tienda (ver Screen.RESULTADO mas abajo).
+        val salaSigueViva = salaEnCurso?.let { !it.cerrado } ?: false
         result = ResultData(
             won = s.phase == GameSession.Phase.GANADO,
             level = s.level,
@@ -252,7 +258,8 @@ fun MggxApp(
             // encima del que uno tiene desbloqueado. "Reintentar" carga el
             // mas alto que uno SI pueda jugar solo: si no, la pantalla decia
             // "nivel 30" y arrancaba otro completamente distinto.
-            reintentar = s.level.coerceAtMost(save.maxLevel)
+            reintentar = s.level.coerceAtMost(save.maxLevel),
+            salaActiva = salaSigueViva
         )
         input.paused = true
         pad.inGame = false
@@ -361,9 +368,14 @@ fun MggxApp(
                     abrirTransporte = { codigo -> abrirSala(context, codigo) },
                     diagnostico = { diagnosticoFirebase(context) },
                     onBack = { screen = Screen.LOBBY; refresh++ },
-                    onArrancarPartida = { link, nivel, semilla ->
-                        startNetLevel(link, nivel, semilla)
-                    }
+                    onArrancarPartida = { codigo, link, nivel, semilla ->
+                        startNetLevel(codigo, link, nivel, semilla)
+                    },
+                    // Si venimos de terminar un nivel de sala (ver
+                    // onContinuarSala en Screen.RESULTADO), la sala sigue
+                    // conectada: no hay que crear ni entrar de nuevo.
+                    salaExistente = salaEnCurso?.let { l -> codigoDeSala to l },
+                    ultimoNivelJugado = salaEnCurso?.let { nivelDeSala to semillaDeSala }
                 )
                 Screen.TIENDA -> ShopScreen(
                     save = save, refreshKey = refresh,
@@ -412,15 +424,31 @@ fun MggxApp(
                 Screen.RESULTADO -> {
                     val r = result
                     if (r != null) {
+                        // Volver al lobby o a la tienda sin elegir seguir
+                        // con la sala es abandonarla: si no, quedaria viva
+                        // sin que nadie la use hasta que el companero de por
+                        // muerto el silencio a los 12 segundos.
+                        fun cerrarSalaYSeguirA(destino: Screen) {
+                            salaEnCurso?.cerrar()
+                            salaEnCurso = null
+                            codigoDeSala = ""
+                            screen = destino
+                            refresh++
+                        }
                         ResultScreen(
                             won = r.won, level = r.level,
                             colorBlindMode = save.settings.colorBlindMode,
                             reward = r.reward,
                             timeMs = r.timeMs, steps = r.steps, nextLevel = r.nextLevel,
+                            salaActiva = r.salaActiva,
                             onNext = { startLevel(r.nextLevel) },
                             onRetry = { startLevel(r.reintentar) },
-                            onLobby = { screen = Screen.LOBBY; refresh++ },
-                            onShop = { screen = Screen.TIENDA; refresh++ }
+                            // Vuelve directo a la sala, que sigue conectada:
+                            // MultiplayerScreen la reconoce por salaExistente
+                            // y no pide crear ni entrar de nuevo.
+                            onContinuarSala = { screen = Screen.MULTIJUGADOR; refresh++ },
+                            onLobby = { cerrarSalaYSeguirA(Screen.LOBBY) },
+                            onShop = { cerrarSalaYSeguirA(Screen.TIENDA) }
                         )
                     }
                 }
@@ -477,7 +505,9 @@ private class ResultData(
     val reward: GameSession.Reward,
     val timeMs: Long,
     val steps: Int,
-    val nextLevel: Int
+    val nextLevel: Int,
+    /** Si la sala de multijugador sigue conectada, para ofrecer seguir con ella. */
+    val salaActiva: Boolean
 )
 
 @Composable

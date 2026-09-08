@@ -662,6 +662,69 @@ class PartidaEnRedTest {
         assertFalse(s.caido)
     }
 
+    // ---------------------------------------- seguir con la sala al otro nivel
+
+    /**
+     * Estos dos prueban el mecanismo de bajo nivel que sostiene "seguir con
+     * la sala" (MggxApp / MultiplayerScreen, que son Compose y no se pueden
+     * testear con JUnit puro en este repo): `match.arrancada` nunca vuelve
+     * a false, asi que la pantalla tiene que distinguir "es el mismo
+     * arranque de siempre" de "el anfitrion reparto un nivel de verdad
+     * nuevo" comparando (nivel, semilla) a mano.
+     */
+    @Test
+    fun elAnfitrionPuedeRepartirUnNivelNuevoSobreLaMismaSalaSinConfundirloConElViejo() {
+        val t = TransporteLocal()
+        val otro = t.companero()
+        val anfitrion = MatchLink(t, "uno", "Maxi", "skin_minero", anfitrion = true)
+        val invitado = MatchLink(otro, "dos", "Colo", "skin_minero", anfitrion = false)
+
+        anfitrion.arrancar(NetProtocol.Modo.COOPERATIVO, 5, 111L)
+        invitado.bombear(0.1f, 0f, 0f, 0f, 0f, 0)
+        val jugado = invitado.match.nivel to invitado.match.semilla
+        assertEquals(5, jugado.first)
+
+        // Termina el nivel: nadie cierra la sala, sigue viva de los dos lados.
+        assertFalse(anfitrion.cerrado)
+        assertFalse(invitado.cerrado)
+
+        // El anfitrion reparte el SIGUIENTE nivel sobre la misma sala.
+        anfitrion.arrancar(NetProtocol.Modo.COOPERATIVO, 6, 222L)
+        invitado.bombear(0.1f, 0f, 0f, 0f, 0f, 0)
+
+        assertTrue(invitado.match.arrancada)
+        assertNotEquals(
+            "el nivel nuevo no se distingue del que ya se jugo",
+            jugado, invitado.match.nivel to invitado.match.semilla
+        )
+        assertEquals(6, invitado.match.nivel)
+        assertEquals(222L, invitado.match.semilla)
+    }
+
+    @Test
+    fun laRetransmisionDelMismoArranqueNoSeConfundeConUnNivelNuevo() {
+        // El anfitrion repite su ultimo ARRANQUE cada pocos segundos (para
+        // el que se lo perdio). Comparar (nivel, semilla) tiene que dar
+        // IGUAL en ese caso, o la pantalla dispararia un nivel "nuevo" que
+        // en realidad es el mismo de siempre, una y otra vez.
+        val t = TransporteLocal()
+        val otro = t.companero()
+        val anfitrion = MatchLink(t, "uno", "Maxi", "skin_minero", anfitrion = true)
+        val invitado = MatchLink(otro, "dos", "Colo", "skin_minero", anfitrion = false)
+
+        anfitrion.arrancar(NetProtocol.Modo.CARRERA, 9, 4242L)
+        invitado.bombear(0.1f, 0f, 0f, 0f, 0f, 0)
+        val jugado = invitado.match.nivel to invitado.match.semilla
+
+        // Retransmision: mismo nivel, misma semilla, de nuevo.
+        invitado.match.aplicar(NetProtocol.arranque("uno", NetProtocol.Modo.CARRERA, 9, 4242L).codificar())
+
+        assertEquals(
+            "la retransmision del mismo nivel se veria como uno nuevo",
+            jugado, invitado.match.nivel to invitado.match.semilla
+        )
+    }
+
     @Test
     fun enSolitarioSeSiguePerdiendoDeLaFormaDeSiempre() {
         // Sin red, quedarse sin vida es perder, no quedar caido esperando a

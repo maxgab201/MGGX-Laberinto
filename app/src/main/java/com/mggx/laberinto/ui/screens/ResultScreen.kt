@@ -40,8 +40,12 @@ fun ResultScreen(
     timeMs: Long,
     steps: Int,
     nextLevel: Int,
+    /** Si veniamos de una sala de a varios y sigue conectada. */
+    salaActiva: Boolean,
     onNext: () -> Unit,
     onRetry: () -> Unit,
+    /** Volver a la sala, que sigue conectada, para bajar el proximo nivel juntos. */
+    onContinuarSala: () -> Unit,
     onLobby: () -> Unit,
     onShop: () -> Unit
 ) {
@@ -77,7 +81,22 @@ fun ResultScreen(
                 )
                 Spacer(Modifier.height(24.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (won) {
+                    if (salaActiva) {
+                        // Con la sala viva, "seguir" es volver a ella: es lo
+                        // que se espera despues de jugar acompanado, y evita
+                        // tener que dictar el codigo de nuevo para el
+                        // proximo nivel. "Jugar solo" sigue disponible para
+                        // el que prefiera desconectarse.
+                        CaveButton(
+                            "Bajar con tu compañero", onContinuarSala, icon = IconId.MULTIJUGADOR,
+                            style = CaveButtonStyle.PRIMARIO, subtitle = "La sala sigue conectada"
+                        )
+                        CaveButton(
+                            "Jugar solo",
+                            if (won) onNext else onRetry,
+                            icon = if (won) IconId.JUGAR else IconId.REINICIAR
+                        )
+                    } else if (won) {
                         CaveButton(
                             "Seguir bajando", onNext, icon = IconId.JUGAR,
                             style = CaveButtonStyle.PRIMARIO, subtitle = "Nivel $nextLevel"

@@ -66,12 +66,27 @@ fun MultiplayerScreen(
     /** Que ve la app de su config de Firebase. Se muestra si algo falla. */
     diagnostico: () -> String,
     onBack: () -> Unit,
-    onArrancarPartida: (MatchLink, Int, Long) -> Unit
+    onArrancarPartida: (String, MatchLink, Int, Long) -> Unit,
+    /**
+     * Una sala de la que ya se viene conectado (se termino un nivel y el
+     * anfitrion todavia no bajo a otro), para no obligar a crear o entrar de
+     * nuevo con un codigo. `null` en la entrada normal desde el lobby.
+     */
+    salaExistente: Pair<String, MatchLink>? = null,
+    /**
+     * Nivel y semilla que se acaban de jugar, cuando se vuelve con
+     * [salaExistente]. `match.arrancada` del [MatchLink] NUNCA vuelve a
+     * false (es el mismo objeto de un nivel al otro, y el anfitrion sigue
+     * retransmitiendo su ultimo ARRANQUE cada pocos segundos para el que se
+     * lo perdio), asi que sin esto la pantalla dispararia de nuevo el nivel
+     * que se acaba de terminar en vez de esperar al proximo de verdad.
+     */
+    ultimoNivelJugado: Pair<Int, Long>? = null
 ) {
     var nombre by remember { mutableStateOf(save.nombreJugador.ifBlank { "Minero" }) }
     var codigoEscrito by remember { mutableStateOf("") }
-    var sala by remember { mutableStateOf<String?>(null) }
-    var link by remember { mutableStateOf<MatchLink?>(null) }
+    var sala by remember { mutableStateOf(salaExistente?.first) }
+    var link by remember { mutableStateOf(salaExistente?.second) }
     var modo by remember { mutableStateOf(NetProtocol.Modo.CARRERA) }
     var error by remember { mutableStateOf<String?>(null) }
     // Sube en cada latido de red para que la lista de la sala se repinte.
@@ -118,8 +133,12 @@ fun MultiplayerScreen(
             l.errorConexion?.let { error = it }
             latido++
             // Si el anfitrion reparte la partida, todos bajan a la cueva.
-            if (l.match.arrancada) {
-                onArrancarPartida(l, l.match.nivel, l.match.semilla)
+            // La comparacion contra lo ya jugado es necesaria al volver con
+            // una sala existente: `match.arrancada` sigue en true desde el
+            // nivel anterior (nunca se resetea) y el anfitrion re-manda ese
+            // mismo ARRANQUE viejo cada pocos segundos.
+            if (l.match.arrancada && (l.match.nivel to l.match.semilla) != ultimoNivelJugado) {
+                onArrancarPartida(sala ?: "", l, l.match.nivel, l.match.semilla)
                 break
             }
         }

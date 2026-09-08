@@ -10,13 +10,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -37,7 +40,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,6 +54,7 @@ import com.mggx.laberinto.gl.CaveRenderer
 import com.mggx.laberinto.ui.CaveBar
 import com.mggx.laberinto.ui.CaveButton
 import com.mggx.laberinto.ui.CaveButtonStyle
+import com.mggx.laberinto.ui.MinimapMath
 import com.mggx.laberinto.ui.RoundActionButton
 import com.mggx.laberinto.ui.StonePanel
 import com.mggx.laberinto.ui.formatNumber
@@ -112,6 +118,15 @@ fun GameHud(
                 }
             }
         }
+
+        // Todo lo que sigue son paneles anclados a un borde de la pantalla
+        // (HUD de arriba, minimapa, buffs, botones de accion): a proposito
+        // en un Box aparte de las zonas tactiles de arriba, que si tienen
+        // que llegar hasta el borde fisico real para no perder area de
+        // gesto. Sin este padding, en un telefono con notch o con gestos de
+        // navegacion, estos paneles pueden quedar tapados o pegados al
+        // borde real en vez del borde util de la pantalla.
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
 
         // ------------------------------------------------------ HUD arriba
         Row(
@@ -246,6 +261,12 @@ fun GameHud(
         if (s.showMinimap) {
             Minimap(
                 session, sem,
+                // `session` es una clase mutable comun (var posX, var
+                // revealed[i], etc.), no un State de Compose: sin este
+                // parametro no hay garantia de que el Canvas se vuelva a
+                // dibujar cuando el jugador se mueve. uiTick cambia de valor
+                // en cada llamada, asi que fuerza la recomposicion siempre.
+                tick = uiTick,
                 Modifier
                     .align(Alignment.TopEnd)
                     .padding(top = 64.dp, end = 14.dp)
@@ -359,6 +380,8 @@ fun GameHud(
                 }
             }
         }
+
+        } // fin del Box con padding de insets seguros
 
         // ---------------------------------------------------------- pausa
         if (paused) {
@@ -665,11 +688,13 @@ private fun ActionButtons(
             )
 
             // Golpear. Siempre esta: aunque no tengas arma se pega a mano
-            // limpia, para que nunca quedes sin forma de defenderte.
+            // limpia, para que nunca quedes sin forma de defenderte. Es el
+            // boton mas grande del HUD a proposito: es la accion que mas se
+            // toca en combate, mas que usar un objeto.
             RoundActionButton(
                 ItemCatalog.get(save.armaEquipada)?.icon ?: IconId.PUNO,
                 onClick = { dispatch { session.golpear() } },
-                diameter = (56 * scale).dp,
+                diameter = (70 * scale).dp,
                 enabled = session.puedeGolpear(),
                 tint = if (session.puedeGolpear()) Cave.Text else Cave.TextFaint,
                 accent = Cave.Bad
@@ -679,7 +704,7 @@ private fun ActionButtons(
             RoundActionButton(
                 currentItem?.icon ?: IconId.MOCHILA,
                 onClick = { currentId?.let { id -> dispatch { session.useItem(id) } } },
-                diameter = (66 * scale).dp,
+                diameter = (50 * scale).dp,
                 enabled = currentItem != null,
                 badge = currentId?.let { "${save.stockOf(it)}" }
             )
@@ -706,30 +731,67 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectTa
 
 // -------------------------------------------------------------- minimapa
 
+/** Cuantas casillas se ven para cada lado del jugador. Es un radar, no un mapa entero. */
+private const val MINIMAP_RADIO_CELDAS = 6
+
 @Composable
-private fun Minimap(session: GameSession, sem: Semantics, modifier: Modifier = Modifier) {
+private fun Minimap(session: GameSession, sem: Semantics, tick: Int, modifier: Modifier = Modifier) {
+    // Lectura de un parametro primitivo que cambia en cada llamada: fuerza a
+    // Compose a redibujar el Canvas siempre, aunque `session` (una clase
+    // mutable comun, no un State) sea el mismo objeto de principio a fin del
+    // nivel. Sin esto el minimapa se podia quedar congelado en el primer
+    // cuadro que llego a dibujar, a veces antes de revelar ninguna celda.
+    @Suppress("UNUSED_EXPRESSION") tick
     Box(
         modifier
             .clip(RoundedCornerShape(13.dp))
-            .background(Cave.Void.copy(alpha = 0.72f))
+            .background(Cave.Void.copy(alpha = 0.82f))
     ) {
         Canvas(Modifier.fillMaxSize().padding(6.dp)) {
             val m = session.maze
-            val cell = min(size.width / m.gw, size.height / m.gh)
-            val ox = (size.width - cell * m.gw) / 2f
-            val oy = (size.height - cell * m.gh) / 2f
+            val cell = min(size.width, size.height) / (MINIMAP_RADIO_CELDAS * 2f)
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            val yaw = session.yawDeg
+            val pgx = (session.posX / GameSession.CELL).toInt()
+            val pgy = (session.posZ / GameSession.CELL).toInt()
 
-            for (gy in 0 until m.gh) {
-                for (gx in 0 until m.gw) {
+            // Es un radar centrado en el jugador y rotado con su mirada, no
+            // un mapa entero: mostrar el laberinto completo rotando lo deja
+            // ilegible en niveles grandes, y un vistazo rapido necesita
+            // "arriba = para donde voy", no "arriba = norte".
+            fun aPantalla(worldX: Float, worldZ: Float): Offset {
+                val (sx, sy) = MinimapMath.rotarHaciaArriba(
+                    worldX - session.posX, worldZ - session.posZ, yaw
+                )
+                return Offset(cx + sx / GameSession.CELL * cell, cy + sy / GameSession.CELL * cell)
+            }
+
+            for (gy in (pgy - MINIMAP_RADIO_CELDAS)..(pgy + MINIMAP_RADIO_CELDAS)) {
+                for (gx in (pgx - MINIMAP_RADIO_CELDAS)..(pgx + MINIMAP_RADIO_CELDAS)) {
+                    if (gx !in 0 until m.gw || gy !in 0 until m.gh) continue
                     val i = m.index(gx, gy)
                     if (!session.revealed[i]) continue
                     val solid = m.isSolid(gx, gy)
                     val col = when {
-                        solid -> Cave.Stone.copy(alpha = 0.85f)
-                        session.walked[i] -> Cave.AmberDeep.copy(alpha = 0.55f)
-                        else -> Cave.StoneHi.copy(alpha = 0.75f)
+                        // Mas contraste que antes entre pared y piso: eran
+                        // dos grises parecidos y costaba distinguirlos.
+                        solid -> Cave.Void.copy(alpha = 0.95f)
+                        session.walked[i] -> Cave.AmberDeep.copy(alpha = 0.65f)
+                        else -> Cave.StoneHi.copy(alpha = 0.9f)
                     }
-                    drawRect(col, Offset(ox + gx * cell, oy + gy * cell), Size(cell, cell))
+                    val p = aPantalla((gx + 0.5f) * GameSession.CELL, (gy + 0.5f) * GameSession.CELL)
+                    // La celda tambien va rotada: se dibuja como un cuadrado
+                    // orientado a la mirada, del tamano de una celda mas un
+                    // pelo de superposicion para que no queden lineas finas
+                    // entre casillas vecinas al rotar.
+                    rotate(yaw, p) {
+                        drawRect(
+                            col,
+                            Offset(p.x - cell * 0.54f, p.y - cell * 0.54f),
+                            Size(cell * 1.08f, cell * 1.08f)
+                        )
+                    }
                 }
             }
 
@@ -739,38 +801,42 @@ private fun Minimap(session: GameSession, sem: Semantics, modifier: Modifier = M
                 if (!session.revealed[m.index(t.gx, t.gy)]) continue
                 drawCircle(
                     sem.trap.copy(alpha = 0.9f), cell * 0.42f,
-                    Offset(ox + (t.gx + 0.5f) * cell, oy + (t.gy + 0.5f) * cell)
+                    aPantalla((t.gx + 0.5f) * GameSession.CELL, (t.gy + 0.5f) * GameSession.CELL)
                 )
             }
 
             // Marcas de tiza
             for (mk in session.marks) {
-                val gx = (mk.x / GameSession.CELL)
-                val gy = (mk.z / GameSession.CELL)
-                drawCircle(
-                    Cave.Ice, cell * 0.4f,
-                    Offset(ox + gx * cell, oy + gy * cell)
-                )
+                drawCircle(Cave.Ice, cell * 0.4f, aPantalla(mk.x, mk.z))
             }
 
             // Salida: se ve si esta revelada o si la reliquia hace ping
             val exitRevealed = session.revealed[m.index(m.exitGx, m.exitGy)] || session.exitPingFlash > 0f
             if (exitRevealed) {
-                val ex = ox + (m.exitGx + 0.5f) * cell
-                val ey = oy + (m.exitGy + 0.5f) * cell
-                drawCircle(sem.exit.copy(alpha = 0.35f), cell * 1.5f, Offset(ex, ey))
-                drawCircle(sem.exit, cell * 0.7f, Offset(ex, ey))
+                val e = aPantalla((m.exitGx + 0.5f) * GameSession.CELL, (m.exitGy + 0.5f) * GameSession.CELL)
+                drawCircle(sem.exit.copy(alpha = 0.35f), cell * 1.5f, e)
+                drawCircle(sem.exit, cell * 0.7f, e)
             }
 
-            // Jugador
-            val px = ox + (session.posX / GameSession.CELL) * cell
-            val py = oy + (session.posZ / GameSession.CELL) * cell
-            drawCircle(Cave.AmberSoft, cell * 0.8f, Offset(px, py))
-            // Direccion de la mirada
-            val yawRad = Math.toRadians(session.yawDeg.toDouble())
-            val dx = Math.sin(yawRad).toFloat() * cell * 2.2f
-            val dy = Math.cos(yawRad).toFloat() * cell * 2.2f
-            drawLine(Cave.Amber, Offset(px, py), Offset(px + dx, py + dy), 2f * density)
+            // Companeros de sala, en cooperativo (o cualquier modo de a
+            // varios): la posicion suavizada, no la cruda, para que no
+            // salten entre mensaje y mensaje de red.
+            session.red?.match?.otros()?.forEach { j ->
+                if (j.sinPose) return@forEach
+                val p = aPantalla(j.dibX, j.dibZ)
+                val col = if (j.caido) sem.bad else Cave.Ice
+                drawCircle(col.copy(alpha = 0.4f), cell * 0.85f, p)
+                drawCircle(col, cell * 0.55f, p)
+            }
+
+            // Jugador: siempre fijo en el centro mirando hacia arriba, ya
+            // que es el MUNDO el que rota alrededor de el.
+            drawCircle(Cave.AmberSoft.copy(alpha = 0.35f), cell * 1.1f, Offset(cx, cy))
+            drawCircle(Cave.AmberSoft, cell * 0.7f, Offset(cx, cy))
+            drawLine(
+                Cave.Amber, Offset(cx, cy), Offset(cx, cy - cell * 1.3f),
+                3f * density, cap = StrokeCap.Round
+            )
         }
         Canvas(Modifier.fillMaxSize()) {
             drawRoundRect(

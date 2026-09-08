@@ -18,35 +18,87 @@ import com.mggx.laberinto.gl.PropMeshes.trasladar
  * "una persona", no como algo que ataca. Por eso la silueta es alta y
  * angosta, con el casco bien marcado.
  *
- * Igual que las demas, cada pieza se apoya en y=0 y llega hasta y=1: el
- * `scale` que le pasa el renderer es directamente su altura en metros.
+ * Igual que las demas, el cuerpo entero se apoya en y=0 y llega hasta y=1: el
+ * `scale` que le pasa el renderer es directamente su altura en metros. Antes
+ * era un apilado de cajas redondeadas sin brazos; ahora son cuerpos de
+ * revolucion (piernas, abrigo y brazos colgando a los costados), con las
+ * mismas herramientas que EnemyMeshes/StructureMeshes.
  */
 object PlayerMeshes {
 
     /**
-     * Cuerpo con el abrigo puesto: botas, piernas, la panza del abrigo y los
-     * hombros, rematado en el cuello.
-     *
-     * Es un cuerpo de revolucion (una sola pasada de lathe). De lejos, que es
-     * como se lo ve casi siempre, se lee igual que una silueta modelada
-     * hombro por hombro, y cuesta la decima parte de triangulos.
+     * Una pierna con la bota puesta, de la suela a donde se esconde bajo el
+     * ruedo del abrigo. Se usa dos veces (una por lado, ver [mineroCuerpo]).
+     */
+    private fun pierna(): Geometry = lathe(
+        arrayOf(
+            floatArrayOf(0.000f, 0.000f),   // suela, apoyada en el piso
+            floatArrayOf(0.074f, 0.012f),
+            floatArrayOf(0.068f, 0.080f),   // cuerpo de la bota
+            floatArrayOf(0.070f, 0.160f),   // cana de la bota
+            floatArrayOf(0.050f, 0.220f),   // tobillo
+            floatArrayOf(0.048f, 0.340f),   // gemba
+            floatArrayOf(0.058f, 0.430f),   // rodilla
+            floatArrayOf(0.064f, 0.530f),   // muslo, con el pantalon holgado
+            floatArrayOf(0.028f, 0.570f),
+            floatArrayOf(0.000f, 0.610f)    // se cierra en punta bajo el abrigo
+        ),
+        segmentos = 10
+    )
+
+    /**
+     * El abrigo puesto: de la cadera a los hombros y el cuello, mas ancho de
+     * hombros que de cintura para que se lea como torso y no como un tubo.
+     */
+    private fun torso(): Geometry = lathe(
+        arrayOf(
+            floatArrayOf(0.000f, 0.430f),   // se cierra por encima de las piernas
+            floatArrayOf(0.155f, 0.460f),   // ruedo del abrigo, abierto sobre la cadera
+            floatArrayOf(0.128f, 0.560f),   // cintura entallada
+            floatArrayOf(0.150f, 0.650f),   // pecho y bolsillos
+            floatArrayOf(0.172f, 0.740f),   // hombros, lo mas ancho
+            floatArrayOf(0.145f, 0.800f),
+            floatArrayOf(0.072f, 0.840f),   // cuello
+            floatArrayOf(0.000f, 0.860f)    // se cierra bajo donde va el casco
+        ),
+        segmentos = 12
+    )
+
+    /**
+     * Perfil de un brazo colgando, en su propio eje local (de -0.5 el puno a
+     * +0.5 el hombro). [mineroBrazo] lo escala a su largo real y lo ubica al
+     * costado del cuerpo.
+     */
+    private fun brazoPerfil(): Geometry = lathe(
+        arrayOf(
+            floatArrayOf(0.000f, -0.50f),   // punta del puno
+            floatArrayOf(0.050f, -0.42f),   // puno
+            floatArrayOf(0.038f, -0.26f),   // muneca
+            floatArrayOf(0.044f, -0.02f),   // manga del antebrazo
+            floatArrayOf(0.050f, 0.24f),    // manga del brazo
+            floatArrayOf(0.060f, 0.40f),    // hombrera
+            floatArrayOf(0.000f, 0.50f)     // se cierra bajo el hombro del abrigo
+        ),
+        segmentos = 8
+    )
+
+    /** Un brazo ya ubicado: `lado` es -1f (izquierdo) o +1f (derecho). */
+    private fun mineroBrazo(lado: Float): Geometry =
+        trasladar(escalar(brazoPerfil(), 1f, 0.34f, 1f), 0.205f * lado, 0.610f, 0f)
+
+    /**
+     * Cuerpo completo: piernas, abrigo y los dos brazos colgando a los
+     * costados. Antes no tenia brazos; ahora que el minero se ve de lejos en
+     * los pasillos, sin ellos se leia como un maniqui.
      */
     fun mineroCuerpo(): Geometry {
-        fun pieza(x: Float, y: Float, z: Float, sx: Float, sy: Float, sz: Float) =
-            trasladar(DetailMeshes.roundedBox(sx,sy,sz,minOf(sx,sy,sz)*0.28f),x,y,z)
+        val unaPierna = pierna()
         return combinar(
-            pieza(-0.095f,0.055f,0.035f,0.14f,0.11f,0.24f),
-            pieza(0.095f,0.055f,0.035f,0.14f,0.11f,0.24f),
-            pieza(-0.09f,0.28f,0f,0.14f,0.37f,0.16f),
-            pieza(0.09f,0.28f,0f,0.14f,0.37f,0.16f),
-            pieza(0f,0.61f,0f,0.36f,0.32f,0.22f),
-            pieza(0f,0.47f,0f,0.37f,0.05f,0.24f),
-            pieza(-0.23f,0.59f,0f,0.12f,0.35f,0.14f),
-            pieza(0.23f,0.59f,0f,0.12f,0.35f,0.14f),
-            pieza(0f,0.835f,0.02f,0.17f,0.17f,0.18f),
-            pieza(0f,0.63f,-0.16f,0.25f,0.25f,0.12f),
-            pieza(-0.095f,0.61f,0.12f,0.09f,0.10f,0.025f),
-            pieza(0.095f,0.61f,0.12f,0.09f,0.10f,0.025f)
+            trasladar(unaPierna, -0.105f, 0f, 0f),
+            trasladar(unaPierna, 0.105f, 0f, 0f),
+            torso(),
+            mineroBrazo(-1f),
+            mineroBrazo(1f)
         )
     }
 
@@ -77,4 +129,3 @@ object PlayerMeshes {
         return combinar(domo, visera)
     }
 }
-

@@ -18,6 +18,15 @@ object ArmsMesh {
     const val STRIDE_FLOATS = 7
     const val STRIDE_BYTES = STRIDE_FLOATS * 4
 
+    /**
+     * Coordenada X local del dedo mas cercano al centro del cuerpo (el
+     * indice, primer elemento de `fingerX` en [buildArm]) y del pulgar.
+     * Expuestas aparte para poder testear, sin reconstruir la malla entera,
+     * que el pulgar quede de ESE lado y no del lado del menique.
+     */
+    const val INDICE_X = -0.034f
+    const val PULGAR_X = -0.050f
+
     class Mesh(val vertices: FloatArray, val indices: IntArray)
 
     private class Builder {
@@ -122,7 +131,7 @@ object ArmsMesh {
         box(b, side, 0.002f, 0.002f, -0.128f, 0.050f, 0.020f, 0.014f, 0.05f)
 
         // Cuatro dedos separados, cada uno con dos falanges y su propia curva.
-        val fingerX = floatArrayOf(-0.034f, -0.0115f, 0.0115f, 0.034f)
+        val fingerX = floatArrayOf(INDICE_X, -0.0115f, 0.0115f, 0.034f)
         val l1 = floatArrayOf(0.052f, 0.060f, 0.056f, 0.043f)
         val curl = floatArrayOf(0.34f, 0.26f, 0.30f, 0.42f)
         for (i in 0 until 4) {
@@ -138,9 +147,13 @@ object ArmsMesh {
             )
         }
 
-        // Pulgar: sale del costado de la palma y apunta hacia adentro.
-        box(b, side, 0.050f, -0.010f, -0.072f, 0.0125f, 0.0125f, 0.032f, 0.12f)
-        box(b, side, 0.056f, -0.019f, -0.124f, 0.0108f, 0.0108f, 0.027f, 0.50f)
+        // Pulgar: sale del costado de la palma y apunta hacia adentro (mismo
+        // lado que fingerX[0], el dedo mas cercano al centro del cuerpo).
+        // Con signo positivo quedaba del lado del menique: la mano se leia
+        // invertida en las dos manos por igual, porque buildArm() se dibuja
+        // una sola vez y despues se espeja con `side`.
+        box(b, side, PULGAR_X, -0.010f, -0.072f, 0.0125f, 0.0125f, 0.032f, 0.12f)
+        box(b, side, PULGAR_X - 0.006f, -0.019f, -0.124f, 0.0108f, 0.0108f, 0.027f, 0.50f)
     }
 
     fun build(): Mesh {
