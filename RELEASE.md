@@ -1,0 +1,52 @@
+# Para crear la release de GitHub
+
+**Esta version ya tiene una release publicada** (`v1.5.1`, nombre real
+"MGGX Laberinto 1.5.1 - Venas de Magma"). Lo de abajo es por si se quiere
+re-crear.
+
+**Ojo**: el APK de esta version, tal como salio publicado originalmente en
+GitHub Actions, compilo SIN la configuracion de Firebase (el
+`google-services.json` esta en `.gitignore` y el workflow de esa epoca no lo
+recibia todavia). Eso se corrigio recien en 1.5.2. El APK que esta en
+`apks/` de esta rama SI la tiene, porque se recompilo despues con el archivo
+puesto — no es el binario exacto que bajo la gente de la release original.
+
+Listo para copiar y pegar tal cual en "Create a new release" con el tag
+`v1.5.1`, adjuntando `apks/MGGX-Laberinto-1.5.1.apk`.
+
+---
+
+## Titulo
+
+```
+MGGX Laberinto 1.5.1 - Venas de Magma
+```
+
+## Descripcion
+
+```markdown
+## MGGX Laberinto 1.5.1 - Venas de Magma
+
+Juego de laberintos en 3D, primera persona, para Android. Nativo (Kotlin +
+OpenGL ES 3.0), sin motores de terceros y sin un solo archivo de arte o de
+audio: la roca, los brazos, los iconos, la musica y los efectos se generan
+por codigo.
+
+### Arreglado
+- El cartel de "no se pudo abrir la sala" del multijugador decia siempre
+  que revisaras tu conexion a internet, aunque el problema real fuera otro.
+  Ahora dice el motivo de verdad.
+
+### Para instalarlo
+1. Bajate el APK de aca abajo directo al celular.
+2. Abrilo. Android te va a pedir permiso para instalar apps de origen
+   desconocido: dale que si.
+3. Listo. No hace falta desinstalar la version anterior: todas las
+   publicaciones van firmadas con la misma clave.
+
+### Datos
+- Android 7.0 (API 24) o superior
+- Necesita OpenGL ES 3.0
+- Pesa 1.9 MB
+- Firma SHA-256: `A3:72:F9:5E:9E:EC:57:46:A2:66:8C:DA:F3:1C:56:6A:FC:97:39:B0:A4:49:A5:C1:6A:FA:66:86:52:4E:31:EE`
+```
