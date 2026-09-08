@@ -1,6 +1,18 @@
+# Gradle / Android
 .gradle/
-.kotlin/
 build/
-app/
+app/build/
 local.properties
-.claude/
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Salidas
+*.apk.idsig
+release/
+
+# Sistema
+.DS_Store
+*.log
