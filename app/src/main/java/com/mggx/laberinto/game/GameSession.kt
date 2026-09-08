@@ -1250,8 +1250,19 @@ class GameSession(
      * Un paso de sala: manda lo tuyo, aplica lo de los demas y hace cumplir
      * las reglas del modo. En una partida solitaria no hace nada.
      */
+    private var ultimoErrorRed: String? = null
+
+    private fun mostrarErrorRed(r: MatchLink) {
+        val error = r.errorConexion ?: return
+        if (error != ultimoErrorRed) {
+            ultimoErrorRed = error
+            toast(error, 8f)
+        }
+    }
+
     private fun pasoDeRed(dt: Float) {
         val r = red ?: return
+        mostrarErrorRed(r)
         for (m in r.bombear(dt, posX, posY, posZ, yawDeg, postura.ordinal)) {
             aplicarDeOtro(m)
         }
@@ -1288,6 +1299,7 @@ class GameSession(
      */
     fun latirRed(dt: Float) {
         val r = red ?: return
+        mostrarErrorRed(r)
         for (m in r.latir(dt)) aplicarDeOtro(m)
     }
 
@@ -1510,3 +1522,4 @@ class GameSession(
     fun headBobOffset(): Float =
         sin(bobPhase.toDouble()).toFloat() * 0.045f * save.settings.headBob
 }
+

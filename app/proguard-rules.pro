@@ -22,3 +22,4 @@
 -dontwarn com.google.firebase.**
 
 -dontwarn kotlinx.**
+

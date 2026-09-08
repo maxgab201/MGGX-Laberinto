@@ -271,3 +271,4 @@ reglas, bajar el `google-services.json`); el resto — conectarlo al código y
 probar que ande — no hace falta que lo toques vos. Cuando el `PING` de una
 instancia aparezca en la otra, el resto es juego, no es red, y es la parte
 divertida.
+

@@ -52,7 +52,7 @@ object EnemyMeshes {
                     floatArrayOf(0.08f, 0.46f),    // hocico
                     floatArrayOf(0.00f, 0.50f)
                 ),
-                segmentos = 10
+                segmentos = 20
             ),
             90f
         )
@@ -88,7 +88,14 @@ object EnemyMeshes {
             floatArrayOf(0.18f, -0.02f),
             floatArrayOf(0.06f, -0.14f)
         )
-        return PropMeshes.extruir(contorno, 0.035f)
+        val piezas = ArrayList<Geometry>()
+        piezas.add(PropMeshes.extruir(contorno, 0.020f))
+        for ((x, y) in arrayOf(1f to 0.20f, 0.58f to -0.06f, 0.30f to -0.12f)) {
+            val largo = kotlin.math.sqrt(x*x+y*y)
+            val angulo = Math.toDegrees(kotlin.math.atan2(y.toDouble(),x.toDouble())).toFloat()
+            piezas.add(trasladar(rotarZ(DetailMeshes.roundedBox(largo,0.018f,0.025f,0.006f),angulo),x/2f,y/2f,0f))
+        }
+        return combinar(*piezas.toTypedArray())
     }
 
     // -------------------------------------------------------------- rastrero
@@ -112,7 +119,7 @@ object EnemyMeshes {
                     floatArrayOf(0.26f, 0.40f),
                     floatArrayOf(0.00f, 0.50f)
                 ),
-                segmentos = 9
+                segmentos = 18
             ),
             1f, 0.62f, 1.15f    // achatado de arriba y estirado hacia adelante
         )
@@ -188,7 +195,7 @@ object EnemyMeshes {
             ),
             1f, 0.92f, 0.88f
         )
-        val ceja = escalar(PropMeshes.box(1f, 1f, 1f), 0.62f, 0.14f, 0.26f)
+        val ceja = escalar(DetailMeshes.roundedBox(), 0.62f, 0.14f, 0.26f)
         return combinar(craneo, trasladar(rotarX(ceja, 12f), 0f, 0.14f, 0.34f))
     }
 
@@ -211,3 +218,4 @@ object EnemyMeshes {
         1f, 1f, 0.86f
     )
 }
+

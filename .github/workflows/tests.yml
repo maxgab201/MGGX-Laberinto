@@ -22,8 +22,25 @@ jobs:
           sudo apt-get install -y --no-install-recommends glslang-tools
           python3 tools/check_shaders.py
 
+      - name: Configurar Firebase si esta disponible
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: python3 tools/configure_firebase.py
+
       - name: Tests de logica
+        env:
+          MGGX_EXPORT_MODELS: build/models
         run: ./gradlew :app:testDebugUnitTest --console=plain
 
       - name: Compilar
-        run: ./gradlew :app:assembleRelease --console=plain
+        run: ./gradlew :app:assembleRelease :app:assembleDebug --console=plain
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mggx-graphics-preview
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/models/
+            app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: error
+

@@ -408,3 +408,4 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
         val DY = intArrayOf(0, 0, 1, -1)
     }
 }
+

@@ -86,7 +86,7 @@ object NetProtocol {
     data class Mensaje(val tipo: Tipo, val de: String, val args: List<String>) {
 
         fun arg(i: Int): String = args.getOrElse(i) { "" }
-        fun num(i: Int): Float = arg(i).toFloatOrNull() ?: 0f
+        fun num(i: Int): Float = arg(i).toFloatOrNull()?.takeIf { it.isFinite() } ?: 0f
         fun entero(i: Int): Int = arg(i).toIntOrNull() ?: 0
         fun largo(i: Int): Long = arg(i).toLongOrNull() ?: 0L
 
@@ -180,6 +180,7 @@ object NetProtocol {
         if (i < 0) return null
         val x = p[1].toFloatOrNull() ?: return null
         val z = p[2].toFloatOrNull() ?: return null
+        if (!x.isFinite() || !z.isFinite()) return null
         val b = p[3].toIntOrNull() ?: return null
         return Bicho(i, x, z, alerta = (b and 1) != 0, vivo = (b and 2) == 0)
     }
@@ -202,3 +203,4 @@ object NetProtocol {
         return (if (negativo) "-" else "") + "${a / 100}.$dec"
     }
 }
+

@@ -313,12 +313,12 @@ fun MggxApp(
             val s = session
             if (s != null) {
                 val lo = save.bolsaDeMano()
-                lo.getOrNull(selectedSlotCycle % lo.size.coerceAtLeast(1))?.let { s.useItem(it) }
+                lo.getOrNull(selectedSlotCycle % lo.size.coerceAtLeast(1))?.let { id -> renderer.dispatch(s) { s.useItem(id) } }
             }
         }
-        pad.onChalk = { session?.dropChalk() }
-        pad.onFlashlight = { session?.toggleLinterna() }
-        pad.onAttack = { session?.golpear() }
+        pad.onChalk = { session?.let { s -> renderer.dispatch(s) { s.dropChalk() } } }
+        pad.onFlashlight = { session?.let { s -> renderer.dispatch(s) { s.toggleLinterna() } } }
+        pad.onAttack = { session?.let { s -> renderer.dispatch(s) { s.golpear() } } }
         pad.onCycleItem = { dir ->
             val n = save.bolsaDeMano().size
             if (n > 0) selectedSlotCycle = ((selectedSlotCycle + dir) % n + n) % n
@@ -396,6 +396,7 @@ fun MggxApp(
                     val s = session
                     if (s != null && !loading) {
                         GameHud(
+                            dispatch = { action -> renderer.dispatch(s, action) },
                             save = save, session = s, input = input,
                             fps = renderer.fps,
                             onPause = { paused = true; input.paused = true; pad.inGame = false },
@@ -679,3 +680,4 @@ private fun appIdDeFirebase(context: android.content.Context): String? {
     if (id == 0) return null
     return runCatching { context.getString(id) }.getOrNull()?.takeIf { it.isNotBlank() }
 }
+

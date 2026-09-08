@@ -31,20 +31,24 @@ object PlayerMeshes {
      * como se lo ve casi siempre, se lee igual que una silueta modelada
      * hombro por hombro, y cuesta la decima parte de triangulos.
      */
-    fun mineroCuerpo(): Geometry = lathe(
-        arrayOf(
-            floatArrayOf(0.00f, 0.00f),
-            floatArrayOf(0.17f, 0.02f),   // las botas
-            floatArrayOf(0.14f, 0.10f),
-            floatArrayOf(0.15f, 0.34f),   // las piernas
-            floatArrayOf(0.20f, 0.50f),   // el cinturon
-            floatArrayOf(0.24f, 0.70f),   // la panza del abrigo
-            floatArrayOf(0.23f, 0.84f),   // los hombros
-            floatArrayOf(0.10f, 0.89f),   // el cuello
-            floatArrayOf(0.00f, 0.92f)
-        ),
-        segmentos = 9
-    )
+    fun mineroCuerpo(): Geometry {
+        fun pieza(x: Float, y: Float, z: Float, sx: Float, sy: Float, sz: Float) =
+            trasladar(DetailMeshes.roundedBox(sx,sy,sz,minOf(sx,sy,sz)*0.28f),x,y,z)
+        return combinar(
+            pieza(-0.095f,0.055f,0.035f,0.14f,0.11f,0.24f),
+            pieza(0.095f,0.055f,0.035f,0.14f,0.11f,0.24f),
+            pieza(-0.09f,0.28f,0f,0.14f,0.37f,0.16f),
+            pieza(0.09f,0.28f,0f,0.14f,0.37f,0.16f),
+            pieza(0f,0.61f,0f,0.36f,0.32f,0.22f),
+            pieza(0f,0.47f,0f,0.37f,0.05f,0.24f),
+            pieza(-0.23f,0.59f,0f,0.12f,0.35f,0.14f),
+            pieza(0.23f,0.59f,0f,0.12f,0.35f,0.14f),
+            pieza(0f,0.835f,0.02f,0.17f,0.17f,0.18f),
+            pieza(0f,0.63f,-0.16f,0.25f,0.25f,0.12f),
+            pieza(-0.095f,0.61f,0.12f,0.09f,0.10f,0.025f),
+            pieza(0.095f,0.61f,0.12f,0.09f,0.10f,0.025f)
+        )
+    }
 
     /**
      * Casco de minero con visera.
@@ -63,13 +67,14 @@ object PlayerMeshes {
                 floatArrayOf(0.11f, 0.72f),
                 floatArrayOf(0.00f, 0.86f)
             ),
-            segmentos = 8
+            segmentos = 16
         )
         // Visera: una placa fina que sobresale por delante del ala.
         val visera = trasladar(
-            escalar(PropMeshes.box(1f, 1f, 1f), 0.34f, 0.07f, 0.26f),
+            escalar(DetailMeshes.roundedBox(), 0.34f, 0.07f, 0.26f),
             0f, 0.10f, 0.30f
         )
         return combinar(domo, visera)
     }
 }
+

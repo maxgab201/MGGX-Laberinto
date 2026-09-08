@@ -43,33 +43,7 @@ jobs:
       - name: Poner la configuracion de Firebase
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: |
-          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
-            echo "Falta el secreto GOOGLE_SERVICES_JSON."
-            echo
-            echo "Se carga una sola vez, en el repositorio:"
-            echo "  Settings > Secrets and variables > Actions > New repository secret"
-            echo "  Name:   GOOGLE_SERVICES_JSON"
-            echo "  Secret: todo el contenido de app/google-services.json"
-            exit 1
-          fi
-          printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
-          # Un secreto mal pegado (recortado, con comillas de mas) compila lo
-          # mismo y falla recien en el telefono. Se revisa aca.
-          if ! jq -e . app/google-services.json >/dev/null 2>&1; then
-            echo "El secreto GOOGLE_SERVICES_JSON no es un JSON valido."
-            exit 1
-          fi
-          PAQUETE="$(grep -oP 'applicationId\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)"
-          if ! jq -e --arg p "$PAQUETE" \
-              '.client[]?.client_info.android_client_info.package_name | select(. == $p)' \
-              app/google-services.json >/dev/null; then
-            echo "El google-services.json no tiene ninguna app registrada para $PAQUETE."
-            echo "En la consola de Firebase hay que agregar la app de Android con"
-            echo "ese nombre de paquete, exacto, y bajar el archivo de nuevo."
-            exit 1
-          fi
-          echo "Configuracion de Firebase puesta para $PAQUETE."
+        run: python3 tools/configure_firebase.py --required
 
       - name: Version
         id: v
@@ -187,3 +161,4 @@ jobs:
           gh release create "v$V" "MGGX-Laberinto-$V.apk" \
             --title "MGGX Laberinto $V - $N" \
             --notes-file /tmp/notas.md
+

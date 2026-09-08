@@ -1,6 +1,8 @@
 package com.mggx.laberinto.gl
 
 import android.opengl.GLES30
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -25,8 +27,8 @@ object PropMeshes {
             floatArrayOf(0f, -stretchY, 0f)
         )
         val faces = arrayOf(
-            intArrayOf(0, 1, 2), intArrayOf(0, 2, 3), intArrayOf(0, 3, 4), intArrayOf(0, 4, 1),
-            intArrayOf(5, 2, 1), intArrayOf(5, 3, 2), intArrayOf(5, 4, 3), intArrayOf(5, 1, 4)
+            intArrayOf(0, 2, 1), intArrayOf(0, 3, 2), intArrayOf(0, 4, 3), intArrayOf(0, 1, 4),
+            intArrayOf(5, 1, 2), intArrayOf(5, 2, 3), intArrayOf(5, 3, 4), intArrayOf(5, 4, 1)
         )
         return flatFaces(p, faces)
     }
@@ -43,7 +45,7 @@ object PropMeshes {
             val x0 = (cos(a0) * radius).toFloat(); val z0 = (sin(a0) * radius).toFloat()
             val x1 = (cos(a1) * radius).toFloat(); val z1 = (sin(a1) * radius).toFloat()
             // Cara lateral
-            val nn = norm((x0 + x1) * 0.5f, radius * 0.55f, (z0 + z1) * 0.5f)
+            val nn = norm((x0 + x1) * 0.5f, (if (inverted) -1f else 1f) * radius * radius / height * cos(PI / segments).toFloat(), (z0 + z1) * 0.5f)
             v.add(0f, tipY, 0f, nn[0], nn[1], nn[2])
             v.add(x0, 0f, z0, nn[0], nn[1], nn[2])
             v.add(x1, 0f, z1, nn[0], nn[1], nn[2])
@@ -414,6 +416,9 @@ class InstancedShape(geo: PropMeshes.Geometry, maxInstances: Int) {
     var instanceCount = 0
         private set
     private val capacity = maxInstances
+    // Reutilizado: evita asignaciones nativas y copias de arrays por draw/frame.
+    private val uploadBuffer = ByteBuffer.allocateDirect(maxInstances * INSTANCE_FLOATS * 4)
+        .order(ByteOrder.nativeOrder()).asFloatBuffer()
 
     init {
         GLES30.glGenVertexArrays(1, vao, 0)
@@ -468,7 +473,10 @@ class InstancedShape(geo: PropMeshes.Geometry, maxInstances: Int) {
         if (instanceCount == 0) return
         GLES30.glBindVertexArray(vao[0])
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, ibo[0])
-        val buf = GLUtil.floatBuffer(instanceData.copyOf(instanceCount * INSTANCE_FLOATS))
+        val buf = uploadBuffer
+        buf.clear()
+        buf.put(instanceData, 0, instanceCount * INSTANCE_FLOATS)
+        buf.flip()
         GLES30.glBufferSubData(GLES30.GL_ARRAY_BUFFER, 0, instanceCount * INSTANCE_FLOATS * 4, buf)
         GLES30.glDrawElementsInstanced(
             GLES30.GL_TRIANGLES, indexCount, GLES30.GL_UNSIGNED_INT, 0, instanceCount
@@ -483,3 +491,4 @@ class InstancedShape(geo: PropMeshes.Geometry, maxInstances: Int) {
         GLES30.glDeleteBuffers(1, ibo, 0)
     }
 }
+

@@ -19,3 +19,4 @@
                 @string/gcm_defaultSenderId,
                 @string/google_storage_bucket,
                 @string/default_web_client_id" />
+

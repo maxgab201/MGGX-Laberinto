@@ -9,6 +9,8 @@ package com.mggx.laberinto.net
  * escribir otra clase que cumpla esta interfaz. Nada mas del juego cambia.
  */
 interface Transporte {
+    /** Ultimo fallo del transporte real, consultable sin depender del SDK. */
+    val errorActual: String? get() = null
     /** Manda un mensaje ya codificado a los demas. */
     fun enviar(texto: String)
     /** Toma los mensajes que llegaron desde la ultima vez. */
@@ -319,3 +321,4 @@ class MatchState(val yo: String) {
         p.skin = skin
     }
 }
+

@@ -322,11 +322,11 @@ class PartidaEnRedTest {
 
         repeat(60) { red.bombear(0.1f, 5f, 0f, 5f, 90f, 0) }
         val mandados = companiero.recibir()
-        // En 6 segundos quieto: solo los latidos (uno cada CADA_PING), nunca
-        // 60 poses.
+        // En 6 segundos quieto: latidos y una pose de recuperacion cada 3s,
+        // nunca las 60 poses de un jugador que camina.
         assertTrue(
             "manda mensajes de mas estando quieto: ${mandados.size}",
-            mandados.size <= 6f / MatchLink.CADA_PING + 2
+            mandados.size <= 5
         )
     }
 
@@ -672,3 +672,4 @@ class PartidaEnRedTest {
         assertFalse(s.caido)
     }
 }
+

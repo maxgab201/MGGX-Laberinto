@@ -32,7 +32,7 @@ object StructureMeshes {
      * no cuando cuelga a la altura de la cabeza (una antorcha de pared) o
      * queda al aire: ahi se nota.
      */
-    private fun barra(radio: Float, segmentos: Int = 7): Geometry = lathe(
+    private fun barra(radio: Float, segmentos: Int = 12): Geometry = lathe(
         arrayOf(
             floatArrayOf(0f, -0.5f),
             floatArrayOf(radio, -0.5f),
@@ -59,7 +59,7 @@ object StructureMeshes {
             0f, 0.13f, -LARGO_BRAZO * 0.5f
         )
         val placa = trasladar(
-            escalar(PropMeshes.box(1f, 1f, 1f), 0.15f, 0.28f, 0.05f),
+            escalar(DetailMeshes.roundedBox(), 0.15f, 0.28f, 0.05f),
             0f, 0.15f, -LARGO_BRAZO
         )
         // Cuenco de arriba: se abre para contener la llama, y el perfil vuelve
@@ -75,7 +75,7 @@ object StructureMeshes {
                     floatArrayOf(0.10f, 0.09f),
                     floatArrayOf(0.00f, 0.08f)
                 ),
-                segmentos = 8
+                segmentos = 16
             ),
             0f, 0.80f, 0f
         )
@@ -111,7 +111,7 @@ object StructureMeshes {
             floatArrayOf(0.05f, 0.84f),
             floatArrayOf(0.00f, 1.00f)    // la punta
         ),
-        segmentos = 8
+        segmentos = 16
     )
 
     /**
@@ -140,7 +140,7 @@ object StructureMeshes {
      * Cofre: cajon, tapa curva con los flejes, y la cerradura al frente.
      */
     fun cofre(): Geometry {
-        val cajon = trasladar(escalar(PropMeshes.box(1f, 1f, 1f), 0.86f, 0.52f, 0.62f), 0f, 0.26f, 0f)
+        val cajon = trasladar(escalar(DetailMeshes.roundedBox(), 0.86f, 0.52f, 0.62f), 0f, 0.26f, 0f)
         // Tapa: un barril acostado a lo ancho del cofre. Al girarlo 90 en Z el
         // eje queda sobre X, asi que el primer factor es el largo y los otros
         // dos el radio. La mitad de abajo queda escondida dentro del cajon.
@@ -153,11 +153,11 @@ object StructureMeshes {
                 floatArrayOf(0.22f, 0.47f),
                 floatArrayOf(0.00f, 0.50f)
             ),
-            segmentos = 9
+            segmentos = 18
         )
         val tapa = trasladar(escalar(rotarZ(barril, 90f), 0.86f, 1f, 1f), 0f, 0.52f, 0f)
-        val fleje = escalar(PropMeshes.box(1f, 1f, 1f), 0.06f, 0.56f, 0.66f)
-        val cerradura = trasladar(escalar(PropMeshes.box(1f, 1f, 1f), 0.14f, 0.16f, 0.06f), 0f, 0.44f, 0.32f)
+        val fleje = escalar(DetailMeshes.roundedBox(), 0.06f, 0.56f, 0.66f)
+        val cerradura = trasladar(escalar(DetailMeshes.roundedBox(), 0.14f, 0.16f, 0.06f), 0f, 0.44f, 0.32f)
         return combinar(
             cajon, tapa,
             trasladar(fleje, -0.28f, 0.28f, 0f),
@@ -179,7 +179,7 @@ object StructureMeshes {
                 floatArrayOf(0.09f, 0.62f),
                 floatArrayOf(0.00f, 0.66f)
             ),
-            segmentos = 8
+            segmentos = 16
         )
         val sombrero = trasladar(
             lathe(
@@ -191,7 +191,7 @@ object StructureMeshes {
                     floatArrayOf(0.15f, 0.32f),
                     floatArrayOf(0.00f, 0.34f)
                 ),
-                segmentos = 9
+                segmentos = 18
             ),
             0f, 0.60f, 0f
         )
@@ -231,14 +231,15 @@ object StructureMeshes {
                     floatArrayOf(0.17f, 0.32f),
                     floatArrayOf(0.00f, 0.33f)
                 ),
-                segmentos = 9
+                segmentos = 18
             ),
             0f, 0.58f, 0f
         )
         // Volante: un aro chato hecho de radios, apoyado sobre el bidon.
-        val radio = escalar(PropMeshes.box(1f, 1f, 1f), 0.30f, 0.035f, 0.05f)
+        val radio = escalar(DetailMeshes.roundedBox(), 0.30f, 0.035f, 0.05f)
         return combinar(
             pie, bidon,
+            trasladar(DetailMeshes.torus(0.135f, 0.018f), 0f, 0.95f, 0f),
             trasladar(radio, 0f, 0.95f, 0f),
             trasladar(rotarY(radio, 60f), 0f, 0.95f, 0f),
             trasladar(rotarY(radio, 120f), 0f, 0.95f, 0f),
@@ -264,3 +265,4 @@ object StructureMeshes {
         segmentos = 6
     )
 }
+
