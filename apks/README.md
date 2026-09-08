@@ -17,7 +17,7 @@ versión ya cerrada tiene su propia rama con el número de versión
 
 | Version | Archivo | Firma SHA-256 |
 |---|---|---|
-| 1.6.0-alpha1 | `MGGX-Laberinto-1.6.0-alpha1.apk` | `A3:72:F9:5E:9E:EC:57:46:A2:66:8C:DA:F3:1C:56:6A:FC:97:39:B0:A4:49:A5:C1:6A:FA:66:86:52:4E:31:EE` |
+| 1.6.0-alpha2 | `MGGX-Laberinto-1.6.0-alpha2.apk` | `A3:72:F9:5E:9E:EC:57:46:A2:66:8C:DA:F3:1C:56:6A:FC:97:39:B0:A4:49:A5:C1:6A:FA:66:86:52:4E:31:EE` |
 | 1.5.3 | `MGGX-Laberinto-1.5.3.apk` | `A3:72:F9:5E:9E:EC:57:46:A2:66:8C:DA:F3:1C:56:6A:FC:97:39:B0:A4:49:A5:C1:6A:FA:66:86:52:4E:31:EE` |
 
 Para verificar la firma vos mismo:
