@@ -12,8 +12,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -54,12 +57,15 @@ fun SettingsScreen(
     onResetProgress: () -> Unit
 ) {
     var section by remember { mutableIntStateOf(0) }
-    var tick by remember { mutableIntStateOf(0) }
     var confirmReset by remember { mutableStateOf(false) }
     val s = save.settings
 
+    // Cambiar un ajuste no necesita avisarle nada a esta pantalla: los campos
+    // de Settings son estado de Compose, asi que el control que muestra cada
+    // valor se entera solo. Aca solo queda guardar en disco y avisarle al
+    // resto de la app (audio, renderer) que algo cambio.
     fun apply(block: () -> Unit) {
-        block(); save.save(); tick++; onChanged()
+        block(); save.save(); onChanged()
     }
 
     val sections = listOf(
@@ -73,7 +79,15 @@ fun SettingsScreen(
 
     Box(Modifier.fillMaxSize()) {
         CaveBackdrop(seed = 47)
-        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 14.dp)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                // El notch y la barra de gestos se comen los bordes reales:
+                // sin esto, el menu lateral y el boton de volver quedan
+                // pegados al borde fisico o directamente tapados.
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(horizontal = 20.dp, vertical = 14.dp)
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CaveButton("Volver", onBack, icon = IconId.ATRAS, style = CaveButtonStyle.FANTASMA)
                 Spacer(Modifier.width(6.dp))
@@ -89,8 +103,15 @@ fun SettingsScreen(
 
             Row(Modifier.fillMaxSize()) {
                 // ------------------------------------------------ menu lateral
+                //
+                // Con scroll propio: son seis secciones y en un telefono
+                // apaisado las ultimas ("Partida" y "Datos") quedaban abajo
+                // del borde de la pantalla, sin forma de llegar a ellas.
                 Column(
-                    Modifier.width(196.dp).fillMaxHeight(),
+                    Modifier
+                        .width(196.dp)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     sections.forEachIndexed { i, (icon, title, sub) ->
@@ -132,7 +153,6 @@ fun SettingsScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(vertical = 12.dp)
                     ) {
-                        @Suppress("UNUSED_EXPRESSION") tick
                         when (section) {
                             0 -> ControlsSection(s, ::apply)
                             1 -> ImageSection(s, ::apply)

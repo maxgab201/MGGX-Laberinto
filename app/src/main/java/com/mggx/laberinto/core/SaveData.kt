@@ -2,6 +2,11 @@ package com.mggx.laberinto.core
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.mggx.laberinto.game.Currency
 import com.mggx.laberinto.game.ItemCatalog
 import com.mggx.laberinto.game.ItemKind
@@ -82,38 +87,59 @@ class SaveData private constructor(private val store: Store) {
     // --- ajustes
     val settings = Settings()
 
+    /**
+     * Los ajustes, como estado observable de Compose.
+     *
+     * Cada campo es un `mutableStateOf` y no un `var` comun, y eso NO es
+     * decoracion: es lo que hace que tocar un ajuste se vea en el acto.
+     *
+     * Con campos comunes, Compose no tiene forma de enterarse de que cambio
+     * algo adentro de este objeto. Peor todavia: desde Kotlin 2.0 el
+     * compilador de Compose usa "strong skipping", que compara los parametros
+     * de un composable por identidad. Como este objeto es SIEMPRE el mismo,
+     * toda pantalla que lo reciba se saltea el redibujado para siempre. El
+     * sintoma era exactamente ese: cambiabas un ajuste, no pasaba nada, y
+     * recien se veia al cambiar de pestana y volver (ahi la pantalla se arma
+     * de cero y lee los valores nuevos).
+     *
+     * Siendo estado de verdad, cada pantalla se suscribe sola al ajuste que
+     * lee y se redibuja sola cuando ese ajuste cambia. Leerlos desde el hilo
+     * de OpenGL (que es donde los usa el renderer) sigue siendo valido: una
+     * lectura fuera de una composicion devuelve el valor actual y no suscribe
+     * a nada.
+     */
     class Settings {
-        var musicVolume: Float = 0.7f
-        var sfxVolume: Float = 0.85f
-        var masterVolume: Float = 1.0f
-        var haptics: Boolean = true
-        var invertY: Boolean = false
-        var lookSensitivity: Float = 1.0f
-        var gamepadSensitivity: Float = 1.0f
-        var stickDeadzone: Float = 0.16f
-        var leftHanded: Boolean = false
-        var showMinimap: Boolean = true
-        var minimapSize: Float = 1.0f
-        var showArms: Boolean = true
-        var headBob: Float = 1.0f
-        var fovExtra: Float = 0f
-        var quality: Int = 2            // 0 bajo, 1 medio, 2 alto, 3 ultra
-        var renderScale: Float = 1.0f
-        var targetFps: Int = 60
-        var showFps: Boolean = false
-        var brightness: Float = 1.0f
-        var fogIntensity: Float = 1.0f
-        var torchFlicker: Boolean = true
-        var autoRun: Boolean = false
-        var joystickSize: Float = 1.0f
-        var joystickOpacity: Float = 0.55f
-        var buttonScale: Float = 1.0f
-        var vibrateOnPickup: Boolean = true
-        var subtitles: Boolean = true
-        var tutorialDone: Boolean = false
-        var compassAlwaysOn: Boolean = false
-        var colorBlindMode: Int = 0     // 0 ninguno, 1 protan, 2 deutan, 3 tritan
-        var uiScale: Float = 1.0f
+        var musicVolume: Float by mutableFloatStateOf(0.7f)
+        var sfxVolume: Float by mutableFloatStateOf(0.85f)
+        var masterVolume: Float by mutableFloatStateOf(1.0f)
+        var haptics: Boolean by mutableStateOf(true)
+        var invertY: Boolean by mutableStateOf(false)
+        var lookSensitivity: Float by mutableFloatStateOf(1.0f)
+        var gamepadSensitivity: Float by mutableFloatStateOf(1.0f)
+        var stickDeadzone: Float by mutableFloatStateOf(0.16f)
+        var leftHanded: Boolean by mutableStateOf(false)
+        var showMinimap: Boolean by mutableStateOf(true)
+        var minimapSize: Float by mutableFloatStateOf(1.0f)
+        var showArms: Boolean by mutableStateOf(true)
+        var headBob: Float by mutableFloatStateOf(1.0f)
+        var fovExtra: Float by mutableFloatStateOf(0f)
+        var quality: Int by mutableIntStateOf(2)        // 0 bajo, 1 medio, 2 alto, 3 ultra
+        var renderScale: Float by mutableFloatStateOf(1.0f)
+        var targetFps: Int by mutableIntStateOf(60)
+        var showFps: Boolean by mutableStateOf(false)
+        var brightness: Float by mutableFloatStateOf(1.0f)
+        var fogIntensity: Float by mutableFloatStateOf(1.0f)
+        var torchFlicker: Boolean by mutableStateOf(true)
+        var autoRun: Boolean by mutableStateOf(false)
+        var joystickSize: Float by mutableFloatStateOf(1.0f)
+        var joystickOpacity: Float by mutableFloatStateOf(0.55f)
+        var buttonScale: Float by mutableFloatStateOf(1.0f)
+        var vibrateOnPickup: Boolean by mutableStateOf(true)
+        var subtitles: Boolean by mutableStateOf(true)
+        var tutorialDone: Boolean by mutableStateOf(false)
+        var compassAlwaysOn: Boolean by mutableStateOf(false)
+        var colorBlindMode: Int by mutableIntStateOf(0)  // 0 ninguno, 1 protan, 2 deutan, 3 tritan
+        var uiScale: Float by mutableFloatStateOf(1.0f)
     }
 
     // ------------------------------------------------------------ consultas

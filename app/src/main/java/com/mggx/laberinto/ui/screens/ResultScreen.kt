@@ -1,16 +1,22 @@
 package com.mggx.laberinto.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,10 +61,13 @@ fun ResultScreen(
         Box(Modifier.fillMaxSize().background(Cave.Void.copy(alpha = 0.45f)))
 
         Row(
-            Modifier.fillMaxSize().padding(horizontal = 40.dp, vertical = 22.dp),
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(horizontal = 40.dp, vertical = 22.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 CaveIcon(
                     if (won) IconId.TROFEO else IconId.CALAVERA,
                     size = 62.dp,
@@ -80,7 +89,12 @@ fun ResultScreen(
                     style = MaterialTheme.typography.bodyLarge, color = Cave.TextDim
                 )
                 Spacer(Modifier.height(24.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Con la sala viva son cuatro botones: en un telefono angosto
+                // no entran de una y el ultimo quedaba fuera de pantalla.
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     if (salaActiva) {
                         // Con la sala viva, "seguir" es volver a ella: es lo
                         // que se espera despues de jugar acompanado, y evita
@@ -115,7 +129,7 @@ fun ResultScreen(
             Spacer(Modifier.width(30.dp))
 
             StonePanel(Modifier.width(360.dp), glow = if (won) Cave.Amber else sem.bad) {
-                Column(Modifier.padding(20.dp)) {
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp)) {
                     SectionTitle("Resumen", accent = if (won) Cave.Amber else sem.bad)
                     Spacer(Modifier.height(14.dp))
                     ResultRow(IconId.CRONOMETRO, "Tiempo", formatTime(timeMs))

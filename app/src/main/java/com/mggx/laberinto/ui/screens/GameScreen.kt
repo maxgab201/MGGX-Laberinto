@@ -261,11 +261,11 @@ fun GameHud(
         if (s.showMinimap) {
             Minimap(
                 session, sem,
-                // `session` es una clase mutable comun (var posX, var
-                // revealed[i], etc.), no un State de Compose: sin este
-                // parametro no hay garantia de que el Canvas se vuelva a
-                // dibujar cuando el jugador se mueve. uiTick cambia de valor
-                // en cada llamada, asi que fuerza la recomposicion siempre.
+                // El minimapa se dibuja desde `session`, que es una clase
+                // mutable comun (var posX, revealed[i], ...) y no un State de
+                // Compose: nada avisa cuando cambia. Este tick es lo que lo
+                // mantiene vivo; adentro de Minimap se explica por que tiene
+                // que leerse dentro del propio Canvas.
                 tick = uiTick,
                 Modifier
                     .align(Alignment.TopEnd)
@@ -736,18 +736,25 @@ private const val MINIMAP_RADIO_CELDAS = 6
 
 @Composable
 private fun Minimap(session: GameSession, sem: Semantics, tick: Int, modifier: Modifier = Modifier) {
-    // Lectura de un parametro primitivo que cambia en cada llamada: fuerza a
-    // Compose a redibujar el Canvas siempre, aunque `session` (una clase
-    // mutable comun, no un State) sea el mismo objeto de principio a fin del
-    // nivel. Sin esto el minimapa se podia quedar congelado en el primer
-    // cuadro que llego a dibujar, a veces antes de revelar ninguna celda.
-    @Suppress("UNUSED_EXPRESSION") tick
     Box(
         modifier
             .clip(RoundedCornerShape(13.dp))
             .background(Cave.Void.copy(alpha = 0.82f))
     ) {
         Canvas(Modifier.fillMaxSize().padding(6.dp)) {
+            // `tick` se lee ACA ADENTRO, no en el cuerpo del composable, y es
+            // lo unico que mantiene vivo al minimapa.
+            //
+            // Compose memoriza la lambda de dibujo segun lo que captura. Si
+            // solo capturara `session` —el mismo objeto de principio a fin del
+            // nivel, con campos mutables comunes que no son State— la lambda
+            // seria siempre la misma instancia, el modificador de dibujo nunca
+            // cambiaria y este Canvas se dibujaria UNA sola vez: el minimapa
+            // quedaba congelado en el primer cuadro, casi siempre antes de
+            // revelar ninguna casilla (el famoso "cuadrado negro" que no se
+            // desbloquea ni se mueve). Capturando el tick, que cambia ~30
+            // veces por segundo, la lambda cambia y el dibujo se rehace.
+            @Suppress("UNUSED_EXPRESSION") tick
             val m = session.maze
             val cell = min(size.width, size.height) / (MINIMAP_RADIO_CELDAS * 2f)
             val cx = size.width / 2f

@@ -19,12 +19,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -96,11 +101,20 @@ fun LobbyScreen(
         Row(
             Modifier
                 .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(horizontal = (26 * k).dp, vertical = (18 * k).dp)
         ) {
             // -------------------------------------------------- columna izquierda
+            //
+            // Las dos columnas llevan scroll propio: en un telefono apaisado
+            // el contenido es mas alto que la pantalla y lo de abajo quedaba
+            // cortado, sin forma de llegar (en la derecha se perdia el boton
+            // de bajar acompanado).
             Column(
-                Modifier.weight(1.15f).fillMaxHeight(),
+                Modifier
+                    .weight(1.15f)
+                    .fillMaxHeight()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.Center
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -201,7 +215,10 @@ fun LobbyScreen(
 
             // -------------------------------------------------- columna derecha
             Column(
-                Modifier.weight(0.85f).fillMaxHeight(),
+                Modifier
+                    .weight(0.85f)
+                    .fillMaxHeight()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.End
             ) {
@@ -236,7 +253,7 @@ fun LobbyScreen(
                         CaveButton(
                             "Bajar acompañado", onMultiplayer, icon = IconId.MULTIJUGADOR,
                             modifier = Modifier.fillMaxWidth(),
-                            subtitle = if (compacto) null else "Multijugador · proximamente"
+                            subtitle = if (compacto) null else "Carrera o cooperativo, con codigo de sala"
                         )
                     }
                 }

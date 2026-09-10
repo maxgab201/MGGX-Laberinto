@@ -6,12 +6,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -44,8 +47,8 @@ import com.mggx.laberinto.ui.StonePanel
 import com.mggx.laberinto.ui.icons.CaveIcon
 import com.mggx.laberinto.ui.icons.IconId
 import com.mggx.laberinto.ui.theme.Cave
-import kotlinx.coroutines.delay
 import kotlin.random.Random
+import kotlinx.coroutines.delay
 
 /**
  * La sala de multijugador: armar una, entrar a una, y arrancar.
@@ -152,7 +155,14 @@ fun MultiplayerScreen(
 
     Box(Modifier.fillMaxSize()) {
         CaveBackdrop(seed = 77)
-        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 14.dp)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                // El fondo llega al borde fisico; el contenido no, para que no
+                // quede tapado por el notch ni por la barra de gestos.
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(horizontal = 20.dp, vertical = 14.dp)
+        ) {
 
             // ------------------------------------------------------ encabezado
             Row(verticalAlignment = Alignment.CenterVertically) {
