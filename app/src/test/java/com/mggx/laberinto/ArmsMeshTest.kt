@@ -1,6 +1,7 @@
 package com.mggx.laberinto
 
 import com.mggx.laberinto.gl.ArmsMesh
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -89,32 +90,100 @@ class ArmsMeshTest {
         )
     }
 
-    @Test
-    fun elArmaEquipadaSeAgregaALaMallaYVaAdelanteDeLaMano() {
-        val sinArma = ArmsMesh.build()
-        val conArma = ArmsMesh.build(ArmsMesh.Arma.GARROTE)
-        assertTrue(
-            "equipar un arma no agrego geometria",
-            conArma.vertices.size > sinArma.vertices.size
-        )
-
-        // Todo lo marcado como arma tiene que estar delante de la mano, que es
-        // donde se agarra: si quedara detras, se veria salir de la camara.
-        var vertices = 0
-        var zMin = Float.MAX_VALUE
-        var zMax = -Float.MAX_VALUE
+    /** Los vertices marcados como arma (tag [ArmsMesh.TAG_ARMA]). */
+    private fun verticesDelArma(arma: ArmsMesh.Arma): List<FloatArray> {
+        val mesh = ArmsMesh.build(arma)
+        val out = ArrayList<FloatArray>()
         var i = 0
-        while (i < conArma.vertices.size) {
-            if (conArma.vertices[i + 6] > 1.5f) {
-                vertices++
-                val z = conArma.vertices[i + 2]
-                if (z < zMin) zMin = z
-                if (z > zMax) zMax = z
+        while (i < mesh.vertices.size) {
+            if (mesh.vertices[i + 6] > 1.5f) {
+                out.add(
+                    floatArrayOf(mesh.vertices[i], mesh.vertices[i + 1], mesh.vertices[i + 2])
+                )
             }
             i += ArmsMesh.STRIDE_FLOATS
         }
-        assertTrue("el arma no quedo marcada con su propio tag", vertices > 50)
-        assertTrue("el arma asoma demasiado por detras de la mano (z=$zMax)", zMax < 0.10f)
-        assertTrue("el arma no sale para adelante (z=$zMin)", zMin < -0.35f)
+        return out
+    }
+
+    @Test
+    fun elArmaEquipadaSeAgregaALaMalla() {
+        val sinArma = ArmsMesh.build()
+        for (arma in ArmsMesh.Arma.entries) {
+            val conArma = ArmsMesh.build(arma)
+            assertTrue(
+                "equipar ${arma.name} no agrego geometria",
+                conArma.vertices.size > sinArma.vertices.size
+            )
+            assertTrue(
+                "${arma.name} no quedo marcada con su propio tag",
+                verticesDelArma(arma).size > 50
+            )
+        }
+    }
+
+    @Test
+    fun elArmaVaAgarradaEnElPunoYNoCruzandoLosDedos() {
+        // El bug que motiva este test: el arma se modelaba a lo largo de -Z,
+        // o sea paralela al antebrazo, saliendo derecho para adelante. Pero
+        // los dedos se cierran a lo ANCHO de la palma, y con la mano ya
+        // parada ese tunel quedo en VERTICAL: un palo horizontal no esta
+        // agarrado, esta atravesando los dedos.
+        for (arma in ArmsMesh.Arma.entries) {
+            val v = verticesDelArma(arma)
+            val maxY = v.maxOf { it[1] }
+            val minY = v.minOf { it[1] }
+            val minZ = v.minOf { it[2] }
+            val maxZ = v.maxOf { it[2] }
+            assertTrue(
+                "${arma.name} se estira mas para adelante que para arriba " +
+                    "(alto ${maxY - minY}, largo ${maxZ - minZ}): sigue cruzada",
+                (maxY - minY) > (maxZ - minZ)
+            )
+            assertTrue("${arma.name} no levanta la cabeza (maxY=$maxY)", maxY > 0.2f)
+            assertTrue("${arma.name} sale para atras de la mano (maxZ=$maxZ)", maxZ < 0.02f)
+            assertTrue("${arma.name} no asoma para adelante (minZ=$minZ)", minZ < -0.15f)
+        }
+    }
+
+    @Test
+    fun elMangoAsomaPorAbajoDelPuno() {
+        // Un pico agarrado tiene un cacho de mango que sobra por abajo de la
+        // mano. Sin eso el arma parece pegada a los nudillos.
+        for (arma in ArmsMesh.Arma.entries) {
+            val minY = verticesDelArma(arma).minOf { it[1] }
+            assertTrue(
+                "${arma.name} no tiene mango abajo del puno (minY=$minY)",
+                minY < -0.05f
+            )
+        }
+    }
+
+    @Test
+    fun elMangoPasaPorDondeSeCierranLosDedos() {
+        // El eje del mango tiene que cruzar el hueco del puno: el espacio
+        // entre la palma (z = -0.075) y las falanges (z = -0.17), o sea
+        // z ~ -0.11 a la altura de la muneca (y = 0). Si no pasara por ahi,
+        // el arma quedaria flotando al lado de la mano en vez de agarrada.
+        //
+        // El mango no tiene vertices JUSTO en y=0 (los tubos solo ponen
+        // anillos en las puntas), asi que se mide donde cruza: se toman los
+        // vertices del palo (los que estan sobre el eje, |x| chico), el mas
+        // cercano por abajo y el mas cercano por arriba, y se interpola.
+        for (arma in ArmsMesh.Arma.entries) {
+            val palo = verticesDelArma(arma).filter { kotlin.math.abs(it[0]) < 0.05f }
+            val abajo = palo.filter { it[1] < 0f }.maxByOrNull { it[1] }
+            val arriba = palo.filter { it[1] >= 0f }.minByOrNull { it[1] }
+            assertNotNull("${arma.name} no tiene mango por abajo del puno", abajo)
+            assertNotNull("${arma.name} no tiene mango por arriba del puno", arriba)
+            val a = abajo!!; val b = arriba!!
+            val t = (0f - a[1]) / (b[1] - a[1])
+            val z = a[2] + t * (b[2] - a[2])
+            assertTrue(
+                "${arma.name} no cruza el puno: a la altura de la muneca el " +
+                    "mango esta en z=$z, y el hueco del puno esta en -0.11",
+                kotlin.math.abs(z - (-0.11f)) < 0.04f
+            )
+        }
     }
 }

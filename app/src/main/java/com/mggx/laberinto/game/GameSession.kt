@@ -262,6 +262,19 @@ class GameSession(
     var lastJunctionX = posX
     var lastJunctionZ = posZ
 
+    /**
+     * El guion del nivel 1. En cualquier otro nivel queda en null y no se
+     * ejecuta nada: el tutorial no le come cuadros a una partida normal.
+     */
+    val tutorial: Tutorial? = if (level == 1) Tutorial(stats.tieneLinterna) else null
+
+    /** Metros caminados en el cuadro que se esta calculando (los mira el tutorial). */
+    private var metrosDelCuadro = 0f
+    /** Si en este cuadro arranco un salto. */
+    private var saltoDelCuadro = false
+    /** Si en este cuadro se tiro un golpe. */
+    private var golpeDelCuadro = false
+
     /** Mensajes cortos para el HUD ("Antorcha encendida", "Trampa!"). */
     private val toasts = ArrayList<Pair<String, Float>>()
     fun toast(msg: String, seconds: Float = 2.4f) {
@@ -306,7 +319,7 @@ class GameSession(
 
         // Revelado inicial por la mejora Cartografo Innato.
         if (stats.startMapReveal > 0f) revealFraction(stats.startMapReveal)
-        revealAround(maze.startGx, maze.startGy, 3)
+        revelarLoPisado(maze.startGx, maze.startGy)
         if (stats.exitPingSeconds > 0f) exitPingTimer = stats.exitPingSeconds
         if (stats.freeSonarSeconds > 0f) freeSonarTimer = stats.freeSonarSeconds
 
@@ -429,6 +442,11 @@ class GameSession(
         if (phase != Phase.JUGANDO) return
         val dt = dtRaw.coerceIn(0f, 0.05f)   // techo anti-saltos tras un lag
 
+        val ecosAntes = ecosCollected
+        val vetagrisAntes = vetagrisCollected
+        metrosDelCuadro = 0f
+        saltoDelCuadro = false
+
         effects.update(dt)
         if (runBurstLeft > 0f) runBurstLeft -= dt
         if (golpeRecarga > 0f) golpeRecarga -= dt
@@ -489,6 +507,23 @@ class GameSession(
 
         // --- llegada. Caido no se sale: primero que te levanten.
         if (!caido && hypot(exitWorldX - posX, exitWorldZ - posZ) <= EXIT_RADIUS) win()
+
+        // --- el guion del nivel 1, con lo que de verdad hizo el jugador en
+        // este cuadro. Va al final a proposito: si el paso pendiente era
+        // "busca la salida", el win() de arriba ya paso y se cierra bien.
+        tutorial?.observar(
+            dt,
+            giroGrados = abs(input.lookX) + abs(input.lookY),
+            metros = metrosDelCuadro,
+            corriendo = input.running || save.settings.autoRun,
+            agachado = input.agacharse > 0,
+            salto = saltoDelCuadro,
+            golpe = golpeDelCuadro,
+            junto = ecosCollected > ecosAntes || vetagrisCollected > vetagrisAntes,
+            linterna = linternaEncendida,
+            gano = phase == Phase.GANADO
+        )?.let { toast(it, 3.2f) }
+        golpeDelCuadro = false
     }
 
     private fun normalizeAngle(a: Float): Float {
@@ -570,8 +605,9 @@ class GameSession(
             }
             markWalked()
         }
+        metrosDelCuadro += travelled
 
-        revealAround(gridX(), gridY(), 2)
+        revelarLoPisado(gridX(), gridY())
         rememberJunction()
     }
 
@@ -626,6 +662,7 @@ class GameSession(
         if (input.saltar && enSuelo && postura.puedeSaltar && libre >= Postura.DE_PIE.alturaCuerpo) {
             velY = VEL_SALTO * stats.saltoExtra
             enSuelo = false
+            saltoDelCuadro = true
         }
 
         if (trepando > 0f) {
@@ -793,6 +830,35 @@ class GameSession(
         }
     }
 
+    /**
+     * Lo que dibuja el mapa al caminar: la casilla que estas pisando y nada
+     * mas que las paredes que la tocan.
+     *
+     * Antes esto era un `revealAround(..., 2)`, o sea un cuadrado de 5x5
+     * casillas alrededor del jugador. El efecto en la practica era que el
+     * mapa te iba regalando pasillos por los que nunca pasaste: caminabas por
+     * un tunel y se te dibujaban los dos tuneles paralelos de al lado,
+     * atravesando la roca. El mapa dejaba de ser un registro de por donde
+     * anduviste y pasaba a ser una radiografia.
+     *
+     * Las paredes vecinas SI se revelan, y no es regalar nada: son las que
+     * tenes pegadas a la cara mientras caminas por ahi. Sin ellas el tunel
+     * caminado queda flotando en negro, sin contorno, y no se entiende para
+     * donde sigue.
+     */
+    private fun revelarLoPisado(gx: Int, gy: Int) {
+        if (!maze.inBounds(gx, gy)) return
+        revealed[maze.index(gx, gy)] = true
+        for (y in gy - 1..gy + 1) {
+            for (x in gx - 1..gx + 1) {
+                if (!maze.inBounds(x, y)) continue
+                // Solo roca: una casilla abierta vecina es un pedazo de
+                // camino que todavia no recorriste, y esa no se regala.
+                if (maze.isSolid(x, y)) revealed[maze.index(x, y)] = true
+            }
+        }
+    }
+
     fun revealFraction(f: Float) {
         if (f <= 0f) return
         if (f >= 1f) { revealed.fill(true); return }
@@ -902,6 +968,7 @@ class GameSession(
         if (!puedeGolpear()) return -1
         golpeRecarga = stats.cadenciaGolpe
         golpeAnim = 1f
+        golpeDelCuadro = true
         play(Sfx.GOLPE)
 
         val yawRad = Math.toRadians(yawDeg.toDouble())

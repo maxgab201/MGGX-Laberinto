@@ -214,6 +214,40 @@ object ReliefGenerator {
                 }
             }
         }
+
+        if (level == 1) tramoDeTutorial(maze, libres)
+    }
+
+    /**
+     * El unico tramo bajo del nivel 1, puesto a mano sobre el camino a la
+     * salida.
+     *
+     * El nivel 1 es plano y tranquilo a proposito (probTechoBajo = 0), pero el
+     * tutorial le dice al jugador "agachate, hay tramos bajos donde es la
+     * unica forma de pasar". Si el nivel no tuviera ninguno, esa frase seria
+     * mentira y el jugador aprenderia a apretar un boton sin entender para
+     * que sirve. Va SOBRE el camino a la salida justamente para que tenga que
+     * usarlo, no para que lo esquive.
+     *
+     * La altura es la misma que usa un tramo "para agacharse" del resto del
+     * juego: deja hueco real de sobra para el cuerpo agachado (1,20 m) y
+     * ninguno para el cuerpo de pie.
+     */
+    private fun tramoDeTutorial(maze: Maze, libres: Set<Int>) {
+        val camino = maze.solutionPath
+        if (camino.size < 12) return
+        val desde = camino.size / 2
+        var puestas = 0
+        for (k in desde until camino.size - 3) {
+            val i = camino[k]
+            if (maze.solid[i] || i in libres || maze.ladder[i]) {
+                if (puestas > 0) break     // se corto: mejor un tramo corto que dos sueltos
+                continue
+            }
+            maze.ceilClearance[i] = 1.50f
+            puestas++
+            if (puestas >= 4) break
+        }
     }
 
     /** Chequeo defensivo: ninguna transicion puede quedar imposible de pasar. */

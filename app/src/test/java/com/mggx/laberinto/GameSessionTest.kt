@@ -206,6 +206,49 @@ class GameSessionTest {
     }
 
     @Test
+    fun elMapaSoloDibujaLosCaminosQuePisaste() {
+        // La regla: caminando, el mapa NO puede regalar ni un pedazo de
+        // camino por el que no pasaste. Antes revelaba un cuadrado de 5x5
+        // casillas alrededor tuyo, asi que te dibujaba los tuneles paralelos
+        // del otro lado de la roca sin que los hubieras visto nunca.
+        val s = GameSession(perfil(), 12, 909L)
+        val input = GameSession.Input(moveY = 1f, lookX = 0.35f)
+        repeat(1500) { s.update(1f / 60f, input) }
+
+        var pisadas = 0
+        for (i in s.revealed.indices) {
+            if (!s.revealed[i]) continue
+            val gx = i % s.maze.gw
+            val gy = i / s.maze.gw
+            if (s.maze.isSolid(gx, gy)) continue   // las paredes de al lado si
+            assertTrue(
+                "el mapa revelo el camino en ($gx,$gy) sin que el jugador lo pisara",
+                s.walked[i]
+            )
+            pisadas++
+        }
+        assertTrue("el jugador no camino nada, el test no prueba nada", pisadas > 3)
+    }
+
+    @Test
+    fun elMapaSiDibujaLasParedesPegadasAlCaminoPisado() {
+        // El contrapeso del test de arriba: si solo se revelaran las casillas
+        // pisadas, el tunel caminado quedaria flotando en negro y no se
+        // entenderia por donde sigue. Las paredes que tocas al pasar si van.
+        val s = GameSession(perfil(), 12, 909L)
+        val input = GameSession.Input(moveY = 1f, lookX = 0.35f)
+        repeat(1500) { s.update(1f / 60f, input) }
+
+        var paredes = 0
+        for (i in s.revealed.indices) {
+            val gx = i % s.maze.gw
+            val gy = i / s.maze.gw
+            if (s.revealed[i] && s.maze.isSolid(gx, gy)) paredes++
+        }
+        assertTrue("el camino pisado quedo sin contorno", paredes > 0)
+    }
+
+    @Test
     fun elDanoBajaLaVidaYPuedeTerminarLaPartida() {
         val s = sesion(1, 3L)
         val vidaInicial = s.health

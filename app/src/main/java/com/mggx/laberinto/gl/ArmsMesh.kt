@@ -215,43 +215,102 @@ object ArmsMesh {
     }
 
     /**
-     * El arma agarrada en el puno, saliendo hacia adelante (-Z).
+     * Cuanto se levanta el arma respecto del eje del antebrazo, en radianes.
      *
-     * El mango arranca un poco por detras de la mano (asoma por abajo del
-     * puno, como cuando se agarra algo de verdad) y la cabeza va en la punta.
+     * El arma se sigue MODELANDO a lo largo de -Z (que es comodo: la cabeza
+     * en la punta, el mango en el origen) y despues se levanta entera con
+     * este giro. Sin el giro, el arma salia recta para adelante, paralela al
+     * antebrazo, y eso no es como se agarra nada: los dedos se cierran a lo
+     * ANCHO de la palma, asi que el mango tiene que pasar por ese tunel, que
+     * con la mano ya parada ([ROLL_MANO]) quedo en vertical. El palo cruzaba
+     * los dedos por el medio en vez de estar agarrado.
+     *
+     * Con el arma levantada, ademas, el envion del golpe (rotXSwing negativo
+     * en BrazoAnim) la baja de arriba hacia adelante, que es un hachazo de
+     * verdad y no un empujon.
+     */
+    private val CABECEO_ARMA = Math.toRadians(55.0).toFloat()
+
+    /**
+     * Punto del mango (en Z del arma sin girar) que tiene que caer dentro del
+     * puno. Un poco adelante del extremo de atras: el resto del mango asoma
+     * por abajo de la mano, como cuando agarras un pico de verdad.
+     */
+    private const val AGARRE_Z = -0.05f
+
+    /**
+     * Donde esta el tunel del puno, en coordenadas del brazo. Es el hueco
+     * entre la palma (z = -0.075) y las falanges (z = -0.17), a la altura del
+     * eje de la muneca.
+     */
+    private const val PUNO_Y = 0f
+    private const val PUNO_Z = -0.11f
+
+    /**
+     * Vuelca [src] dentro de [dst] girandolo alrededor de X y moviendolo.
+     *
+     * El giro alrededor de X tiene determinante +1, asi que no da vuelta
+     * ninguna cara: el orden de los indices se copia tal cual y sigue valiendo
+     * (lo verifica MeshWindingTest).
+     */
+    private fun agregarGirandoEnX(dst: Builder, src: Builder, pitch: Float, dy: Float, dz: Float) {
+        val cp = cos(pitch.toDouble()).toFloat()
+        val sp = sin(pitch.toDouble()).toFloat()
+        val offset = dst.n
+        val v = src.v.data
+        var i = 0
+        while (i < src.v.size) {
+            val y = v[i + 1]; val z = v[i + 2]
+            val ny = v[i + 4]; val nz = v[i + 5]
+            dst.vertex(
+                v[i], y * cp - z * sp + dy, y * sp + z * cp + dz,
+                v[i + 3], ny * cp - nz * sp, ny * sp + nz * cp,
+                v[i + 6]
+            )
+            i += STRIDE_FLOATS
+        }
+        val ix = src.idx.data
+        for (k in 0 until src.idx.size) dst.idx.add(offset + ix[k])
+    }
+
+    /**
+     * El arma agarrada en el puno.
+     *
+     * Se modela con el mango en el origen y la cabeza hacia -Z, y despues
+     * [build] la levanta [CABECEO_ARMA] y la calza en el puno.
      */
     private fun buildArma(b: Builder, arma: Arma) {
         val t = TAG_ARMA
         val s = 1f       // siempre en la mano derecha: no se espeja
         when (arma) {
             Arma.GARROTE -> {
-                taperedTube(b, s, 0f, 0f, 0.02f, -0.30f, 0.019f, 0.024f, 10, 1f, t)
+                taperedTube(b, s, 0f, 0f, 0.09f, -0.30f, 0.019f, 0.024f, 10, 1f, t)
                 taperedTube(b, s, 0f, 0f, -0.30f, -0.60f, 0.031f, 0.046f, 10, 1f, t)
                 // Nudos de la madera en la punta.
                 box(b, s, 0.030f, 0.014f, -0.53f, 0.012f, 0.012f, 0.020f, 0f, 0f, t)
                 box(b, s, -0.028f, -0.016f, -0.45f, 0.011f, 0.011f, 0.018f, 0f, 0f, t)
             }
             Arma.PICO -> {
-                taperedTube(b, s, 0f, 0f, 0.02f, -0.52f, 0.017f, 0.020f, 8, 1f, t)
+                taperedTube(b, s, 0f, 0f, 0.09f, -0.52f, 0.017f, 0.020f, 8, 1f, t)
                 // Cabeza cruzada: la punta para un lado y la pala para el otro.
                 box(b, s, 0.10f, 0f, -0.50f, 0.105f, 0.017f, 0.020f, 0f, 0f, t)
                 box(b, s, -0.10f, 0f, -0.50f, 0.105f, 0.017f, 0.020f, 0f, 0f, t)
                 box(b, s, 0.215f, 0f, -0.50f, 0.038f, 0.011f, 0.013f, 0f, 0f, t)
             }
             Arma.AGUIJON -> {
-                taperedTube(b, s, 0f, 0f, 0.02f, -0.16f, 0.018f, 0.021f, 8, 1f, t)
+                taperedTube(b, s, 0f, 0f, 0.09f, -0.16f, 0.018f, 0.021f, 8, 1f, t)
                 // Guarda y hoja larga y fina, que se afina hasta la punta.
                 box(b, s, 0f, 0f, -0.17f, 0.052f, 0.013f, 0.012f, 0f, 0f, t)
                 taperedTube(b, s, 0f, 0f, -0.18f, -0.66f, 0.026f, 0.004f, 6, 0.34f, t)
             }
             Arma.MAZA -> {
-                taperedTube(b, s, 0f, 0f, 0.02f, -0.40f, 0.019f, 0.022f, 8, 1f, t)
+                taperedTube(b, s, 0f, 0f, 0.09f, -0.40f, 0.019f, 0.022f, 8, 1f, t)
                 // Bloque de basalto en la punta, con las esquinas comidas.
                 box(b, s, 0f, 0f, -0.50f, 0.058f, 0.058f, 0.085f, 0f, 0f, t)
                 box(b, s, 0f, 0f, -0.60f, 0.040f, 0.040f, 0.030f, 0f, 0f, t)
             }
             Arma.HACHA -> {
-                taperedTube(b, s, 0f, 0f, 0.02f, -0.50f, 0.018f, 0.021f, 8, 1f, t)
+                taperedTube(b, s, 0f, 0f, 0.09f, -0.50f, 0.018f, 0.021f, 8, 1f, t)
                 // Hoja ancha de un solo filo, montada al costado del cabo.
                 box(b, s, 0.085f, 0f, -0.46f, 0.085f, 0.014f, 0.062f, 0f, 0f, t)
                 box(b, s, 0.165f, 0f, -0.46f, 0.020f, 0.006f, 0.072f, 0f, 0f, t)
@@ -265,7 +324,19 @@ object ArmsMesh {
         val b = Builder()
         buildArm(b, -1f)   // izquierdo
         buildArm(b, 1f)    // derecho
-        if (arma != null) buildArma(b, arma)
+        if (arma != null) {
+            val a = Builder()
+            buildArma(a, arma)
+            // Donde cae el punto de agarre despues de levantar el arma, para
+            // poder correrla justo hasta el puno.
+            val sp = sin(CABECEO_ARMA.toDouble()).toFloat()
+            val cp = cos(CABECEO_ARMA.toDouble()).toFloat()
+            agregarGirandoEnX(
+                b, a, CABECEO_ARMA,
+                PUNO_Y + AGARRE_Z * sp,
+                PUNO_Z - AGARRE_Z * cp
+            )
+        }
         return Mesh(b.v.toArray(), b.idx.toArray())
     }
 }

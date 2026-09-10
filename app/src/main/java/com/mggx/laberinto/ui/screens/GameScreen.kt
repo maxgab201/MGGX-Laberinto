@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -40,6 +41,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -50,6 +52,7 @@ import com.mggx.laberinto.core.SaveData
 import com.mggx.laberinto.game.EffectType
 import com.mggx.laberinto.game.GameSession
 import com.mggx.laberinto.game.ItemCatalog
+import com.mggx.laberinto.game.Tutorial
 import com.mggx.laberinto.gl.CaveRenderer
 import com.mggx.laberinto.ui.CaveBar
 import com.mggx.laberinto.ui.CaveButton
@@ -317,6 +320,28 @@ fun GameHud(
                     }
                 }
             }
+        }
+
+        // ------------------------------------------------------ tutorial
+        // Solo existe en el nivel 1 (GameSession.tutorial queda en null en el
+        // resto). Va arriba al medio, debajo de la barra de estado: es el
+        // unico lugar del HUD que no pelea ni con el minimapa ni con los
+        // botones, y el jugador no tiene que taparlo con el pulgar para leerlo.
+        session.tutorial?.pasoActual?.let { paso ->
+            PanelTutorial(
+                paso = paso,
+                // El progreso se lee ACA, en el cuerpo del composable que
+                // depende de uiTick, y no adentro de un hijo que reciba
+                // `session`: si no, se congela igual que se congelaba el
+                // minimapa.
+                progreso = session.tutorial?.progreso ?: 0f,
+                tick = uiTick,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 58.dp)
+                    .widthIn(max = 340.dp)
+                    .padding(horizontal = 12.dp)
+            )
         }
 
         // ------------------------------------------------------- avisos
@@ -784,6 +809,62 @@ private fun Mira(alAlcance: Boolean, cargada: Boolean, sem: Semantics, modifier:
     }
 }
 
+// -------------------------------------------------------------- tutorial
+
+/**
+ * El cartel del guion del nivel 1: que hay que hacer ahora y cuanto falta.
+ *
+ * Recibe el [paso] y el [progreso] ya resueltos en vez de la sesion entera, y
+ * un [tick] que cambia todos los cuadros. Es el mismo cuidado que hubo que
+ * tener con el minimapa: un composable que recibe un objeto mutable siempre
+ * igual (la sesion) se saltea la recomposicion para siempre y queda clavado.
+ */
+@Composable
+private fun PanelTutorial(
+    paso: Tutorial.Paso,
+    progreso: Float,
+    tick: Int,
+    modifier: Modifier = Modifier
+) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    Column(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Cave.Void.copy(alpha = 0.78f))
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            paso.titulo,
+            style = MaterialTheme.typography.titleMedium,
+            color = Cave.Amber
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            paso.ayuda,
+            style = MaterialTheme.typography.bodySmall,
+            color = Cave.TextDim
+        )
+        Spacer(Modifier.height(7.dp))
+        // La barrita no es decoracion: es la unica senal de que lo que estas
+        // haciendo cuenta para el paso. Sin ella, girar despacio parece que no
+        // hace nada.
+        Canvas(Modifier.fillMaxWidth().height(4.dp)) {
+            drawRoundRect(
+                Cave.StoneHi,
+                cornerRadius = CornerRadius(size.height / 2f, size.height / 2f)
+            )
+            if (progreso > 0.001f) {
+                drawRoundRect(
+                    Cave.Amber,
+                    size = Size(size.width * progreso.coerceIn(0f, 1f), size.height),
+                    cornerRadius = CornerRadius(size.height / 2f, size.height / 2f)
+                )
+            }
+        }
+    }
+}
+
 // -------------------------------------------------------------- minimapa
 
 /** Cuantas casillas se ven para cada lado del jugador. Es un radar, no un mapa entero. */
@@ -791,12 +872,8 @@ private const val MINIMAP_RADIO_CELDAS = 6
 
 @Composable
 private fun Minimap(session: GameSession, sem: Semantics, tick: Int, modifier: Modifier = Modifier) {
-    Box(
-        modifier
-            .clip(RoundedCornerShape(13.dp))
-            .background(Cave.Void.copy(alpha = 0.82f))
-    ) {
-        Canvas(Modifier.fillMaxSize().padding(6.dp)) {
+    Box(modifier.clip(CircleShape).background(Cave.Void.copy(alpha = 0.9f))) {
+        Canvas(Modifier.fillMaxSize().padding(5.dp)) {
             // `tick` se lee ACA ADENTRO, no en el cuerpo del composable, y es
             // lo unico que mantiene vivo al minimapa.
             //
@@ -811,9 +888,11 @@ private fun Minimap(session: GameSession, sem: Semantics, tick: Int, modifier: M
             // veces por segundo, la lambda cambia y el dibujo se rehace.
             @Suppress("UNUSED_EXPRESSION") tick
             val m = session.maze
-            val cell = min(size.width, size.height) / (MINIMAP_RADIO_CELDAS * 2f)
+            val radio = min(size.width, size.height) / 2f
+            val cell = radio / MINIMAP_RADIO_CELDAS
             val cx = size.width / 2f
             val cy = size.height / 2f
+            val centro = Offset(cx, cy)
             val yaw = session.yawDeg
             val pgx = (session.posX / GameSession.CELL).toInt()
             val pgy = (session.posZ / GameSession.CELL).toInt()
@@ -829,66 +908,146 @@ private fun Minimap(session: GameSession, sem: Semantics, tick: Int, modifier: M
                 return Offset(cx + sx / GameSession.CELL * cell, cy + sy / GameSession.CELL * cell)
             }
 
+            /** Cuanto se desvanece algo por estar cerca del borde del radar. */
+            fun fundido(p: Offset): Float {
+                val d = hypot(p.x - cx, p.y - cy) / radio
+                return (1f - ((d - 0.72f) / 0.28f)).coerceIn(0f, 1f)
+            }
+
+            // Fondo: mas claro en el centro que en el borde, para que el
+            // radar se lea como un pozo de luz y no como un cuadrado negro.
+            drawCircle(
+                Brush.radialGradient(
+                    listOf(Cave.Deep, Cave.Void),
+                    center = centro, radius = radio
+                ),
+                radio, centro
+            )
+
+            // --------------------------------------------------- el terreno
+            // El piso se pinta y las paredes se dibujan como lineas en el
+            // borde de la casilla, en vez de pintar cuadrados de roca. Es la
+            // diferencia entre un mapa y una grilla de colores: asi se ve el
+            // tunel, no un mosaico.
+            val paso = GameSession.CELL
             for (gy in (pgy - MINIMAP_RADIO_CELDAS)..(pgy + MINIMAP_RADIO_CELDAS)) {
                 for (gx in (pgx - MINIMAP_RADIO_CELDAS)..(pgx + MINIMAP_RADIO_CELDAS)) {
                     if (gx !in 0 until m.gw || gy !in 0 until m.gh) continue
                     val i = m.index(gx, gy)
-                    if (!session.revealed[i]) continue
-                    val solid = m.isSolid(gx, gy)
-                    val col = when {
-                        // Mas contraste que antes entre pared y piso: eran
-                        // dos grises parecidos y costaba distinguirlos.
-                        solid -> Cave.Void.copy(alpha = 0.95f)
-                        session.walked[i] -> Cave.AmberDeep.copy(alpha = 0.65f)
-                        else -> Cave.StoneHi.copy(alpha = 0.9f)
-                    }
-                    val p = aPantalla((gx + 0.5f) * GameSession.CELL, (gy + 0.5f) * GameSession.CELL)
-                    // La celda tambien va rotada: se dibuja como un cuadrado
-                    // orientado a la mirada, del tamano de una celda mas un
-                    // pelo de superposicion para que no queden lineas finas
-                    // entre casillas vecinas al rotar.
+                    if (!session.revealed[i] || m.isSolid(gx, gy)) continue
+                    val p = aPantalla((gx + 0.5f) * paso, (gy + 0.5f) * paso)
+                    val f = fundido(p)
+                    if (f <= 0.01f) continue
+                    // Por donde pasaste se ve calido; lo que te revelo algun
+                    // poder pero no pisaste, apagado.
+                    val col =
+                        if (session.walked[i]) Cave.AmberDeep.copy(alpha = 0.55f * f)
+                        else Cave.StoneHi.copy(alpha = 0.5f * f)
                     rotate(yaw, p) {
                         drawRect(
                             col,
-                            Offset(p.x - cell * 0.54f, p.y - cell * 0.54f),
-                            Size(cell * 1.08f, cell * 1.08f)
+                            Offset(p.x - cell * 0.55f, p.y - cell * 0.55f),
+                            Size(cell * 1.1f, cell * 1.1f)
                         )
                     }
                 }
             }
 
-            // Trampas descubiertas
+            // Las paredes del tramo descubierto: solo el borde entre una
+            // casilla abierta que ya viste y la roca de al lado.
+            for (gy in (pgy - MINIMAP_RADIO_CELDAS)..(pgy + MINIMAP_RADIO_CELDAS)) {
+                for (gx in (pgx - MINIMAP_RADIO_CELDAS)..(pgx + MINIMAP_RADIO_CELDAS)) {
+                    if (gx !in 0 until m.gw || gy !in 0 until m.gh) continue
+                    if (!session.revealed[m.index(gx, gy)] || m.isSolid(gx, gy)) continue
+                    val x0 = gx * paso; val x1 = (gx + 1) * paso
+                    val z0 = gy * paso; val z1 = (gy + 1) * paso
+                    // (vecino dx, vecino dy, esquina A, esquina B)
+                    val lados = arrayOf(
+                        intArrayOf(0, -1), intArrayOf(0, 1),
+                        intArrayOf(-1, 0), intArrayOf(1, 0)
+                    )
+                    for ((n, d) in lados.withIndex()) {
+                        val vx = gx + d[0]; val vy = gy + d[1]
+                        val hayPared = !m.inBounds(vx, vy) || m.isSolid(vx, vy)
+                        if (!hayPared) continue
+                        val a: Offset; val b: Offset
+                        when (n) {
+                            0 -> { a = aPantalla(x0, z0); b = aPantalla(x1, z0) }
+                            1 -> { a = aPantalla(x0, z1); b = aPantalla(x1, z1) }
+                            2 -> { a = aPantalla(x0, z0); b = aPantalla(x0, z1) }
+                            else -> { a = aPantalla(x1, z0); b = aPantalla(x1, z1) }
+                        }
+                        val f = fundido(Offset((a.x + b.x) / 2f, (a.y + b.y) / 2f))
+                        if (f <= 0.01f) continue
+                        drawLine(
+                            Cave.StoneEdge.copy(alpha = 0.95f * f), a, b,
+                            1.7f * density, cap = StrokeCap.Round
+                        )
+                    }
+                }
+            }
+
+            // ---------------------------------------------------- las marcas
+            // Trampas que ya descubriste: se marcan con una cruz, no con un
+            // punto, para que no se confundan con un companiero.
             for (t in session.traps) {
                 if (!t.revealed) continue
                 if (!session.revealed[m.index(t.gx, t.gy)]) continue
-                drawCircle(
-                    sem.trap.copy(alpha = 0.9f), cell * 0.42f,
-                    aPantalla((t.gx + 0.5f) * GameSession.CELL, (t.gy + 0.5f) * GameSession.CELL)
+                val p = aPantalla((t.gx + 0.5f) * paso, (t.gy + 0.5f) * paso)
+                val f = fundido(p)
+                if (f <= 0.01f) continue
+                val r = cell * 0.3f
+                val col = sem.trap.copy(alpha = 0.95f * f)
+                drawLine(col, Offset(p.x - r, p.y - r), Offset(p.x + r, p.y + r), 2f * density)
+                drawLine(col, Offset(p.x - r, p.y + r), Offset(p.x + r, p.y - r), 2f * density)
+            }
+
+            /**
+             * Marca que sobrevive al borde del radar: si el punto queda
+             * afuera, se pega al borde apuntando para donde esta.
+             */
+            fun marcaLejana(worldX: Float, worldZ: Float, col: Color, r: Float) {
+                val (sx, sy) = MinimapMath.rotarHaciaArriba(
+                    worldX - session.posX, worldZ - session.posZ, yaw
+                )
+                val (px, py, pegada) = MinimapMath.pegarAlBorde(
+                    sx / GameSession.CELL * cell, sy / GameSession.CELL * cell, radio * 0.86f
+                )
+                val p = Offset(cx + px, cy + py)
+                if (pegada) {
+                    // Pegada al borde: aro hueco, para que se lea como
+                    // "para alla" y no como "esta justo aca".
+                    drawCircle(col.copy(alpha = 0.75f), r * 0.85f, p, style = Stroke(2f * density))
+                } else {
+                    drawCircle(col.copy(alpha = 0.3f), r * 1.9f, p)
+                    drawCircle(col, r, p)
+                }
+            }
+
+            // La salida SOLO con la Rosa de los Vientos, y solo mientras dura
+            // el parpadeo. Sin la reliquia el mapa no dice donde esta: es el
+            // nivel el que hay que resolver, no el minimapa.
+            if (session.stats.exitPingSeconds > 0f && session.exitPingFlash > 0f) {
+                marcaLejana(
+                    (m.exitGx + 0.5f) * paso, (m.exitGy + 0.5f) * paso,
+                    sem.exit, cell * 0.5f
                 )
             }
 
-            // Vetagris y cofres ya descubiertos: no se regala donde estan,
-            // pero una vez que pasaste por la zona el mapa te lo recuerda.
-            // Sin esto era comun cruzarse uno, seguir de largo y no volver a
-            // encontrarlo nunca.
-            for (pk in session.pickups) {
-                if (pk.taken) continue
-                if (pk.kind != GameSession.PickupKind.VETAGRIS &&
-                    pk.kind != GameSession.PickupKind.COFRE
-                ) continue
-                if (!session.revealed[m.index(pk.gx, pk.gy)]) continue
-                val p = aPantalla((pk.gx + 0.5f) * GameSession.CELL, (pk.gy + 0.5f) * GameSession.CELL)
-                val col = if (pk.kind == GameSession.PickupKind.VETAGRIS) Cave.Vetagris else Cave.AmberSoft
-                drawCircle(col.copy(alpha = 0.35f), cell * 0.8f, p)
-                drawCircle(col, cell * 0.34f, p)
-            }
-
-            // Salida: se ve si esta revelada o si la reliquia hace ping
-            val exitRevealed = session.revealed[m.index(m.exitGx, m.exitGy)] || session.exitPingFlash > 0f
-            if (exitRevealed) {
-                val e = aPantalla((m.exitGx + 0.5f) * GameSession.CELL, (m.exitGy + 0.5f) * GameSession.CELL)
-                drawCircle(sem.exit.copy(alpha = 0.35f), cell * 1.5f, e)
-                drawCircle(sem.exit, cell * 0.7f, e)
+            // Vetagris y cofres SOLO con el Ojo de la Veta, que es justo lo
+            // que ese poder promete en la tienda. Sin el poder, encontrarlos
+            // es cosa de caminar y mirar.
+            if (session.stats.verTesoros) {
+                for (pk in session.pickups) {
+                    if (pk.taken) continue
+                    if (pk.kind != GameSession.PickupKind.VETAGRIS &&
+                        pk.kind != GameSession.PickupKind.COFRE
+                    ) continue
+                    val col =
+                        if (pk.kind == GameSession.PickupKind.VETAGRIS) Cave.Vetagris
+                        else Cave.AmberSoft
+                    marcaLejana((pk.gx + 0.5f) * paso, (pk.gy + 0.5f) * paso, col, cell * 0.32f)
+                }
             }
 
             // Companeros de sala, en cooperativo (o cualquier modo de a
@@ -896,26 +1055,58 @@ private fun Minimap(session: GameSession, sem: Semantics, tick: Int, modifier: M
             // salten entre mensaje y mensaje de red.
             session.red?.match?.otros()?.forEach { j ->
                 if (j.sinPose) return@forEach
-                val p = aPantalla(j.dibX, j.dibZ)
-                val col = if (j.caido) sem.bad else Cave.Ice
-                drawCircle(col.copy(alpha = 0.4f), cell * 0.85f, p)
-                drawCircle(col, cell * 0.55f, p)
+                marcaLejana(j.dibX, j.dibZ, if (j.caido) sem.bad else Cave.Ice, cell * 0.34f)
             }
 
+            // ------------------------------------------------- brujula y aro
+            // Cuatro marcas cardinales que giran con el mundo. La del norte
+            // es mas larga y clara: sin una referencia fija, un radar que
+            // rota te deja sin saber para donde estas yendo en el nivel.
+            for (k in 0 until 4) {
+                val (ux, uy) = MinimapMath.rotarHaciaArriba(
+                    if (k == 1) 1f else if (k == 3) -1f else 0f,
+                    if (k == 0) 1f else if (k == 2) -1f else 0f,
+                    yaw
+                )
+                val norte = k == 0
+                val largo = if (norte) 7f * density else 4f * density
+                val col =
+                    if (norte) Cave.AmberSoft.copy(alpha = 0.9f)
+                    else Cave.StoneEdge.copy(alpha = 0.9f)
+                drawLine(
+                    col,
+                    Offset(cx + ux * radio, cy + uy * radio),
+                    Offset(cx + ux * (radio - largo), cy + uy * (radio - largo)),
+                    if (norte) 2.4f * density else 1.6f * density,
+                    cap = StrokeCap.Round
+                )
+            }
+
+            // ------------------------------------------------------ el flecha
             // Jugador: siempre fijo en el centro mirando hacia arriba, ya
-            // que es el MUNDO el que rota alrededor de el.
-            drawCircle(Cave.AmberSoft.copy(alpha = 0.35f), cell * 1.1f, Offset(cx, cy))
-            drawCircle(Cave.AmberSoft, cell * 0.7f, Offset(cx, cy))
-            drawLine(
-                Cave.Amber, Offset(cx, cy), Offset(cx, cy - cell * 1.3f),
-                3f * density, cap = StrokeCap.Round
-            )
+            // que es el MUNDO el que rota alrededor de el. Es una punta de
+            // flecha, no un punto: asi se ve de un vistazo para donde mira.
+            val punta = Offset(cx, cy - cell * 0.85f)
+            val ala = cell * 0.5f
+            drawCircle(Cave.Amber.copy(alpha = 0.18f), cell * 1.15f, centro)
+            val flecha = Path().apply {
+                moveTo(punta.x, punta.y)
+                lineTo(cx - ala, cy + cell * 0.55f)
+                lineTo(cx, cy + cell * 0.2f)
+                lineTo(cx + ala, cy + cell * 0.55f)
+                close()
+            }
+            drawPath(flecha, Cave.AmberSoft)
+            drawPath(flecha, Cave.Void.copy(alpha = 0.65f), style = Stroke(1.2f * density))
         }
+        // El aro de afuera, encima de todo, para que el radar tenga un borde
+        // limpio y no quede flotando sobre el juego.
         Canvas(Modifier.fillMaxSize()) {
-            drawRoundRect(
-                Cave.StoneEdge.copy(alpha = 0.8f),
-                cornerRadius = CornerRadius(13.dp.toPx(), 13.dp.toPx()),
-                style = Stroke(1.3f * density)
+            drawCircle(
+                Cave.StoneEdge.copy(alpha = 0.85f),
+                min(size.width, size.height) / 2f - density,
+                Offset(size.width / 2f, size.height / 2f),
+                style = Stroke(1.6f * density)
             )
         }
     }

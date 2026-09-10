@@ -88,7 +88,11 @@ class RelieveTest {
                 m.floorLevel.all { it == 0 }
             )
         }
-        for (level in 1..3) {
+        // Del 2 en adelante, y no del 1: el nivel 1 es el tutorial y tiene un
+        // unico tramo bajo puesto a mano sobre el camino a la salida, para que
+        // el paso "agachate" ensene algo de verdad en vez de hacer apretar un
+        // boton al pedo. Ese tramo lo cuida TutorialTest.
+        for (level in 2..3) {
             val m = MazeGenerator.generate(level, level * 59L).maze
             for (i in m.ceilClearance.indices) {
                 if (m.solid[i]) continue
