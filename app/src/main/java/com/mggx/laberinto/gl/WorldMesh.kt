@@ -687,8 +687,14 @@ object WorldMesh {
     }
 
     /**
-     * Travesanos de madera apoyados contra el escalon, para que se vea de lejos
-     * por donde se sube. Cada travesano es una caja de seis caras planas.
+     * La escalera apoyada contra el escalon.
+     *
+     * Antes eran solo travesanos sueltos flotando contra la roca: de lejos no
+     * se leia como una escalera sino como unos palos pegados a la pared. Ahora
+     * tiene los dos largueros, los travesanos van montados por delante de
+     * ellos, y el conjunto asoma por arriba del escalon como cualquier
+     * escalera apoyada, que es lo que hace que se entienda de una que por ahi
+     * se sube.
      */
     private fun escalera(
         b: Builder, gx: Int, gy: Int,
@@ -696,26 +702,49 @@ object WorldMesh {
     ) {
         val cxw = (gx + 0.5f) * CELL
         val czw = (gy + 0.5f) * CELL
-        // Centro del borde compartido, corrido un poquito hacia el vacio.
-        val bx = cxw + dx * (CELL * 0.5f + 0.06f)
-        val bz = czw + dz * (CELL * 0.5f + 0.06f)
-        val ancho = 0.78f
-        val grosor = 0.07f
-        val salida = 0.13f
-        var y = yBajo + 0.24f
+        // Cara del escalon: el borde compartido. La escalera cuelga de ahi
+        // hacia el lado hondo, que es hacia (dx, dz).
+        val bordeX = cxw + dx * CELL * 0.5f
+        val bordeZ = czw + dz * CELL * 0.5f
+
+        val separacion = 0.34f   // medio ancho entre largueros
+        val grueso = 0.05f       // medio grosor de larguero y travesano
+        val fondo = 0.15f        // cuanto se despega de la roca
+        val paso = 0.32f         // separacion entre travesanos
+        val asoma = 0.34f        // cuanto sobresale por arriba del escalon
+
+        /**
+         * Una barra. `lateral` corre a lo ancho de la escalera y `f` hacia
+         * afuera de la roca, sea cual sea el eje por el que se sube.
+         */
+        fun barra(lateral0: Float, lateral1: Float, y0: Float, y1: Float, f0: Float, f1: Float) {
+            if (dx != 0) {
+                val x0 = bordeX + dx * f0
+                val x1 = bordeX + dx * f1
+                caja(b, minOf(x0, x1), y0, czw + lateral0, maxOf(x0, x1), y1, czw + lateral1)
+            } else {
+                val z0 = bordeZ + dz * f0
+                val z1 = bordeZ + dz * f1
+                caja(b, cxw + lateral0, y0, minOf(z0, z1), cxw + lateral1, y1, maxOf(z0, z1))
+            }
+        }
+
+        val yTope = yAlto + asoma
+        // Los dos largueros, contra la roca.
+        for (s in intArrayOf(-1, 1)) {
+            val c = separacion * s
+            barra(c - grueso, c + grueso, yBajo, yTope, 0.02f, fondo)
+        }
+        // Los travesanos, montados por delante de los largueros.
+        var y = yBajo + 0.20f
         var puestos = 0
-        while (y < yAlto - 0.05f && puestos < 24) {
-            // El travesano es perpendicular al sentido de subida.
-            val ax = if (dx != 0) 0f else ancho * 0.5f
-            val az = if (dx != 0) ancho * 0.5f else 0f
-            val px = if (dx != 0) salida * 0.5f else 0f
-            val pz = if (dx != 0) 0f else salida * 0.5f
-            caja(
-                b,
-                bx - ax - px, y - grosor, bz - az - pz,
-                bx + ax + px, y + grosor, bz + az + pz
+        while (y < yTope - 0.12f && puestos < 26) {
+            barra(
+                -separacion - grueso, separacion + grueso,
+                y - grueso * 0.8f, y + grueso * 0.8f,
+                fondo * 0.5f, fondo + 0.035f
             )
-            y += 0.36f
+            y += paso
             puestos++
         }
     }

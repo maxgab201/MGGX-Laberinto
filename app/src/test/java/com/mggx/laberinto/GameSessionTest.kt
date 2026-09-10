@@ -379,6 +379,63 @@ class GameSessionTest {
         assertTrue("la vista no abre el campo", s1.fovBonus > s0.fovBonus)
     }
 
+    // ------------------------------------------------------------- trampas
+
+    /** Un nivel que seguro tiene una trampa de piso, y esa trampa. */
+    private fun sesionConTrampaDePiso(): Pair<GameSession, GameSession.TrapInstance> {
+        for (level in 3..60) {
+            val s = sesion(level, level * 613L)
+            val t = s.traps.firstOrNull {
+                it.kind == com.mggx.laberinto.maze.MazeGenerator.TrapKind.SPIKES ||
+                    it.kind == com.mggx.laberinto.maze.MazeGenerator.TrapKind.PITFALL
+            }
+            if (t != null) return s to t
+        }
+        error("ningun nivel de prueba tiene una trampa de piso")
+    }
+
+    /** Se para justo encima de la trampa, a la altura que se le pida. */
+    private fun pararseEn(s: GameSession, t: GameSession.TrapInstance, sobreElPiso: Float) {
+        s.posX = (t.gx + 0.5f) * GameSession.CELL
+        s.posZ = (t.gy + 0.5f) * GameSession.CELL
+        s.posY = s.maze.floorY(t.gx, t.gy) + sobreElPiso
+    }
+
+    @Test
+    fun unaTrampaDePisoSeSaltaPorEncima() {
+        // Se supone que a las trampas del piso hay que saltarlas, pero antes
+        // la trampa solo miraba la distancia en planta: saltar no servia de
+        // nada y te agarraba igual en el aire.
+        val (s, t) = sesionConTrampaDePiso()
+        pararseEn(s, t, GameSession.ALTURA_SALTAR_TRAMPA + 0.1f)
+        val vida = s.health
+        s.update(1f / 60f, GameSession.Input())
+        assertEquals("la trampa le pego a alguien que la estaba saltando", vida, s.health, 0.001f)
+    }
+
+    @Test
+    fun laMismaTrampaSiTeAgarraCaminando() {
+        // El control del test de arriba: si pasando por encima no pasa nada
+        // pero caminando tampoco, el test no probaria nada.
+        val (s, t) = sesionConTrampaDePiso()
+        pararseEn(s, t, 0f)
+        val vida = s.health
+        s.update(1f / 60f, GameSession.Input())
+        assertTrue("la trampa no le pego a alguien que la piso", s.health < vida)
+    }
+
+    @Test
+    fun lasTrampasSeVenDeCercaSinNingunPoderComprado() {
+        // Antes solo se revelaban con el sentido del peligro comprado, asi que
+        // para el que empezaba la primera noticia de una trampa era el golpe.
+        val (s, t) = sesionConTrampaDePiso()
+        assertFalse("ya venia descubierta", t.revealed)
+        s.posX = (t.gx + 0.5f) * GameSession.CELL + GameSession.RADIO_VER_TRAMPA - 1f
+        s.posZ = (t.gy + 0.5f) * GameSession.CELL
+        s.update(1f / 60f, GameSession.Input())
+        assertTrue("no se descubrio una trampa que tenia a la vista", t.revealed)
+    }
+
     @Test
     fun elNivelSiempreTieneObjetosParaJuntar() {
         for (level in intArrayOf(1, 5, 17, 33, 55)) {

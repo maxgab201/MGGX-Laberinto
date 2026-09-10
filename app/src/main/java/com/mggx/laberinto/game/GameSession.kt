@@ -53,8 +53,14 @@ class GameSession(
          * y medio, y a proposito NO alcanza para saltear una escalera.
          */
         const val VEL_SALTO = 4.6f
-        /** Velocidad de subida y de bajada por escalera, en m/s. */
-        const val VEL_ESCALERA = 2.4f
+        /**
+         * Velocidad de subida y de bajada por escalera, en m/s.
+         *
+         * Mientras dura la subida el cuerpo esta atravesando el escalon, asi
+         * que cuanto mas corta, mejor se siente: a 2,4 un repecho grande se
+         * hacia largo y parecia que te estabas quedando trabado en la roca.
+         */
+        const val VEL_ESCALERA = 3.4f
         /** Caida a partir de la cual empieza a doler, en m/s. */
         const val CAIDA_SEGURA = 11f
         /** Segundos que dura un tanque lleno de carburo con la linterna prendida. */
@@ -67,6 +73,13 @@ class GameSession(
          * lado igual.
          */
         const val MARGEN_OJO_TECHO = 0.16f
+        /** A que distancia se ve una trampa a simple vista, en metros. */
+        const val RADIO_VER_TRAMPA = 6.5f
+        /**
+         * Cuanto hay que estar por encima del piso para pasar por arriba de
+         * una trampa de suelo. Un salto normal llega a unos 59 cm.
+         */
+        const val ALTURA_SALTAR_TRAMPA = 0.35f
         /**
          * Medio angulo del golpe, en coseno. 0.42 son unos 65 grados a cada
          * lado: hay que apuntarle al bicho, pero no al pixel.
@@ -1097,11 +1110,35 @@ class GameSession(
             val tx = (t.gx + 0.5f) * CELL
             val tz = (t.gy + 0.5f) * CELL
             val d = hypot(tx - posX, tz - posZ)
+            // De cerca se ven a simple vista, sin necesidad de ningun poder:
+            // son pinches asomando del piso, tablas podridas o rocas colgando
+            // del techo, no cosas invisibles. Antes solo aparecian si tenias
+            // comprado el sentido del peligro, asi que para el que empezaba la
+            // primera noticia de una trampa era el golpe.
+            if (d <= RADIO_VER_TRAMPA) t.revealed = true
             if (sense > 0f && d <= sense) { t.revealed = true; if (d <= 5f) nearHum = true }
             if (!t.armed || t.cooldown > 0f || immune) continue
-            if (d < 1.0f) triggerTrap(t)
+            if (d < 1.0f && !laSaltasPorEncima(t)) triggerTrap(t)
         }
         if (nearHum && rnd.nextFloat() < dt * 1.2f) play(Sfx.ZUMBIDO)
+    }
+
+    /**
+     * Si en este momento estas pasando por ENCIMA de la trampa.
+     *
+     * Las del piso (pinches, pozo) se saltan: es lo que uno espera al verlas
+     * venir, y antes saltar no servia absolutamente de nada porque la trampa
+     * solo miraba la distancia en planta. Las que vienen de arriba (el vapor
+     * y el derrumbe) no se saltan, por razones obvias.
+     *
+     * El umbral esta bien por debajo de lo que sube un salto normal (unos
+     * 59 cm), asi que un salto bien dado te salva pero caminar no.
+     */
+    private fun laSaltasPorEncima(t: TrapInstance): Boolean {
+        val deArriba = t.kind == MazeGenerator.TrapKind.STEAM ||
+            t.kind == MazeGenerator.TrapKind.ROCKFALL
+        if (deArriba) return false
+        return posY - maze.floorY(t.gx, t.gy) >= ALTURA_SALTAR_TRAMPA
     }
 
     private fun triggerTrap(t: TrapInstance) {

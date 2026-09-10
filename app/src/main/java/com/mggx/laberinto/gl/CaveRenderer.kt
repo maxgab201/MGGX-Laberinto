@@ -1023,14 +1023,19 @@ class CaveRenderer(
             )
         }
 
-        // --- trampas descubiertas: cada una con su forma, no un cuadrado rojo
+        // --- trampas: cada una con su forma, no un cuadrado rojo
+        //
+        // Se dibujan siempre que esten cerca, no solo cuando estan
+        // "descubiertas": son objetos fisicos de la cueva (pinches asomando,
+        // tablas podridas, rocas colgando) y esconderlos hasta pisarlos era
+        // lo que las hacia aparecer de la nada. Lo que agrega descubrirla es
+        // el aviso que late, que es la ayuda de verdad.
         for (tr in s.traps) {
-            if (!tr.revealed) continue
             val x = (tr.gx + 0.5f) * C; val z = (tr.gy + 0.5f) * C
             if (!near(x, z)) continue
             val fy = WorldMesh.floorHeight(s.maze, tr.gx, tr.gy)
             val pulse = 0.55f + 0.45f * sin((time * 3.4f + tr.gx + tr.gy).toDouble()).toFloat()
-            val aviso = if (tr.armed) 0.22f * pulse else 0.02f
+            val aviso = if (tr.armed && tr.revealed) 0.22f * pulse else 0.02f
             when (tr.kind) {
                 com.mggx.laberinto.maze.MazeGenerator.TrapKind.SPIKES -> {
                     // Corona de pinches de hierro asomando del piso.
