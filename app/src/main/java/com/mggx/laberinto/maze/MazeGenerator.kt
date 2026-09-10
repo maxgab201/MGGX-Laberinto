@@ -187,12 +187,12 @@ object MazeGenerator {
             level <= 2 -> 1
             level <= 8 -> 2
             level <= 20 -> 3
-            else -> 3 + (level / 18).coerceAtMost(3)
+            else -> 3 + (level / 12).coerceAtMost(6)
         }
         carveChambers(maze, rnd, chambers)
 
         // --- Erosion: redondea esquinas sueltas de roca aislada.
-        erode(maze, rnd, if (level <= 5) 0.04f else 0.08f)
+        erode(maze, rnd, if (level <= 5) 0.06f else 0.14f)
 
         placeStartAndExit(maze)
         return maze
@@ -287,8 +287,8 @@ object MazeGenerator {
         var guard = 0
         while (made < count && guard < count * 40) {
             guard++
-            val w = 3 + rnd.nextInt(3)   // 3..5
-            val h = 3 + rnd.nextInt(3)
+            val w = 3 + rnd.nextInt(4)   // 3..6
+            val h = 3 + rnd.nextInt(4)
             if (maze.gw - 2 <= w + 2 || maze.gh - 2 <= h + 2) break
             val ox = 1 + rnd.nextInt(maze.gw - 2 - w)
             val oy = 1 + rnd.nextInt(maze.gh - 2 - h)
@@ -303,7 +303,13 @@ object MazeGenerator {
             if (!touches) continue
 
             for (y in oy until oy + h) {
-                for (x in ox until ox + w) maze.setSolid(x, y, false)
+                for (x in ox until ox + w) {
+                    // Las cuatro esquinas quedan sin abrir: un rectangulo
+                    // perfecto se lee como un cuarto, y esto es una cueva.
+                    val esquina = (x == ox || x == ox + w - 1) && (y == oy || y == oy + h - 1)
+                    if (esquina) continue
+                    maze.setSolid(x, y, false)
+                }
             }
             made++
         }
@@ -410,7 +416,7 @@ object MazeGenerator {
             (if (rnd.nextFloat() < 0.35f) 1 else 0)
         val chestCount = (1 + level / 8).coerceIn(1, 5)
         val trapCount = if (level < 3) 0 else (area * 0.012f * (1f + level / 45f)).toInt().coerceIn(1, 60)
-        val torchCount = (area * 0.05f).toInt().coerceIn(4, 90)
+        val torchCount = (area * 0.062f).toInt().coerceIn(5, 110)
         // Cada bioma se puebla distinto: en la mina hay entibado por todos
         // lados y casi ninguna estalagmita; en el bosque de esporas al reves.
         val densStalag = when (theme.biome) {
@@ -440,7 +446,7 @@ object MazeGenerator {
             Biome.MINA -> 0.5f
             else -> 1f
         }
-        val stalagCount = (area * 0.07f * densStalag).toInt().coerceIn(4, 130)
+        val stalagCount = (area * 0.095f * densStalag).toInt().coerceIn(6, 190)
 
         val coins = take(coinCount)
         val bigCoins = take(bigCount)
@@ -476,9 +482,9 @@ object MazeGenerator {
         // te deja tirado.
         val carbideCount = (1 + area / 260).coerceIn(1, 8)
         val carbide = take(carbideCount)
-        val crystalClusters = take((area * 0.030f * densCristal).toInt().coerceIn(3, 70))
-        val rocks = take((area * 0.045f).toInt().coerceIn(4, 90))
-        val mushrooms = take((area * 0.025f * densHongo).toInt().coerceIn(3, 80))
+        val crystalClusters = take((area * 0.042f * densCristal).toInt().coerceIn(4, 96))
+        val rocks = take((area * 0.062f).toInt().coerceIn(6, 130))
+        val mushrooms = take((area * 0.036f * densHongo).toInt().coerceIn(4, 120))
         // Los marcos de madera solo entran en pasillos rectos: si no, quedan
         // clavados en el aire.
         val pasillos = open.filter { gi ->
@@ -491,7 +497,7 @@ object MazeGenerator {
             (horizontal || vertical) && gi != startI && gi != exitI
         }.toMutableList()
         pasillos.shuffle(rnd)
-        val beams = pasillos.take((area * 0.02f * densViga).toInt().coerceIn(2, 60))
+        val beams = pasillos.take((area * 0.026f * densViga).toInt().coerceIn(3, 80))
 
         // --- bichos
         val enemies = spawnEnemies(maze, level, rnd, distFromStart, take((3 + level / 2).coerceAtMost(26)))

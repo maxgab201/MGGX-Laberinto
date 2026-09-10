@@ -307,12 +307,23 @@ object ProcTextures {
      * puede correr fuera del hilo de GL y se puede mirar en un test.
      */
     fun generate(theme: CaveTheme, quality: Int): Pixels {
+        // Mas pixeles por baldosa en las calidades altas: el detalle chico (las
+        // juntas entre placas, las grietas, la veta de la madera) es lo primero
+        // que se pierde cuando la baldosa es corta, y es justo lo que hace que
+        // la piedra se vea piedra de cerca. Las calidades bajas no se tocan:
+        // ahi el problema es el telefono, no el detalle.
         val size = when (quality) {
             0 -> 96
             1 -> 160
-            2 -> 256
-            else -> 384
+            2 -> 320
+            else -> 448
         }
+        // OJO: [per] no se toca a la ligera. Cambiar el detalle es subir `size`;
+        // `per` cambia los periodos de TODOS los patrones a la vez, y no todos
+        // cierran igual de bien con cualquier valor. Probado: pasarlo de 12 a
+        // 14 abre una costura visible en el entibado de la Mina, que
+        // TexturasTest agarra. Si alguna vez se cambia, tiene que ser mirando
+        // ese test, no de memoria.
         val per = when (quality) {
             0 -> 6
             1 -> 8
@@ -354,9 +365,22 @@ object ProcTextures {
                     val shade = 0.46f + hv * 0.92f
                     val grain = (hash2(x, y, seed + 3) - 0.5f) * 0.06f
                     val vm = if (layer == LAYER_VEIN) 0.85f else veinMask(u, v, per, seed)
-                    var r = cr * shade + grain
-                    var g = cg * shade + grain
-                    var b = cb * shade + grain
+
+                    // Manchones grandes de tono, del tamano de varias baldosas
+                    // juntas. La roca de verdad no es de un solo color parejo:
+                    // sin esto, una pared larga se lee como una unica lamina
+                    // repetida, que es lo que hacia que la cueva se viera
+                    // "de plastico" aunque el relieve estuviera bien.
+                    val mancha = fbm(u * 2f, v * 2f, 3, 2, seed + 97)
+                    val tinte = 0.84f + mancha * 0.34f
+                    // Ademas de aclarar y oscurecer, los manchones tiran un
+                    // poco hacia el color de la veta del bioma: es lo que le da
+                    // aire de mineral y no de cemento pintado.
+                    val hacia = ((mancha - 0.5f) * 0.22f).coerceIn(0f, 0.22f)
+
+                    var r = (cr * (1f - hacia) + theme.veinR * hacia) * shade * tinte + grain
+                    var g = (cg * (1f - hacia) + theme.veinG * hacia) * shade * tinte + grain
+                    var b = (cb * (1f - hacia) + theme.veinB * hacia) * shade * tinte + grain
                     // La veta tine apenas el albedo de alrededor
                     r = r * (1f - vm * 0.28f) + theme.veinR * vm * 0.28f
                     g = g * (1f - vm * 0.28f) + theme.veinG * vm * 0.28f
