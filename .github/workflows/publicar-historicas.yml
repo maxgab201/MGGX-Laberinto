@@ -95,8 +95,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          APK="$(ls apks/*.apk | head -1)"
-          [ -n "$APK" ] || { echo "no hay ningun .apk en apks/ de esta rama"; exit 1; }
+          # El APK de ESTA version, buscado por su nombre exacto.
+          #
+          # Antes agarraba "el primero que aparezca" (ls | head -1), y en la
+          # rama 1.6.0 habia quedado ademas el APK de 1.5.3: como la lista sale
+          # ordenada, la release 1.6.0 se habria publicado con el archivo
+          # equivocado adentro y nadie se hubiera dado cuenta hasta instalarlo.
+          APK="apks/MGGX-Laberinto-${{ matrix.version }}.apk"
+          [ -f "$APK" ] || { echo "falta $APK en la rama ${{ matrix.version }}"; exit 1; }
           TITULO="$(cat /tmp/titulo.txt)"
           gh release create "${{ matrix.tag }}" "$APK" \
             --repo "${{ github.repository }}" \
