@@ -252,6 +252,21 @@ class MultijugadorTest {
     }
 
     @Test
+    fun elCompanieroSoloMueveLasPiernasCuandoAvanza() {
+        // El reloj de la caminata son los metros caminados y no el tiempo:
+        // es lo que hace que las piernas se queden quietas con el companiero
+        // parado sin tener que mandar nada extra por la red.
+        val j = com.mggx.laberinto.net.JugadorRemoto("dos", "Colo", "skin_minero")
+        j.pose(0f, 0f, 0f, 0f, 0)
+        repeat(20) { j.suavizar(0.35f) }
+        assertEquals("el paso corre con el companiero parado", 0f, j.paso, 1e-4f)
+
+        j.pose(5f, 0f, 0f, 0f, 0)
+        repeat(60) { j.suavizar(0.35f) }
+        assertTrue("el paso no avanzo caminando cinco metros", j.paso > 4f)
+    }
+
+    @Test
     fun hayDosModosYCadaUnoSeExplicaSolo() {
         val modos = NetProtocol.Modo.entries
         assertEquals(2, modos.size)

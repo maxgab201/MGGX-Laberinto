@@ -328,6 +328,9 @@ class CaveRenderer(
     private var shapeGuardianTorso: InstancedShape? = null
     private var shapeGuardianCabeza: InstancedShape? = null
     private var shapeGuardianBrazo: InstancedShape? = null
+    private var shapeTopo: InstancedShape? = null
+    private var shapeTopoPala: InstancedShape? = null
+    private var shapeArana: InstancedShape? = null
 
     // ------------------------------------------------ modelos de estructuras
     // Ver StructureMeshes: antes casi todas reusaban las mismas primitivas.
@@ -681,6 +684,9 @@ class CaveRenderer(
         shapeGuardianTorso = InstancedShape(EnemyMeshes.guardianTorso(), 80)
         shapeGuardianCabeza = InstancedShape(EnemyMeshes.guardianCabeza(), 80)
         shapeGuardianBrazo = InstancedShape(EnemyMeshes.guardianBrazo(), 160)
+        shapeTopo = InstancedShape(EnemyMeshes.topoCuerpo(), 80)
+        shapeTopoPala = InstancedShape(EnemyMeshes.topoPala(), 160)
+        shapeArana = InstancedShape(EnemyMeshes.aranaCuerpo(), 80)
         shapeAntorcha = InstancedShape(StructureMeshes.antorcha(), 160)
         shapeLlama = InstancedShape(StructureMeshes.llama(), 160)
         shapeCristal = InstancedShape(StructureMeshes.cristal(), 900)
@@ -816,6 +822,9 @@ class CaveRenderer(
         val torso = shapeGuardianTorso ?: return
         val cabeza = shapeGuardianCabeza ?: return
         val brazo = shapeGuardianBrazo ?: return
+        val topo = shapeTopo ?: return
+        val pala = shapeTopoPala ?: return
+        val arana = shapeArana ?: return
         val antorcha = shapeAntorcha ?: return
         val llama = shapeLlama ?: return
         val cristal = shapeCristal ?: return
@@ -840,6 +849,7 @@ class CaveRenderer(
         stalactite.begin()
         murcielago.begin(); rastrero.begin(); pata.begin()
         torso.begin(); cabeza.begin(); brazo.begin()
+        topo.begin(); pala.begin(); arana.begin()
         antorcha.begin(); llama.begin(); cristal.begin(); cofre.begin()
         hongo.begin(); pincho.begin(); estacion.begin(); obelisco.begin()
         minero.begin(); casco.begin()
@@ -1121,6 +1131,63 @@ class CaveRenderer(
                     gem.add(ex2 + fwdX * 0.15f + rgtX * 0.05f, ey + 0.06f, ez2 + fwdZ * 0.15f + rgtZ * 0.05f,
                         0.030f, 1f, 0.42f, 0.30f, ojo, 0f, 0f, 0f, 1f)
                 }
+                com.mggx.laberinto.maze.MazeGenerator.EnemyKind.TOPO -> {
+                    // Va pegado al piso, cabeceando como el que viene cavando,
+                    // con las dos palas moviendose alternadas.
+                    val cabeceo = sin((e.paso * 5.5f + e.fase).toDouble()).toFloat()
+                    topo.add(
+                        ex2, ey + 0.20f + cabeceo * 0.03f, ez2, 0.62f,
+                        0.30f + golpe * 0.7f, 0.24f, 0.21f, flash,
+                        r, e.fase, 0f, 1f
+                    )
+                    for (lado in 0 until 2) {
+                        val s = if (lado == 0) 1f else -1f
+                        val bat = sin((e.paso * 5.5f + e.fase + lado * 3.14f).toDouble()).toFloat()
+                        pala.add(
+                            ex2 + rgtX * 0.17f * s + fwdX * 0.16f,
+                            ey + 0.13f + bat * 0.05f,
+                            ez2 + rgtZ * 0.17f * s + fwdZ * 0.16f,
+                            0.34f,
+                            0.42f + golpe * 0.6f, 0.35f, 0.30f, flash,
+                            if (lado == 0) r else r + Math.PI.toFloat(), e.fase, 0f, 1f
+                        )
+                    }
+                    // No tiene ojos utiles: lo que se le ve es la nariz humeda.
+                    gem.add(
+                        ex2 + fwdX * 0.30f, ey + 0.21f, ez2 + fwdZ * 0.30f,
+                        0.035f, 1f, 0.62f, 0.58f, ojo * 0.5f, 0f, 0f, 0f, 1f
+                    )
+                }
+                com.mggx.laberinto.maze.MazeGenerator.EnemyKind.ARANA -> {
+                    // Cuelga a media altura. Ocho patas quebradas repartidas
+                    // alrededor del cefalotorax, las de cada lado giradas media
+                    // vuelta para que la rodilla apunte siempre para afuera.
+                    arana.add(
+                        ex2, ey, ez2, 0.70f,
+                        0.26f + golpe * 0.7f, 0.22f, 0.28f, flash, r, e.fase, 0f, 1f
+                    )
+                    for (k in 0 until 8) {
+                        val lado = if (k % 2 == 0) -1f else 1f
+                        val a = 0.26f - (k / 2) * 0.19f
+                        val mueve = sin((e.paso * 4.2f + e.fase + k * 0.9f).toDouble()).toFloat()
+                        pata.add(
+                            ex2 + fwdX * a + rgtX * 0.18f * lado,
+                            ey - 0.16f + mueve * 0.04f,
+                            ez2 + fwdZ * a + rgtZ * 0.18f * lado,
+                            0.40f, 0.30f, 0.26f, 0.32f, flash,
+                            r + (if (lado > 0f) 0f else Math.PI.toFloat()), e.fase + k * 0.5f, 0f, 1f
+                        )
+                    }
+                    // Los ojos en fila: es lo unico que se le ve de lejos.
+                    for (k in 0 until 3) {
+                        val off = (k - 1) * 0.07f
+                        gem.add(
+                            ex2 + fwdX * 0.26f + rgtX * off, ey + 0.06f,
+                            ez2 + fwdZ * 0.26f + rgtZ * off,
+                            0.028f, 1f, 0.86f, 0.42f, ojo, 0f, 0f, 0f, 1f
+                        )
+                    }
+                }
                 com.mggx.laberinto.maze.MazeGenerator.EnemyKind.RASTRERO -> {
                     // Cuerpo largo de tres placas de caparazon que ondulan al
                     // avanzar, cada vez mas chicas hacia la cola.
@@ -1220,13 +1287,22 @@ class CaveRenderer(
                 // grados, asi que se convierte una vez y se usa para todo.
                 val yr = Math.toRadians(j.dibYaw.toDouble())
                 val giro = yr.toFloat()
+                // Caminata: el reloj son los metros que lleva caminados, no el
+                // tiempo, asi que las piernas se mueven cuando avanza y se
+                // quedan quietas cuando esta parado. El caido no camina.
+                val anda = if (j.caido) 0f else 4f
                 minero.add(
                     j.dibX, j.dibY, j.dibZ, alto,
                     traje[0] * apagado, traje[1] * apagado, traje[2] * apagado,
-                    0f, giro, 0f, 0f, 1f
+                    0f, giro, j.paso, anda, 1f
                 )
+                // El casco y la lampara acompanan el balanceo del cuerpo: el
+                // shader mueve la malla del minero, pero estas son instancias
+                // aparte y hay que subirlas y bajarlas desde aca.
+                val balanceo = if (j.caido) 0f
+                else kotlin.math.abs(sin((j.paso * 3.4f + giro).toDouble()).toFloat()) * 0.018f * alto
                 casco.add(
-                    j.dibX, j.dibY + alto * 0.88f, j.dibZ, alto * 0.30f,
+                    j.dibX, j.dibY + alto * 0.88f + balanceo, j.dibZ, alto * 0.30f,
                     1.00f, 0.74f, 0.16f, if (j.caido) 0.10f else 0.35f,
                     giro, 0f, 0f, 1f
                 )
@@ -1235,7 +1311,7 @@ class CaveRenderer(
                 if (!j.caido) {
                     gem.add(
                         j.dibX + sin(yr).toFloat() * 0.20f,
-                        j.dibY + alto * 0.92f,
+                        j.dibY + alto * 0.92f + balanceo,
                         j.dibZ + cos(yr).toFloat() * 0.20f,
                         0.07f, 1f, 0.90f, 0.55f, 1.7f, 0f, 0f, 0f, 1f
                     )
@@ -1292,6 +1368,7 @@ class CaveRenderer(
         boxS.draw(); slab.draw(); post.draw(); cofre.draw()
         GLES30.glUniform1i(material, 2)
         cyl.draw(); arrow.draw(); antorcha.draw(); pincho.draw(); estacion.draw(); casco.draw()
+        topo.draw(); pala.draw(); arana.draw()
         GLES30.glUniform1i(material, 3)
         gem.draw(); cristal.draw(); obelisco.draw()
         GLES30.glUniform1i(material, 4)

@@ -207,7 +207,7 @@ out float vAlpha;
 
 void main() {
     // iParams.z = tipo: 0 quieto, 1 gema que gira y flota, 2 ala de murcielago,
-    // 3 bicho que repta. Solo el tipo 1 gira solo.
+    // 3 bicho que repta, 4 minero caminando. Solo el tipo 1 gira solo.
     float tipo = iParams.z;
     bool gema = tipo > 0.5 && tipo < 1.5;
     float ang = iParams.x + uTime * (gema ? 1.15 : 0.0);
@@ -220,6 +220,31 @@ void main() {
         // Aleteo: la punta del ala sube y baja, la raiz casi no se mueve.
         normal.x -= sin(uTime * 9.0 + iParams.y) * sign(p.x) * 1.25 * normal.y;
         p.y += sin(uTime * 9.0 + iParams.y) * abs(p.x) * 1.25;
+    } else if (tipo > 3.5) {
+        // Minero caminando. El reloj es iParams.y, que son los METROS que
+        // lleva caminados y no el tiempo: asi las piernas se mueven cuando
+        // avanza y se quedan quietas cuando esta parado, sin mandar nada
+        // extra por la red.
+        //
+        // El modelo es una sola malla, asi que las partes se separan por
+        // donde estan: lo de abajo de la cintura son las piernas (cada una
+        // hacia un lado, por el signo de x) y lo de los costados a la altura
+        // del pecho son los brazos, que van al reves que la pierna del mismo
+        // lado. La amplitud crece con la altura del modelo, que mide 1: por
+        // eso se usa iPosScale.w para pasarla a metros.
+        float ciclo = iParams.y * 3.4 + iParams.x;
+        float lado = sign(aPos.x);
+        float esc = iPosScale.w;
+        float cintura = 0.46 * esc;
+        float pierna = max(0.0, cintura - p.y) / max(cintura, 0.001);
+        p.z += sin(ciclo) * lado * pierna * 0.26 * esc;
+        p.y += max(0.0, sin(ciclo) * lado) * pierna * 0.05 * esc;
+        // Brazos: los costados, por fuera del ancho del torso (0.175) y por
+        // encima de las manos. Debajo de ese ancho todavia es cuerpo.
+        float brazo = step(0.175, abs(aPos.x)) * step(0.40 * esc, p.y);
+        p.z -= sin(ciclo) * lado * brazo * 0.20 * esc;
+        // El cuerpo entero acompana con un balanceo chico.
+        p.y += abs(sin(ciclo)) * 0.018 * esc;
     } else if (tipo > 2.5) {
         // Reptar: ondula de costado a lo largo del cuerpo.
         normal.z -= cos(uTime * 6.0 + iParams.y + p.z * 2.4) * 0.132 * normal.x;

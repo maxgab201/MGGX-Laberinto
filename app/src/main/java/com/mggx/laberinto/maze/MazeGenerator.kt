@@ -89,7 +89,20 @@ object MazeGenerator {
     ) {
         MURCIELAGO("Murcielago de sima", 9.5f, 4.1f, 7f, 1.5f, 0.34f, 0.55f, 1.45f, false, false, 16f, 6),
         RASTRERO("Rastrero ciego", 13f, 3.4f, 16f, 2.0f, 0.44f, 0.75f, 0f, true, false, 44f, 14),
-        GUARDIAN("Guardian de roca", 6.5f, 1.9f, 30f, 2.6f, 0.62f, 1.85f, 0f, false, true, 120f, 40)
+        GUARDIAN("Guardian de roca", 6.5f, 1.9f, 30f, 2.6f, 0.62f, 1.85f, 0f, false, true, 120f, 40),
+
+        /**
+         * Va a ras del piso y corre mas que vos. Es el unico que entra en las
+         * gateras, asi que meterse en un tramo bajo ya no es un refugio
+         * seguro: te saca al guardian de encima, pero no al topo.
+         */
+        TOPO("Topo de veta", 8f, 4.6f, 12f, 1.2f, 0.40f, 0.62f, 0f, false, false, 30f, 11),
+
+        /**
+         * Cuelga a media altura, donde no llega un golpe dado de parado sin
+         * mirar para arriba. Pega fuerte y aguanta, pero es lenta.
+         */
+        ARANA("Arana de sima", 11f, 2.6f, 22f, 2.4f, 0.50f, 0.70f, 1.75f, false, false, 58f, 22)
     }
 
     /** Dimensiones logicas del nivel. Crece de forma sostenida pero acotada. */
@@ -528,15 +541,24 @@ object MazeGenerator {
             val r = rnd.nextFloat()
             val kind = when {
                 level < 6 -> EnemyKind.MURCIELAGO
-                level < 12 -> if (r < 0.62f) EnemyKind.MURCIELAGO else EnemyKind.RASTRERO
-                level < 20 -> when {
+                level < 9 -> if (r < 0.62f) EnemyKind.MURCIELAGO else EnemyKind.TOPO
+                level < 12 -> when {
                     r < 0.42f -> EnemyKind.MURCIELAGO
-                    r < 0.86f -> EnemyKind.RASTRERO
+                    r < 0.72f -> EnemyKind.TOPO
+                    else -> EnemyKind.RASTRERO
+                }
+                level < 20 -> when {
+                    r < 0.28f -> EnemyKind.MURCIELAGO
+                    r < 0.50f -> EnemyKind.TOPO
+                    r < 0.76f -> EnemyKind.RASTRERO
+                    r < 0.90f -> EnemyKind.ARANA
                     else -> EnemyKind.GUARDIAN
                 }
                 else -> when {
-                    r < 0.30f -> EnemyKind.MURCIELAGO
-                    r < 0.70f -> EnemyKind.RASTRERO
+                    r < 0.20f -> EnemyKind.MURCIELAGO
+                    r < 0.38f -> EnemyKind.TOPO
+                    r < 0.60f -> EnemyKind.RASTRERO
+                    r < 0.80f -> EnemyKind.ARANA
                     else -> EnemyKind.GUARDIAN
                 }
             }

@@ -126,7 +126,10 @@ class MeshWindingTest {
             "pata de rastrero" to EnemyMeshes.rastreroPata(),
             "torso de guardian" to EnemyMeshes.guardianTorso(),
             "cabeza de guardian" to EnemyMeshes.guardianCabeza(),
-            "brazo de guardian" to EnemyMeshes.guardianBrazo()
+            "brazo de guardian" to EnemyMeshes.guardianBrazo(),
+            "cuerpo de topo" to EnemyMeshes.topoCuerpo(),
+            "pala de topo" to EnemyMeshes.topoPala(),
+            "cuerpo de arana" to EnemyMeshes.aranaCuerpo()
         )
         for ((nombre, g) in formas) {
             assertTrue("$nombre esta vacio", g.indices.size > 30)

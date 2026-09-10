@@ -81,6 +81,16 @@ class JugadorRemoto(
     var dibZ: Float = 0f
     var dibYaw: Float = 0f
 
+    /**
+     * Metros caminados, contando solo lo que se ve moverse.
+     *
+     * Es el reloj de la animacion de caminar: al ir atado a la distancia y no
+     * al tiempo, las piernas se mueven cuando avanza y se quedan quietas
+     * cuando esta parado, sin necesidad de mandar nada mas por la red.
+     */
+    var paso: Float = 0f
+        private set
+
     /** True hasta que llega su primera pose: antes de eso no hay que dibujarlo. */
     var sinPose: Boolean = true
         private set
@@ -99,9 +109,12 @@ class JugadorRemoto(
     /** Acerca la posicion dibujada a la real. [k] es cuanto del camino recorre. */
     fun suavizar(k: Float) {
         if (sinPose) return
+        val antesX = dibX
+        val antesZ = dibZ
         dibX += (x - dibX) * k
         dibY += (y - dibY) * k
         dibZ += (z - dibZ) * k
+        paso += kotlin.math.hypot(dibX - antesX, dibZ - antesZ)
         // El angulo se interpola por el lado corto: si no, al cruzar de 359 a
         // 1 grado el companiero pega un giro completo para el otro lado.
         var d = yaw - dibYaw

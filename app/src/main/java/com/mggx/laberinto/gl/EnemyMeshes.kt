@@ -144,6 +144,101 @@ object EnemyMeshes {
         )
     }
 
+    // ------------------------------------------------------------------ topo
+
+    /**
+     * Cuerpo de topo: un torpedo de pelo, ancho de lomo y afinado en el
+     * hocico, con la nariz respingada.
+     *
+     * Igual que el murcielago, el perfil se hace de revolucion sobre Y y
+     * despues se acuesta hacia +Z, que es la unica forma de que un cuerpo
+     * alargado quede alargado hacia adelante y no hacia arriba. Va achatado
+     * de arriba porque un topo es mas ancho que alto: asi se lee como algo
+     * que va cavando y no como un huevo.
+     */
+    fun topoCuerpo(): Geometry {
+        val cuerpo = rotarX(
+            lathe(
+                arrayOf(
+                    floatArrayOf(0.00f, -0.50f),   // cola
+                    floatArrayOf(0.09f, -0.42f),
+                    floatArrayOf(0.19f, -0.24f),
+                    floatArrayOf(0.26f, -0.02f),   // el lomo, lo mas ancho
+                    floatArrayOf(0.25f, 0.14f),
+                    floatArrayOf(0.19f, 0.28f),    // cuello
+                    floatArrayOf(0.21f, 0.34f),    // cabeza
+                    floatArrayOf(0.15f, 0.42f),
+                    floatArrayOf(0.07f, 0.47f),    // hocico
+                    floatArrayOf(0.00f, 0.50f)
+                ),
+                segmentos = 16
+            ),
+            90f
+        )
+        // Achatado de arriba y un poco mas ancho de lado.
+        val achatado = escalar(cuerpo, 1.12f, 0.82f, 1f)
+        // Nariz: una bolita clara adelante de todo.
+        val nariz = trasladar(escalar(PropMeshes.octahedron(1f), 0.09f, 0.08f, 0.09f), 0f, 0.02f, 0.50f)
+        return combinar(achatado, nariz)
+    }
+
+    /**
+     * La pala de cavar del topo: una mano ancha con tres unas.
+     *
+     * Va en el plano XY como el ala del murcielago, asi el renderer la puede
+     * poner de los dos lados girandola media vuelta en Y.
+     */
+    fun topoPala(): Geometry {
+        // Contorno visto de frente: la palma y las tres unas que sobresalen.
+        val contorno = arrayOf(
+            floatArrayOf(0.00f, 0.00f),    // muneca
+            floatArrayOf(0.34f, 0.20f),    // borde de arriba
+            floatArrayOf(0.62f, 0.26f),    // una de arriba
+            floatArrayOf(0.50f, 0.08f),
+            floatArrayOf(0.72f, 0.02f),    // una del medio
+            floatArrayOf(0.48f, -0.08f),
+            floatArrayOf(0.62f, -0.24f),   // una de abajo
+            floatArrayOf(0.32f, -0.18f),
+            floatArrayOf(0.06f, -0.14f)
+        )
+        return PropMeshes.extruir(contorno, 0.075f)
+    }
+
+    // ----------------------------------------------------------------- arana
+
+    /**
+     * Arana de sima: el abdomen gordo atras y el cefalotorax mas chico
+     * adelante, con los ojos en fila.
+     *
+     * Las patas no van aca: son ocho copias de [rastreroPata], que ya es una
+     * pata quebrada en dos tramos y sirve igual para esto. El renderer las
+     * reparte alrededor.
+     */
+    fun aranaCuerpo(): Geometry {
+        fun bola(r: Float) = lathe(
+            arrayOf(
+                floatArrayOf(0.00f, -0.50f),
+                floatArrayOf(0.30f, -0.42f),
+                floatArrayOf(0.46f, -0.20f),
+                floatArrayOf(0.50f, 0.00f),
+                floatArrayOf(0.44f, 0.22f),
+                floatArrayOf(0.28f, 0.40f),
+                floatArrayOf(0.00f, 0.50f)
+            ),
+            segmentos = 12
+        ).let { escalar(it, r, r, r) }
+
+        // El abdomen va atras (-Z) y un poco mas alto; el cefalotorax adelante.
+        val abdomen = trasladar(escalar(bola(1f), 0.62f, 0.54f, 0.70f), 0f, 0.04f, -0.24f)
+        val torax = trasladar(escalar(bola(1f), 0.42f, 0.36f, 0.42f), 0f, 0f, 0.22f)
+        // Quelicero: la punta que muerde.
+        val boca = trasladar(
+            rotarX(PropMeshes.cone(6, 1f, 0.30f, false), 90f),
+            0f, -0.04f, 0.42f
+        )
+        return combinar(abdomen, torax, escalar(boca, 0.5f, 0.5f, 0.5f))
+    }
+
     // -------------------------------------------------------------- guardian
 
     /**

@@ -44,6 +44,40 @@ class EnemigosTest {
     }
 
     @Test
+    fun todosLosBichosDelCatalogoAparecenAlgunaVez() {
+        // Un bicho que existe en el catalogo pero que la mezcla por nivel
+        // nunca elige es trabajo tirado: no lo ve nadie.
+        val vistos = HashSet<MazeGenerator.EnemyKind>()
+        for (level in 3..60) {
+            for (s in 0L until 3L) {
+                MazeGenerator.generate(level, level * 131L + s).enemies.forEach { vistos.add(it.kind) }
+            }
+        }
+        for (k in MazeGenerator.EnemyKind.entries) {
+            assertTrue("nunca aparece ningun ${k.etiqueta}", k in vistos)
+        }
+    }
+
+    @Test
+    fun lasGaterasFrenanAlGuardianPeroNoAlTopo() {
+        // La promesa de diseno de los tramos bajos: meterse en uno te saca de
+        // encima a los grandes, pero el topo entra igual. Si la cueva no
+        // generara ningun hueco con esa medida, la promesa no existiria.
+        var gateras = 0
+        for (level in 8..40) {
+            val m = MazeGenerator.generate(level, level * 53L).maze
+            for (i in m.ceilClearance.indices) {
+                if (m.solid[i]) continue
+                val hueco = com.mggx.laberinto.maze.Maze.altoLibreReal(m.ceilClearance[i])
+                if (hueco >= MazeGenerator.EnemyKind.TOPO.alto &&
+                    hueco < MazeGenerator.EnemyKind.GUARDIAN.alto
+                ) gateras++
+            }
+        }
+        assertTrue("no hay ni un hueco que frene al guardian y deje pasar al topo", gateras > 0)
+    }
+
+    @Test
     fun ningunBichoNaceEncimaDelJugadorNiDentroDeLaRoca() {
         for (level in 3..45) {
             val bp = MazeGenerator.generate(level, level * 977L)
