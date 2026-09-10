@@ -45,7 +45,14 @@ object MazeGenerator {
 
     data class Trap(val gx: Int, val gy: Int, val kind: TrapKind)
 
-    enum class TrapKind { SPIKES, PITFALL, STEAM, ROCKFALL }
+    /**
+     * Las trampas de la cueva.
+     *
+     * Hubo una cuarta, ROCKFALL, que eran unas rocas colgando del techo: se
+     * saco porque se leia como una piedra rara puesta ahi que te hacia dano
+     * sin que se entendiera por que.
+     */
+    enum class TrapKind { SPIKES, PITFALL, STEAM }
 
     /** Bicho puesto en el nivel: donde nace y de que clase es. */
     data class EnemySpawn(val gx: Int, val gy: Int, val kind: EnemyKind)

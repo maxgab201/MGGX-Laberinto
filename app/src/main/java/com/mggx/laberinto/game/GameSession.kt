@@ -53,14 +53,14 @@ class GameSession(
          * y medio, y a proposito NO alcanza para saltear una escalera.
          */
         const val VEL_SALTO = 4.6f
-        /**
-         * Velocidad de subida y de bajada por escalera, en m/s.
-         *
-         * Mientras dura la subida el cuerpo esta atravesando el escalon, asi
-         * que cuanto mas corta, mejor se siente: a 2,4 un repecho grande se
-         * hacia largo y parecia que te estabas quedando trabado en la roca.
-         */
+        /** Velocidad de subida y de bajada por escalera, en m/s. */
         const val VEL_ESCALERA = 3.4f
+        /**
+         * Cuanto dura el estado de "estoy trepando" despues de cada empujon
+         * contra la escalera, en segundos. Corto a proposito: si soltas el
+         * joystick te caes casi en seguida, frenado por la propia escalera.
+         */
+        const val TIEMPO_TREPANDO = 0.15f
         /** Caida a partir de la cual empieza a doler, en m/s. */
         const val CAIDA_SEGURA = 11f
         /** Segundos que dura un tanque lleno de carburo con la linterna prendida. */
@@ -167,6 +167,8 @@ class GameSession(
         private set
     /** Esta parado en una casilla con escalera: puede subir y baja despacio. */
     var enEscalera: Boolean = false
+    /** Segundos que quedan de estar trepando un escalon (ver [treparEscalon]). */
+    private var trepando: Float = 0f
         private set
     /** Altura del ojo suavizada, para que agacharse no sea un tiron de camara. */
     private var alturaOjoSuave: Float = Postura.DE_PIE.alturaOjo
@@ -547,9 +549,13 @@ class GameSession(
             posX += stepX; posZ += stepZ
             clampToWorld()
         } else {
-            // Colision por eje: permite deslizarse contra la pared.
-            if (!bloqueado(posX + stepX, posZ)) posX += stepX else velX = 0f
-            if (!bloqueado(posX, posZ + stepZ)) posZ += stepZ else velZ = 0f
+            // Colision por eje: permite deslizarse contra la pared. Lo que
+            // frena puede ser un escalon con escalera, y entonces en vez de
+            // pararte trepas: seguis empujando y vas subiendo en el lugar.
+            if (!bloqueado(posX + stepX, posZ)) posX += stepX
+            else if (!treparEscalon(posX + stepX, posZ, dt)) velX = 0f
+            if (!bloqueado(posX, posZ + stepZ)) posZ += stepZ
+            else if (!treparEscalon(posX, posZ + stepZ, dt)) velZ = 0f
         }
 
         // Cabeceo y pasos
@@ -622,7 +628,14 @@ class GameSession(
             enSuelo = false
         }
 
-        if (!enSuelo || posY > suelo + 0.001f) {
+        if (trepando > 0f) {
+            // Trepando pegado al escalon: la altura la lleva treparEscalon(), y
+            // la gravedad no tiene que meterse. Sin esto, cada cuadro subia un
+            // poco al empujar y volvia a caer, y no terminaba de subir nunca.
+            trepando -= dt
+            velY = 0f
+            enSuelo = false
+        } else if (!enSuelo || posY > suelo + 0.001f) {
             velY += GRAVEDAD * dt
             // Agarrado a la escalera la caida es un descenso controlado.
             if (enEscalera && velY < -VEL_ESCALERA) velY = -VEL_ESCALERA
@@ -689,12 +702,43 @@ class GameSession(
         // pasar nunca (lo garantiza el generador), pero si pasara el jugador
         // quedaria encerrado, asi que el chequeo se queda de red.
         if (alturaLibreEn(x, z) < Postura.ARRASTRANDOSE.alturaCuerpo) return true
+        // Un escalon mas alto de lo que se sube caminando frena SIEMPRE, aunque
+        // haya escalera. La escalera no es un permiso para atravesar el
+        // escalon: es la forma de subirlo, y eso pasa antes de entrar (ver
+        // [treparEscalon]). Cuando se dejaba entrar de una, el cuerpo quedaba
+        // metido adentro del escalon mientras subia y desde ahi se veia a
+        // traves del piso de arriba.
         val destino = maze.floorY(gx, gy)
-        if (destino - posY > Maze.SUBIDA_CAMINANDO) {
-            // Escalon grande: solo con escalera en alguna de las dos puntas.
-            if (!maze.hasLadder(gx, gy) && !maze.hasLadder(gridX(), gridY())) return true
-        }
+        if (destino - posY > Maze.SUBIDA_CAMINANDO) return true
         return false
+    }
+
+    /**
+     * Trepa el escalon que te esta frenando, sin entrar todavia.
+     *
+     * Se llama justo cuando un paso quedo bloqueado: si lo que frena es un
+     * desnivel grande con escalera, se sube en el lugar mientras se siga
+     * empujando contra el. Recien cuando la altura alcanza la de arriba, la
+     * casilla deja de estar bloqueada y se entra caminando, ya parado sobre
+     * el piso nuevo y no adentro de la roca.
+     *
+     * Devuelve si esta trepando, para no frenar la velocidad como si fuera
+     * una pared.
+     */
+    private fun treparEscalon(x: Float, z: Float, dt: Float): Boolean {
+        val gx = (x / CELL).toInt()
+        val gy = (z / CELL).toInt()
+        if (!maze.inBounds(gx, gy) || maze.isSolid(gx, gy)) return false
+        val destino = maze.floorY(gx, gy)
+        if (destino - posY <= Maze.SUBIDA_CAMINANDO) return false
+        if (!maze.hasLadder(gx, gy) && !maze.hasLadder(gridX(), gridY())) return false
+
+        posY = min(destino, posY + VEL_ESCALERA * dt)
+        velY = 0f
+        enSuelo = false
+        enEscalera = true
+        trepando = TIEMPO_TREPANDO
+        return true
     }
 
     private fun clampToWorld() {
@@ -1135,9 +1179,8 @@ class GameSession(
      * 59 cm), asi que un salto bien dado te salva pero caminar no.
      */
     private fun laSaltasPorEncima(t: TrapInstance): Boolean {
-        val deArriba = t.kind == MazeGenerator.TrapKind.STEAM ||
-            t.kind == MazeGenerator.TrapKind.ROCKFALL
-        if (deArriba) return false
+        // El vapor no se salta, por razones obvias.
+        if (t.kind == MazeGenerator.TrapKind.STEAM) return false
         return posY - maze.floorY(t.gx, t.gy) >= ALTURA_SALTAR_TRAMPA
     }
 
@@ -1157,7 +1200,6 @@ class GameSession(
             MazeGenerator.TrapKind.SPIKES -> 22f
             MazeGenerator.TrapKind.PITFALL -> 30f
             MazeGenerator.TrapKind.STEAM -> 16f
-            MazeGenerator.TrapKind.ROCKFALL -> 26f
         } * (1f + level * 0.012f)
 
         dmg *= stats.damageTaken
@@ -1170,7 +1212,6 @@ class GameSession(
                 MazeGenerator.TrapKind.SPIKES -> "Pinches!"
                 MazeGenerator.TrapKind.PITFALL -> "Te comio el pozo!"
                 MazeGenerator.TrapKind.STEAM -> "Vapor hirviendo!"
-                MazeGenerator.TrapKind.ROCKFALL -> "Se vino la roca!"
             }
         )
         play(Sfx.TRAMPA)

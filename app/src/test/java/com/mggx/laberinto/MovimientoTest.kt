@@ -157,8 +157,74 @@ class MovimientoTest {
         s.update(1f / 60f, quieto())
         assertTrue("sin escalera un desnivel grande frena", s.bloqueado(destinoX, destinoZ))
 
+        // Con escalera el escalon SIGUE frenando mientras estas abajo, y eso
+        // es lo correcto: la escalera no es un permiso para atravesarlo, es la
+        // forma de subirlo. Cuando se dejaba pasar de una, el cuerpo quedaba
+        // metido adentro del escalon durante la subida y desde ahi se veia a
+        // traves del piso de arriba.
         s.maze.ladder[j] = true
-        assertFalse("con escalera se puede subir", s.bloqueado(destinoX, destinoZ))
+        s.maze.ladder[s.maze.index(gx, gy)] = true
+        assertTrue(
+            "estando abajo el escalon tiene que seguir frenando",
+            s.bloqueado(destinoX, destinoZ)
+        )
+
+        // Y una vez arriba deja de frenar.
+        s.posY = s.maze.floorY(vx, vy)
+        assertFalse("ya subido, el escalon no puede seguir frenando", s.bloqueado(destinoX, destinoZ))
+    }
+
+    @Test
+    fun empujarContraLaEscaleraTeSubeYReciénDespuesEntras() {
+        // El bug: yendo de frente a una escalera y siguiendo para adelante, se
+        // entraba en la casilla de arriba ANTES de haber subido, o sea con el
+        // cuerpo adentro del escalon, y se traspasaba el piso de atras. Ahora
+        // se sube primero, empujando, y se entra despues.
+        val s = sesion()
+        val gx = s.maze.startGx; val gy = s.maze.startGy
+        val (vx, vy) = vecinoAbierto(s.maze, gx, gy)!!
+        val i = s.maze.index(gx, gy)
+        val j = s.maze.index(vx, vy)
+        s.maze.floorLevel[j] = s.maze.floorLevel[i] + 4
+        s.maze.ladder[i] = true
+        s.maze.ladder[j] = true
+        ponerEn(s, gx, gy)
+
+        // Mirando hacia el vecino y empujando para adelante.
+        s.yawDeg = Math.toDegrees(
+            kotlin.math.atan2((vx - gx).toDouble(), (vy - gy).toDouble())
+        ).toFloat()
+        val arriba = s.maze.floorY(vx, vy)
+
+        var hundidoDeMas = 0f
+        var loMasAlto = s.posY
+        // Alcanza con lo que dura la subida: despues sigue caminando y en un
+        // nivel de prueba se termina cayendo por el otro lado, que no es lo
+        // que se esta midiendo aca.
+        repeat(90) {
+            s.update(1f / 60f, GameSession.Input(moveY = 1f))
+            if (s.posY > loMasAlto) loMasAlto = s.posY
+            // Estar dentro de la casilla de arriba con la altura de abajo es
+            // estar adentro de la roca. Se tolera hasta un escalon caminable,
+            // que es lo mismo que pasa en cualquier escalon chico y que
+            // pasoVertical() corrige en el cuadro siguiente; lo que no puede
+            // pasar es entrar con el desnivel entero sin haber subido.
+            val enLaDeArriba = (s.posX / GameSession.CELL).toInt() == vx &&
+                (s.posZ / GameSession.CELL).toInt() == vy
+            if (enLaDeArriba) {
+                val hundido = arriba - s.posY
+                if (hundido > hundidoDeMas) hundidoDeMas = hundido
+            }
+        }
+
+        assertTrue(
+            "entro metido $hundidoDeMas m adentro del escalon",
+            hundidoDeMas <= com.mggx.laberinto.maze.Maze.SUBIDA_CAMINANDO + 0.02f
+        )
+        assertEquals(
+            "empujando contra la escalera tendria que haber subido",
+            arriba, loMasAlto, 0.05f
+        )
     }
 
     @Test

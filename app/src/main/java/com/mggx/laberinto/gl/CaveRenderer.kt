@@ -356,6 +356,13 @@ class CaveRenderer(
     private val armsVbo = IntArray(1)
     private val armsEbo = IntArray(1)
     private var armsIndexCount = 0
+    /**
+     * Con que arma esta armada la malla de los brazos ahora mismo.
+     *
+     * El arma va adentro de la misma malla, asi que cambiarla obliga a
+     * rehacerla. Pasa solo al equipar otra en el menu, no en cada cuadro.
+     */
+    private var armaEnMalla: String? = null
 
     // --------------------------------------------------------- decals
     private val decalVao = IntArray(1)
@@ -701,15 +708,12 @@ class CaveRenderer(
         shapeCasco = InstancedShape(PlayerMeshes.mineroCasco(), 16)
     }
 
-    private fun buildArms() {
-        val mesh = ArmsMesh.build()
+    private fun buildArms(arma: String = "") {
         GLES30.glGenVertexArrays(1, armsVao, 0)
         GLES30.glGenBuffers(1, armsVbo, 0)
         GLES30.glGenBuffers(1, armsEbo, 0)
         GLES30.glBindVertexArray(armsVao[0])
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, armsVbo[0])
-        val vb = GLUtil.floatBuffer(mesh.vertices)
-        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, mesh.vertices.size * 4, vb, GLES30.GL_STATIC_DRAW)
         val st = ArmsMesh.STRIDE_BYTES
         GLES30.glEnableVertexAttribArray(0)
         GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, st, 0)
@@ -717,11 +721,38 @@ class CaveRenderer(
         GLES30.glVertexAttribPointer(1, 3, GLES30.GL_FLOAT, false, st, 12)
         GLES30.glEnableVertexAttribArray(2)
         GLES30.glVertexAttribPointer(2, 1, GLES30.GL_FLOAT, false, st, 24)
+        GLES30.glBindVertexArray(0)
+        subirMallaDeBrazos(arma)
+    }
+
+    /**
+     * Rehace y sube la malla de los brazos con el arma que corresponda.
+     *
+     * Se reusan el VAO y los buffers: solo cambia el contenido. Pasa cuando
+     * el jugador equipa otra arma, no en cada cuadro.
+     */
+    private fun subirMallaDeBrazos(arma: String) {
+        val mesh = ArmsMesh.build(ArmsMesh.Arma.por(arma))
+        armaEnMalla = arma
+        GLES30.glBindVertexArray(armsVao[0])
+        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, armsVbo[0])
+        val vb = GLUtil.floatBuffer(mesh.vertices)
+        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, mesh.vertices.size * 4, vb, GLES30.GL_STATIC_DRAW)
         GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, armsEbo[0])
         val ib = GLUtil.intBuffer(mesh.indices)
         GLES30.glBufferData(GLES30.GL_ELEMENT_ARRAY_BUFFER, mesh.indices.size * 4, ib, GLES30.GL_STATIC_DRAW)
         armsIndexCount = mesh.indices.size
         GLES30.glBindVertexArray(0)
+    }
+
+    /** De que esta hecha cada arma, para pintarla en la mano. */
+    private fun colorDeArma(arma: String): FloatArray = when (ArmsMesh.Arma.por(arma)) {
+        ArmsMesh.Arma.GARROTE -> floatArrayOf(0.42f, 0.28f, 0.17f)   // roble
+        ArmsMesh.Arma.PICO -> floatArrayOf(0.52f, 0.54f, 0.58f)      // hierro
+        ArmsMesh.Arma.AGUIJON -> floatArrayOf(0.55f, 0.86f, 0.95f)   // cristal
+        ArmsMesh.Arma.MAZA -> floatArrayOf(0.30f, 0.30f, 0.33f)      // basalto
+        ArmsMesh.Arma.HACHA -> floatArrayOf(0.72f, 0.80f, 0.88f)     // vetagris
+        null -> floatArrayOf(0f, 0f, 0f)
     }
 
     private fun buildDecalBuffer(quads: Int) {
@@ -1080,18 +1111,6 @@ class CaveRenderer(
                             t2 * 5f, k.toFloat(), 0f, (1f - t2) * 0.7f
                         )
                     }
-                }
-                com.mggx.laberinto.maze.MazeGenerator.TrapKind.ROCKFALL -> {
-                    // Rocas colgando del techo y escombro abajo.
-                    val techo = m.ceilY(tr.gx, tr.gy)
-                    boulder.add(x - 0.22f, techo - 0.34f, z + 0.12f, 0.44f,
-                        th.rockR * 0.9f, th.rockG * 0.9f, th.rockB * 0.9f, aviso, 0.6f, 0f, 0f, 1f)
-                    boulder.add(x + 0.28f, techo - 0.26f, z - 0.20f, 0.32f,
-                        th.rockR * 0.85f, th.rockG * 0.85f, th.rockB * 0.85f, aviso, 2.1f, 0f, 0f, 1f)
-                    boulder.add(x + 0.10f, fy + 0.16f, z + 0.30f, 0.28f,
-                        th.rockR, th.rockG, th.rockB, aviso, 1.2f, 0f, 0f, 1f)
-                    boulder.add(x - 0.34f, fy + 0.12f, z - 0.26f, 0.21f,
-                        th.rockR, th.rockG, th.rockB, aviso, 3.0f, 0f, 0f, 1f)
                 }
             }
         }
@@ -1456,6 +1475,9 @@ class CaveRenderer(
         ambBoost: Float, brightness: Float, aspect: Float, dt: Float
     ) {
         if (armsIndexCount == 0) return
+        // El arma va adentro de la misma malla que los brazos, asi que si
+        // cambiaste de arma hay que rehacerla. Pasa al equipar, no por cuadro.
+        if (save.armaEquipada != armaEnMalla) subirMallaDeBrazos(save.armaEquipada)
         // Los brazos usan su propia proyeccion, mas cerrada, y limpian profundidad
         // para que nunca los atraviese una pared.
         Matrix.perspectiveM(armProj, 0, 62f, aspect, 0.01f, 4f)
@@ -1530,6 +1552,10 @@ class CaveRenderer(
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uBrightness"), brightness)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uTime"), time)
         GLES30.glUniform1i(GLES30.glGetUniformLocation(p, "uStyle"), style)
+        val arma = colorDeArma(save.armaEquipada)
+        GLES30.glUniform3f(
+            GLES30.glGetUniformLocation(p, "uArma"), arma[0], arma[1], arma[2]
+        )
 
         GLES30.glBindVertexArray(armsVao[0])
         GLES30.glDrawElements(GLES30.GL_TRIANGLES, armsIndexCount, GLES30.GL_UNSIGNED_INT, 0)

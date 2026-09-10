@@ -435,6 +435,8 @@ uniform float uTime;
 uniform int uStyle;
 // Skin del personaje: agrega su propio detalle sobre el traje.
 uniform int uSkinStyle;
+// Color del arma que se lleva en la mano (madera, hierro, cristal, piedra).
+uniform vec3 uArma;
 
 out vec4 fragColor;
 
@@ -450,6 +452,23 @@ void main() {
     float dist = length(vViewPos);
     float atten = uLightIntensity * clamp(1.0 - dist / 1.9, 0.12, 1.0);
     float ndl = max(dot(n, L), 0.0);
+
+    // El arma viaja en la misma malla que los brazos, marcada con aSide = 2:
+    // sigue a la mano derecha (envion del golpe incluido) pero no es ni piel
+    // ni guante, asi que sale por su propio camino antes de todo lo demas.
+    if (vSide > 1.5) {
+        float veta = hash(floor(vLocal.zy * 120.0)) * 0.22 - 0.11;
+        vec3 mat = uArma * (1.0 + veta);
+        vec3 c = mat * (uAmbient * 1.8 + vec3(0.05) + uLightColor * ndl * atten);
+        // Un reflejo duro en el canto: es lo que hace que el hierro se lea
+        // como hierro y no como un palo pintado de gris.
+        float spec = pow(max(dot(reflect(-L, n), vec3(0.0, 0.0, 1.0)), 0.0), 26.0);
+        c += uLightColor * spec * 0.30 * atten;
+        c *= uBrightness;
+        c = c / (c + vec3(0.85));
+        fragColor = vec4(pow(c, vec3(1.0 / 2.2)), 1.0);
+        return;
+    }
 
     // La mano se separa en piel (punta) y guante (base) segun la profundidad local
     // Cuanto mas lejos de la camara, mas mano y menos guante: el antebrazo
