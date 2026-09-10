@@ -186,13 +186,23 @@ object ReliefGenerator {
                     if (maze.solid[i] || i in libres || maze.ladder[i]) continue
                     if (rnd.nextFloat() >= probTechoBajo) continue
 
-                    // Los tramos bajos van de a dos o tres casillas seguidas,
-                    // como una gatera de verdad y no un bache suelto.
+                    // Los tramos bajos van de a varias casillas seguidas, como
+                    // una gatera de verdad y no un bache suelto: cuando eran
+                    // de dos, encontrar por donde se pasaba era cuestion de
+                    // acertarle a un huequito.
+                    //
+                    // Las alturas estan elegidas para que el hueco REAL (ya
+                    // descontada la panza del techo, ver Maze.altoLibreReal)
+                    // le entre a la postura que corresponde. Con los valores
+                    // de antes, un tramo "para agacharse" de 1,26 dejaba 1,12
+                    // de hueco real y el cuerpo agachado mide 1,20: el juego
+                    // te dejaba pasar por un lugar donde la roca dibujada no
+                    // te daba, y la camara terminaba adentro de la piedra.
                     val arrastrarse = rnd.nextFloat() < 0.3f
-                    val alto = if (arrastrarse) 0.78f + rnd.nextFloat() * 0.16f
-                    else 1.26f + rnd.nextFloat() * 0.22f
+                    val alto = if (arrastrarse) 0.88f + rnd.nextFloat() * 0.16f
+                    else 1.42f + rnd.nextFloat() * 0.22f
                     val horizontal = rnd.nextBoolean()
-                    val largo = 2 + rnd.nextInt(2)
+                    val largo = 3 + rnd.nextInt(3)
                     for (k in 0 until largo) {
                         val tx = if (horizontal) gx + k else gx
                         val ty = if (horizontal) gy else gy + k
@@ -212,8 +222,11 @@ object ReliefGenerator {
             for (gx in 0 until maze.gw) {
                 if (maze.isSolid(gx, gy)) continue
                 val i = maze.index(gx, gy)
-                // Ninguna casilla puede tener menos alto del que entra arrastrandose.
-                if (maze.ceilClearance[i] < 0.70f) return false
+                // Ninguna casilla puede tener menos alto del que entra
+                // arrastrandose. Se mide el hueco REAL: el teorico miente
+                // hacia arriba, y una casilla que promete 0,71 y de verdad
+                // tiene 0,63 es una casilla por la que no se pasa.
+                if (Maze.altoLibreReal(maze.ceilClearance[i]) < 0.70f) return false
                 for (d in 0 until 4) {
                     val nx = gx + DX[d]
                     val ny = gy + DY[d]

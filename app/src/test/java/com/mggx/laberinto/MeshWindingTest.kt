@@ -69,15 +69,24 @@ class MeshWindingTest {
 
     @Test
     fun lasParedesDelLaberintoMiranParaAdentro() {
-        for (level in intArrayOf(1, 4, 12, 30, 55)) {
-            val maze = MazeGenerator.generate(level, level * 991L).maze
-            val mesh = WorldMesh.build(maze)
-            assertTrue("la malla del nivel $level esta vacia", mesh.triangleCount > 100)
-            val malas = contarInvertidos(mesh.vertices, mesh.indices, WorldMesh.STRIDE_FLOATS, 3)
-            assertTrue(
-                "el nivel $level tiene $malas triangulos dados vuelta de ${mesh.triangleCount}",
-                malas == 0
-            )
+        // Varias semillas por nivel a proposito. Con una sola por nivel esto
+        // pasaba en verde mientras habia triangulos dados vuelta en un monton
+        // de cuevas: las tiras que cierran los escalones de piso y de techo se
+        // abollaban una cantidad fija aunque midieran un centimetro, y se
+        // plegaban sobre si mismas. Aparecia en 9 de 54 cuevas probadas, o
+        // sea que con una sola semilla por nivel era cuestion de suerte.
+        for (level in intArrayOf(1, 4, 12, 22, 30, 40, 55)) {
+            for (s in 0L until 3L) {
+                val maze = MazeGenerator.generate(level, level * 991L + s * 37L).maze
+                val mesh = WorldMesh.build(maze)
+                assertTrue("la malla del nivel $level esta vacia", mesh.triangleCount > 100)
+                val malas = contarInvertidos(mesh.vertices, mesh.indices, WorldMesh.STRIDE_FLOATS, 3)
+                assertTrue(
+                    "el nivel $level (semilla $s) tiene $malas triangulos dados vuelta " +
+                        "de ${mesh.triangleCount}",
+                    malas == 0
+                )
+            }
         }
     }
 

@@ -44,7 +44,6 @@ object WorldMesh {
     /** Cuanto se abolla la roca hacia adentro y hacia afuera, en metros. */
     private const val BULTO_PARED = 0.30f
     internal const val BULTO_PISO = 0.13f
-    private const val BULTO_TECHO = 0.34f
 
     /**
      * Cuanto se abre la pared hacia AFUERA a media altura, en metros.
@@ -331,6 +330,18 @@ object WorldMesh {
     }
 
     /**
+     * Cuanto se puede abollar una banda de contorno de este alto.
+     *
+     * Una banda de contorno es la tira vertical que cierra el escalon entre dos
+     * pisos (o dos techos) de distinta altura. Con una amplitud fija, una banda
+     * de un centimetro se abollaba diez veces mas de lo que mide: la tira se
+     * plegaba sobre si misma y quedaban triangulos dados vuelta, que son
+     * invisibles hasta que se los ve del reves en el telefono. Atando la
+     * amplitud al alto de la banda, una tira finita casi no se mueve.
+     */
+    private fun bultoContorno(alto: Float): Float = kotlin.math.min(0.10f, alto * 0.30f)
+
+    /**
      * Una cara subdividida y abollada.
      *
      * Los cuatro puntos vienen en el orden del anillo HORARIO visto desde el
@@ -506,7 +517,7 @@ object WorldMesh {
                 val t = 0.82f
                 // En una gatera el techo casi no se abolla: si no, deja de
                 // parecer un tramo bajo.
-                val bultoTecho = -kotlin.math.min(BULTO_TECHO, maze.ceilClearance[i] * 0.11f)
+                val bultoTecho = -Maze.panzaDelTecho(maze.ceilClearance[i])
                 // El arco va con signo negativo porque la normal del techo
                 // mira para abajo: asi el techo SUBE en el medio del tunel.
                 val arco = -kotlin.math.min(ARCO_TECHO, maze.ceilClearance[i] * FACTOR_ARCO)
@@ -632,7 +643,8 @@ object WorldMesh {
                 cara(
                     b, n,
                     pt(ex, fv, za), pt(ex, fv, zb), pt(ex, fy, zb), pt(ex, fy, za),
-                    nx, 0f, 0f, 0.10f, 0f, CAPA_PARED, Modo.CONTORNO, null, 0, ao, ao, ao, ao
+                    nx, 0f, 0f, bultoContorno(fy - fv), 0f, CAPA_PARED,
+                    Modo.CONTORNO, null, 0, ao, ao, ao, ao
                 )
             } else {
                 val xa = if (dz > 0) ex1 else ex0
@@ -640,7 +652,8 @@ object WorldMesh {
                 cara(
                     b, n,
                     pt(xa, fv, ez), pt(xb, fv, ez), pt(xb, fy, ez), pt(xa, fy, ez),
-                    0f, 0f, nz, 0.10f, 0f, CAPA_PARED, Modo.CONTORNO, null, 0, ao, ao, ao, ao
+                    0f, 0f, nz, bultoContorno(fy - fv), 0f, CAPA_PARED,
+                    Modo.CONTORNO, null, 0, ao, ao, ao, ao
                 )
             }
             if (maze.hasLadder(gx, gy) || maze.hasLadder(vx, vy)) {
@@ -657,7 +670,8 @@ object WorldMesh {
                 cara(
                     b, n,
                     pt(ex, cy, za), pt(ex, cy, zb), pt(ex, cv, zb), pt(ex, cv, za),
-                    nx, 0f, 0f, 0.10f, 0f, CAPA_TECHO, Modo.CONTORNO, null, 0, ao, ao, ao, ao
+                    nx, 0f, 0f, bultoContorno(cv - cy), 0f, CAPA_TECHO,
+                    Modo.CONTORNO, null, 0, ao, ao, ao, ao
                 )
             } else {
                 val xa = if (dz > 0) ex1 else ex0
@@ -665,7 +679,8 @@ object WorldMesh {
                 cara(
                     b, n,
                     pt(xa, cy, ez), pt(xb, cy, ez), pt(xb, cv, ez), pt(xa, cv, ez),
-                    0f, 0f, nz, 0.10f, 0f, CAPA_TECHO, Modo.CONTORNO, null, 0, ao, ao, ao, ao
+                    0f, 0f, nz, bultoContorno(cv - cy), 0f, CAPA_TECHO,
+                    Modo.CONTORNO, null, 0, ao, ao, ao, ao
                 )
             }
         }

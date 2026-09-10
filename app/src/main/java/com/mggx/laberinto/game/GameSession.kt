@@ -60,6 +60,14 @@ class GameSession(
         /** Segundos que dura un tanque lleno de carburo con la linterna prendida. */
         const val DURACION_CARBURO = 150f
         /**
+         * Cuanto se le deja al ojo por debajo del techo real, en metros.
+         *
+         * Tiene que ser mayor que el plano cercano de la camara (4,5 cm): si
+         * no, la roca del techo queda tan cerca que se recorta y se ve el otro
+         * lado igual.
+         */
+        const val MARGEN_OJO_TECHO = 0.16f
+        /**
          * Medio angulo del golpe, en coseno. 0.42 son unos 65 grados a cada
          * lado: hay que apuntarle al bicho, pero no al pixel.
          */
@@ -635,6 +643,20 @@ class GameSession(
         // La camara acompana el cambio de postura sin pegar el tiron.
         val k = (10f * dt).coerceIn(0f, 1f)
         alturaOjoSuave += (postura.alturaOjo - alturaOjoSuave) * k
+
+        // Pero el ojo NUNCA puede quedar por encima del techo de verdad.
+        //
+        // Dos motivos, y los dos se veian jugando. Uno: mientras la altura del
+        // ojo baja suave, al meterse en un tramo bajo la camara pasaba medio
+        // segundo adentro de la roca, y desde adentro se ve a traves de las
+        // paredes. El otro: el techo dibujado se abolla hacia abajo, asi que
+        // el hueco real es mas bajo que el teorico con el que se elige la
+        // postura. Aca se recorta contra el hueco real, con un margen para que
+        // el plano cercano de la camara tampoco lo atraviese.
+        val techoReal = maze.floorY(gx, gy) + Maze.altoLibreReal(libre) - MARGEN_OJO_TECHO
+        if (posY + alturaOjoSuave > techoReal) {
+            alturaOjoSuave = (techoReal - posY).coerceAtLeast(0.25f)
+        }
     }
 
     /**

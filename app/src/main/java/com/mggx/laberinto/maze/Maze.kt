@@ -90,6 +90,27 @@ class Maze(val cols: Int, val rows: Int) {
          * el generador se encarga de que siempre haya una.
          */
         const val SUBIDA_CAMINANDO = ESCALON + 0.06f
+
+        /** Cuanto se abolla el techo hacia abajo, como maximo, en metros. */
+        const val PANZA_TECHO = 0.34f
+
+        /**
+         * Cuanto se abolla el techo hacia abajo en una casilla de este alto.
+         * En una gatera casi no se abolla: si no, deja de parecer un tramo
+         * bajo y se vuelve impasable.
+         */
+        fun panzaDelTecho(clearance: Float): Float =
+            kotlin.math.min(PANZA_TECHO, clearance * 0.11f)
+
+        /**
+         * Alto libre de VERDAD bajo el techo, ya descontada la panza.
+         *
+         * `ceilClearance` es el alto teorico y plano; el techo que se dibuja
+         * (y que choca) esta mas abajo. Todo lo que tenga que convivir con la
+         * roca de verdad —la camara, y el generador cuando promete que un
+         * tramo se pasa— tiene que usar este numero y no el teorico.
+         */
+        fun altoLibreReal(clearance: Float): Float = clearance - panzaDelTecho(clearance)
     }
 
     val startGx: Int get() = startCol * 2 + 1

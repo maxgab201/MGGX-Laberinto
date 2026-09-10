@@ -67,6 +67,17 @@ object MazeGenerator {
         val recarga: Float,
         /** Radio de su cuerpo, en metros. */
         val radio: Float,
+        /**
+         * Alto que ocupa, en metros: define por que huecos entra y por cuales
+         * no. Un guardian no pasa por una gatera; el rastrero si, que para eso
+         * anda a ras del piso.
+         */
+        val alto: Float,
+        /**
+         * A que altura del piso se mueve, en metros. 0 es caminando. El que
+         * vuela igual baja si el techo no le da.
+         */
+        val vuelaA: Float,
         /** Solo detecta al que corre (murcielago no, rastrero si). */
         val soloOye: Boolean,
         /** No persigue: se queda cuidando su pedazo de cueva. */
@@ -76,9 +87,9 @@ object MazeGenerator {
         /** Ecos que suelta al morir. */
         val recompensa: Int
     ) {
-        MURCIELAGO("Murcielago de sima", 9.5f, 4.1f, 7f, 1.5f, 0.34f, false, false, 16f, 6),
-        RASTRERO("Rastrero ciego", 13f, 3.4f, 16f, 2.0f, 0.44f, true, false, 44f, 14),
-        GUARDIAN("Guardian de roca", 6.5f, 1.9f, 30f, 2.6f, 0.62f, false, true, 120f, 40)
+        MURCIELAGO("Murcielago de sima", 9.5f, 4.1f, 7f, 1.5f, 0.34f, 0.55f, 1.45f, false, false, 16f, 6),
+        RASTRERO("Rastrero ciego", 13f, 3.4f, 16f, 2.0f, 0.44f, 0.75f, 0f, true, false, 44f, 14),
+        GUARDIAN("Guardian de roca", 6.5f, 1.9f, 30f, 2.6f, 0.62f, 1.85f, 0f, false, true, 120f, 40)
     }
 
     /** Dimensiones logicas del nivel. Crece de forma sostenida pero acotada. */

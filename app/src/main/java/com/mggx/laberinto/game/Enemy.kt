@@ -62,7 +62,7 @@ class Enemy(
      */
     var aturdido: Float = 0f
 
-    val vuela: Boolean get() = kind == MazeGenerator.EnemyKind.MURCIELAGO
+    val vuela: Boolean get() = kind.vuelaA > 0f
 
     /**
      * Le pega. Devuelve true si con este golpe se cae.
@@ -267,10 +267,15 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
                 }
             }
 
-            // Altura: el murcielago vuela a media altura, el resto pisa el piso.
+            // Altura: el murcielago vuela a media altura, el resto pisa el
+            // piso. Ojo con el techo: donde la cueva se achica para pasar
+            // agachado, volar a 1,45 m dejaba al murcielago metido adentro de
+            // la roca. Aca vuela lo mas alto que el hueco le permita.
             val gx = (e.x / cell).toInt().coerceIn(0, maze.gw - 1)
             val gy = (e.z / cell).toInt().coerceIn(0, maze.gh - 1)
-            e.altura = pisoDe(gx, gy) + if (e.vuela) 1.45f else 0f
+            val hueco = maze.ceilClearance[maze.index(gx, gy)]
+            val techo = (hueco - e.kind.alto).coerceAtLeast(0f)
+            e.altura = pisoDe(gx, gy) + minOf(e.kind.vuelaA, techo)
 
             // La mordida se mide siempre contra el jugador de ESTE telefono,
             // persiga a quien persiga: un bicho que te pasa por encima yendo a
@@ -328,6 +333,7 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
         for (k in 0 until 4) {
             val nx = gx + DX[k]; val ny = gy + DY[k]
             if (!maze.inBounds(nx, ny) || maze.isSolid(nx, ny)) continue
+            if (noLeDaElTecho(e, nx, ny)) continue
             val v = d[maze.index(nx, ny)]
             if (v in 0 until mejor) { mejor = v; mejorX = nx; mejorY = ny }
         }
@@ -349,7 +355,9 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
         val opciones = ArrayList<Int>(4)
         for (k in 0 until 4) {
             val nx = gx + DX[k]; val ny = gy + DY[k]
-            if (maze.inBounds(nx, ny) && !maze.isSolid(nx, ny)) opciones.add(maze.index(nx, ny))
+            if (maze.inBounds(nx, ny) && !maze.isSolid(nx, ny) && !noLeDaElTecho(e, nx, ny)) {
+                opciones.add(maze.index(nx, ny))
+            }
         }
         if (opciones.isEmpty()) return null
         val elegido = opciones[rnd.nextInt(opciones.size)]
@@ -360,8 +368,28 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
 
     /** Corre al bicho un tirito, respetando la roca. */
     private fun empujar(e: Enemy, dx: Float, dz: Float, cell: Float) {
-        if (!chocaRoca(e.x + dx, e.z, e.kind.radio, cell)) e.x += dx
-        if (!chocaRoca(e.x, e.z + dz, e.kind.radio, cell)) e.z += dz
+        if (!bloqueado(e, e.x + dx, e.z, cell)) e.x += dx
+        if (!bloqueado(e, e.x, e.z + dz, cell)) e.z += dz
+    }
+
+    /**
+     * Si a este bicho no le da el techo para meterse en esta casilla.
+     *
+     * Los tramos bajos que la cueva genera para bajar agachado son huecos de
+     * verdad: un guardian de casi dos metros no entra, y antes los cruzaba
+     * como si nada porque la colision de los bichos solo miraba la roca en
+     * planta. Que no entren tambien hace que meterse en una gatera sea una
+     * forma legitima de sacarse de encima a los grandes.
+     */
+    private fun noLeDaElTecho(e: Enemy, gx: Int, gy: Int): Boolean {
+        if (!maze.inBounds(gx, gy)) return true
+        return maze.ceilClearance[maze.index(gx, gy)] < e.kind.alto
+    }
+
+    /** Roca, borde o techo bajo: todo lo que le impide estar ahi. */
+    private fun bloqueado(e: Enemy, x: Float, z: Float, cell: Float): Boolean {
+        if (chocaRoca(x, z, e.kind.radio, cell)) return true
+        return noLeDaElTecho(e, (x / cell).toInt(), (z / cell).toInt())
     }
 
     /** Avanza hacia un punto sin meterse en la roca. */
@@ -372,8 +400,8 @@ class EnemyBrain(private val maze: Maze, seed: Long) {
         if (len < 1e-4f) return
         val ux = dx / len * minOf(paso, len)
         val uz = dz / len * minOf(paso, len)
-        if (!chocaRoca(e.x + ux, e.z, e.kind.radio, cell)) e.x += ux
-        if (!chocaRoca(e.x, e.z + uz, e.kind.radio, cell)) e.z += uz
+        if (!bloqueado(e, e.x + ux, e.z, cell)) e.x += ux
+        if (!bloqueado(e, e.x, e.z + uz, cell)) e.z += uz
         e.paso += minOf(paso, len)
         // Gira suave hacia donde va, para que no pegue latigazos de 180 grados.
         val deseado = kotlin.math.atan2(dx, dz)
