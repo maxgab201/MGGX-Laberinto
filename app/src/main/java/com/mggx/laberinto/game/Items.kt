@@ -39,7 +39,6 @@ enum class EffectType {
     BRUJULA,            // flecha 3D apuntando a la salida
     VISION_NOCTURNA,    // brillo minimo global
     REVELAR_MAPA,       // revela fraccion del minimapa
-    TIZA,               // entrega marcas manuales
     ROMPE_PARED,        // cargas para destruir una pared
     ATRAVESAR_PARED,    // cargas para cruzar una pared
     IMAN_TOTAL,         // atrae todos los ecos del nivel

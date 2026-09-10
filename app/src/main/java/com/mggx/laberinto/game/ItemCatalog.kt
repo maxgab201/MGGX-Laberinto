@@ -57,11 +57,6 @@ object ItemCatalog {
             ItemKind.CONSUMIBLE, Rarity.EPICO, Currency.ECOS, 220,
             ItemEffect(EffectType.REVELAR_MAPA, 1.0f), IconId.PERGAMINO, unlockLevel = 9))
 
-        add(ShopItem("tiza_luminosa", "Tiza Luminosa",
-            "Te da 5 marcas para dejar donde vos quieras. Se ven en 3D y en el mapa.",
-            ItemKind.CONSUMIBLE, Rarity.COMUN, Currency.ECOS, 55,
-            ItemEffect(EffectType.TIZA, 1f, 0f, charges = 5), IconId.TIZA, unlockLevel = 2))
-
         add(ShopItem("pico_mano", "Pico de Mano",
             "Rompe una pared de un golpe y te abre un atajo permanente en el nivel.",
             ItemKind.CONSUMIBLE, Rarity.EPICO, Currency.ECOS, 180,

@@ -323,7 +323,6 @@ fun MggxApp(
                 lo.getOrNull(selectedSlotCycle % lo.size.coerceAtLeast(1))?.let { id -> renderer.dispatch(s) { s.useItem(id) } }
             }
         }
-        pad.onChalk = { session?.let { s -> renderer.dispatch(s) { s.dropChalk() } } }
         pad.onFlashlight = { session?.let { s -> renderer.dispatch(s) { s.toggleLinterna() } } }
         pad.onAttack = { session?.let { s -> renderer.dispatch(s) { s.golpear() } } }
         pad.onCycleItem = { dir ->

@@ -8,7 +8,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * La tiza (y el rastro de pisadas) se enterraban en el piso: se apoyaban en
+ * Las calcomanias del piso (el rastro de pisadas y el Hilo de Ariadna) se
+ * enterraban en el piso: se apoyaban en
  * la altura TEORICA y plana de la casilla, pero el piso real tiene una
  * abolladura de ruido de hasta [WorldMesh.BULTO_PISO] metros. Estos tests
  * verifican, con numeros reales del propio ruido del juego, que la altura
@@ -70,7 +71,7 @@ class PisoDecalTest {
         // corre continuo entre casillas (ver CuevaContinuaTest), el piso solo
         // vuelve a la altura teorica donde se encuentra con la roca, que es
         // donde arranca la cara de la pared. Ahi si tiene que coincidir clavado,
-        // porque si no la marca de tiza se metaria dentro de la pared.
+        // porque si no la calcomania se metaria dentro de la pared.
         val m = MazeGenerator.generate(10, 5050L).maze
         var comprobados = 0
         for (gy in 0 until m.gh) for (gx in 0 until m.gw) {

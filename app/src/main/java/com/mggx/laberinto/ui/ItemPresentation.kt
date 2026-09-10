@@ -33,7 +33,6 @@ object ItemText {
             EffectType.VISION_NOCTURNA -> "Ves sin luz - ${secs(e.duration)}"
             EffectType.REVELAR_MAPA ->
                 if (e.magnitude >= 1f) "Revela todo el mapa" else "Revela ${pct(e.magnitude)} del mapa"
-            EffectType.TIZA -> "${e.charges} marcas para dejar"
             EffectType.ROMPE_PARED -> "Rompe ${e.charges} pared"
             EffectType.ATRAVESAR_PARED -> "Cruza ${e.charges} pared"
             EffectType.IMAN_TOTAL -> "Atrae todos los ecos"

@@ -100,13 +100,6 @@ fun drawItemIcon(p: Pen, id: IconId): Boolean {
             p.seg(8f, 14.4f, 13.4f, 14.4f, m, 1.2f)
             p.seg(8f, 17.6f, 15f, 17.6f, m, 1.2f)
         }
-        IconId.TIZA -> {
-            p.fill(m) { m(5f, 17.4f); l(15.6f, 3.6f); l(19.4f, 6.4f); l(8.8f, 20.2f); z() }
-            p.fill(a) { m(5f, 17.4f); l(8.8f, 20.2f); l(4.4f, 21.4f); z() }
-            p.seg(15.6f, 3.6f, 19.4f, 6.4f, dim, 1.2f)
-            p.dot(19.6f, 16.6f, 1.1f, a)
-            p.dot(16.4f, 20f, 0.8f, a)
-        }
         IconId.PICO -> {
             p.line(m, 2.2f) { m(11f, 8.4f); l(6.2f, 20.8f) }
             p.line(a, 2f) {

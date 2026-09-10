@@ -20,7 +20,7 @@ import kotlin.math.sin
  * Renderer de la cueva. Todo el dibujo pasa por aca:
  *  1) mundo (malla unica del laberinto, con texturas procedurales)
  *  2) objetos instanciados (ecos, cristales, antorchas, estalagmitas, salida)
- *  3) calcomanias de suelo (rastro de pasos, hilo de Ariadna, tiza)
+ *  3) calcomanias de suelo (rastro de pasos, hilo de Ariadna)
  *  4) brazos en primera persona, con su propia profundidad
  *  5) vineta y tinte de pantalla
  */
@@ -1346,14 +1346,6 @@ class CaveRenderer(
             val alpha = if (threadOn) 0.55f else (tp.life / s.stats.trailSeconds).coerceIn(0f, 1f) * 0.32f
             if (threadOn) quad(tp.x, tp.z, 1.05f, 0.45f, 0.95f, 0.75f, alpha)
             else quad(tp.x, tp.z, 0.72f, 0.72f, 0.66f, 0.52f, alpha)
-        }
-        val markColors = arrayOf(
-            floatArrayOf(1f, 0.85f, 0.35f), floatArrayOf(0.45f, 0.9f, 1f),
-            floatArrayOf(0.6f, 1f, 0.55f), floatArrayOf(1f, 0.55f, 0.75f)
-        )
-        for (mk in s.marks) {
-            val c = markColors[mk.colorIndex % markColors.size]
-            quad(mk.x, mk.z, 1.5f, c[0], c[1], c[2], 0.78f)
         }
         if (quads == 0) return
 

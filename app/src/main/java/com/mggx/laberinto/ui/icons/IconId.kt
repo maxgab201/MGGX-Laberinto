@@ -7,7 +7,7 @@ package com.mggx.laberinto.ui.icons
 enum class IconId {
     // --- objetos: consumibles
     ANTORCHA, LLAMA_AZUL, FRASCO, BURBUJA, HILO, BRUJULA, OJO, MAPA, PERGAMINO,
-    TIZA, PICO, FANTASMA, IMAN, RELOJ, BENGALA, VENDA, ESCUDO, ALA, SEMILLA,
+    PICO, FANTASMA, IMAN, RELOJ, BENGALA, VENDA, ESCUDO, ALA, SEMILLA,
     ONDA, GOTA, ESTRELLA_SUERTE, SOMBRA, CRISTAL_TIEMPO, PAN,
 
     // --- objetos: mejoras

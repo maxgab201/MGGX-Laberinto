@@ -375,7 +375,15 @@ object MazeGenerator {
         val area = open.size
         val coinCount = (area * 0.085f).toInt().coerceIn(6, 140)
         val bigCount = (2 + level / 6).coerceIn(2, 12)
-        val crystalCount = if (level % 5 == 0) 1 + level / 25 else if (rnd.nextFloat() < 0.22f) 1 else 0
+        // Vetagris: antes casi no aparecia (uno cada cinco niveles, y en el
+        // resto un 22% de que hubiera UNO solo escondido en toda la cueva).
+        // Bajar y no encontrar nunca la moneda cara no genera ganas de buscar,
+        // genera la idea de que no existe. Ahora siempre hay al menos uno, los
+        // niveles multiplo de cinco siguen siendo los buenos, y hay una chance
+        // sana de que aparezca alguno de yapa.
+        val crystalCount = 1 +
+            (if (level % 5 == 0) 1 + level / 25 else 0) +
+            (if (rnd.nextFloat() < 0.35f) 1 else 0)
         val chestCount = (1 + level / 8).coerceIn(1, 5)
         val trapCount = if (level < 3) 0 else (area * 0.012f * (1f + level / 45f)).toInt().coerceIn(1, 60)
         val torchCount = (area * 0.05f).toInt().coerceIn(4, 90)

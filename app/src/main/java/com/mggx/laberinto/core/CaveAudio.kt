@@ -181,7 +181,6 @@ class CaveAudio(private val save: SaveData) {
             GameSession.Sfx.ROMPER -> { v.kind = 7; v.dur = 0.70; v.amp = 0.55; v.freq = 110.0 }
             GameSession.Sfx.GANAR -> { v.kind = 8; v.dur = 1.90; v.amp = 0.45; v.freq = 392.0 }
             GameSession.Sfx.PERDER -> { v.kind = 9; v.dur = 2.10; v.amp = 0.45; v.freq = 220.0 }
-            GameSession.Sfx.MARCA -> { v.kind = 10; v.dur = 0.24; v.amp = 0.30; v.freq = 1200.0 }
             GameSession.Sfx.ZUMBIDO -> { v.kind = 11; v.dur = 0.50; v.amp = 0.18; v.freq = 58.0 }
             GameSession.Sfx.BICHO -> { v.kind = 12; v.dur = 0.62; v.amp = 0.42; v.freq = 168.0 }
             GameSession.Sfx.GOLPE -> { v.kind = 13; v.dur = 0.22; v.amp = 0.30; v.freq = 620.0 }

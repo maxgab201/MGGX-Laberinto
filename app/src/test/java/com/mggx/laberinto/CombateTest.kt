@@ -345,4 +345,86 @@ class CombateTest {
             s.health < vidaInicial
         )
     }
+
+    // ------------------------------------------------- alcance del golpe
+
+    /** Manda al resto de los bichos bien lejos: aca se mide uno solo. */
+    private fun aislar(s: GameSession, e: Enemy) {
+        for (o in s.enemies) if (o !== e) { o.x = -500f; o.z = -500f }
+    }
+
+    @Test
+    fun elGolpeTieneMargenYNoHayQueEstarEncimaDelBicho() {
+        // El jugador se quejaba de que "para pegarles te tienen que estar
+        // pegando". El alcance del arma se medi­a de centro a centro, sin
+        // contar el propio cuerpo: un bicho apenas mas lejos que
+        // alcance+radio no se tocaba aunque lo tuvieras delante de la cara.
+        val save = perfilRico()
+        val s = sesionCon(save, MazeGenerator.EnemyKind.GUARDIAN)
+        val e = bichoEnfrente(s, MazeGenerator.EnemyKind.GUARDIAN)
+        aislar(s, e)
+
+        val yaw = Math.toRadians(s.yawDeg.toDouble())
+        val d = s.stats.alcanceGolpe + e.kind.radio + 0.25f   // fuera del alcance viejo
+        e.x = s.posX + Math.sin(yaw).toFloat() * d
+        e.z = s.posZ + Math.cos(yaw).toFloat() * d
+        e.altura = s.posY
+
+        // La mira y el golpe salen de la misma cuenta: los dos tienen que
+        // decir lo mismo en este caso, que antes no entraba.
+        assertTrue("la mira no se prende con el bicho ahi nomas", s.hayBichoAlAlcance())
+        assertTrue("el golpe no llega a un bicho que esta a $d m", s.golpear() > 0)
+    }
+
+    @Test
+    fun laMiraSePrendeJustoDondeLlegaElGolpe() {
+        // La mira del HUD sale de la misma cuenta que el golpe. Aca se barre
+        // la distancia y se controla que se prenda hasta el alcance real y ni
+        // un centimetro mas: si mintiera, mentiria justo en el limite, que es
+        // el unico lugar donde uno la mira.
+        val save = perfilRico()
+        val s = sesionCon(save, MazeGenerator.EnemyKind.GUARDIAN)
+        val e = bichoEnfrente(s, MazeGenerator.EnemyKind.GUARDIAN)
+        aislar(s, e)
+
+        val yaw = Math.toRadians(s.yawDeg.toDouble())
+        val fx = Math.sin(yaw).toFloat()
+        val fz = Math.cos(yaw).toFloat()
+        val limite = s.stats.alcanceGolpe + e.kind.radio + GameSession.REGALO_GOLPE
+
+        var d = 0.3f
+        while (d <= limite + 1.5f) {
+            e.x = s.posX + fx * d
+            e.z = s.posZ + fz * d
+            e.altura = s.posY
+            // Se saltean los 5 cm pegados al limite: ahi la diferencia es el
+            // redondeo del float, no el comportamiento que se quiere fijar.
+            if (Math.abs(d - limite) > 0.05f) {
+                assertEquals(
+                    "a $d m (el alcance es $limite) la mira no dice lo que corresponde",
+                    d < limite, s.hayBichoAlAlcance()
+                )
+            }
+            d += 0.1f
+        }
+    }
+
+    @Test
+    fun unBichoALaEspaldaNoSeToca() {
+        val save = perfilRico()
+        val s = sesionCon(save, MazeGenerator.EnemyKind.GUARDIAN)
+        val e = bichoEnfrente(s, MazeGenerator.EnemyKind.GUARDIAN)
+        aislar(s, e)
+
+        // Bien atras: mas lejos que el regalo del golpe, que a quemarropa
+        // toca para cualquier lado a proposito.
+        val yaw = Math.toRadians(s.yawDeg.toDouble())
+        val d = s.stats.alcanceGolpe
+        e.x = s.posX - Math.sin(yaw).toFloat() * d
+        e.z = s.posZ - Math.cos(yaw).toFloat() * d
+        e.altura = s.posY
+
+        assertFalse("la mira se prende con el bicho atras", s.hayBichoAlAlcance())
+        assertEquals("el golpe le llego a un bicho que estaba atras", 0, s.golpear())
+    }
 }

@@ -60,10 +60,27 @@ class GameSession(
         /** Segundos que dura un tanque lleno de carburo con la linterna prendida. */
         const val DURACION_CARBURO = 150f
         /**
-         * Medio angulo del golpe, en coseno. 0.55 son unos 57 grados a cada
+         * Medio angulo del golpe, en coseno. 0.42 son unos 65 grados a cada
          * lado: hay que apuntarle al bicho, pero no al pixel.
          */
-        const val COS_CONO_GOLPE = 0.55f
+        const val COS_CONO_GOLPE = 0.42f
+        /**
+         * Metros de regalo que se le suman al alcance del golpe.
+         *
+         * El alcance del arma se mide desde el hombro, pero la distancia a un
+         * bicho se mide de centro a centro: sin esta correccion hay que estar
+         * literalmente encima para tocarlo, sobre todo con los bichos chicos.
+         * Aca entra el propio cuerpo del jugador mas un margen de generosidad,
+         * que es lo normal en un juego de accion: es mejor que un golpe justo
+         * entre a que uno bien apuntado no cuente.
+         */
+        const val REGALO_GOLPE = PLAYER_RADIUS + 0.28f
+        /**
+         * Diferencia de altura maxima entre el bicho y el jugador para que el
+         * golpe cuente, en metros. Alcanza para pegarle a un murcielago que
+         * pasa alto sin llegar a uno que va por el techo.
+         */
+        const val ALTURA_GOLPE = 1.9f
         /**
          * A cuantos metros de alguien tiene que estar un bicho para que el
          * anfitrion lo reparta por la red.
@@ -97,7 +114,6 @@ class GameSession(
         var revealed: Boolean = false
     )
 
-    class Mark(val x: Float, val z: Float, val colorIndex: Int)
 
     class TrailPoint(val x: Float, val z: Float, var life: Float)
 
@@ -155,7 +171,6 @@ class GameSession(
 
     val pickups = ArrayList<Pickup>()
     val traps = ArrayList<TrapInstance>()
-    val marks = ArrayList<Mark>()
     val trail = ArrayList<TrailPoint>()
     val torches: List<Int> = blueprint.torches
     val stalagmites: List<Int> = blueprint.stalagmites
@@ -218,7 +233,6 @@ class GameSession(
     /** Cargas activas de objetos de uso puntual. */
     var pickCharges = 0; private set
     var phaseCharges = 0; private set
-    var chalkCharges = 0; private set
     var undoTrapCharges = 0; private set
 
     var phaseWindow = 0f      // segundos con colision desactivada
@@ -248,7 +262,7 @@ class GameSession(
 
     /** Sonidos pendientes que el motor de audio va a consumir este frame. */
     private val soundQueue = ArrayList<Sfx>()
-    enum class Sfx { PASO, ECO, ECO_GRANDE, VETAGRIS, COFRE, TRAMPA, DANO, USAR, ROMPER, GANAR, PERDER, MARCA, ZUMBIDO, BICHO, GOLPE, IMPACTO }
+    enum class Sfx { PASO, ECO, ECO_GRANDE, VETAGRIS, COFRE, TRAMPA, DANO, USAR, ROMPER, GANAR, PERDER, ZUMBIDO, BICHO, GOLPE, IMPACTO }
     fun drainSounds(): List<Sfx> {
         if (soundQueue.isEmpty()) return emptyList()
         val out = ArrayList(soundQueue); soundQueue.clear(); return out
@@ -820,25 +834,49 @@ class GameSession(
         var tocados = 0
         for (e in enemies) {
             if (!e.vivo) continue
-            val dx = e.x - posX
-            val dz = e.z - posZ
-            val d = hypot(dx, dz)
-            // El alcance se mide hasta el borde del bicho, no hasta su centro:
-            // si no, a un guardian gordo no le llegabas nunca.
-            if (d > alcance + e.kind.radio) continue
-            // Y tiene que estar mas o menos a tu altura: un murcielago que
-            // pasa por arriba de la cabeza no se toca desde el piso.
-            if (abs(e.altura + e.kind.radio - ojoY) > 1.5f) continue
-            if (d > 0.05f) {
-                val cos = (dx * fx + dz * fz) / d
-                if (cos < COS_CONO_GOLPE) continue
-            }
+            if (!alcanzaAlBicho(e, alcance, ojoY, fx, fz)) continue
             tocados++
             val cayo = e.recibirGolpe(stats.danoGolpe, posX, posZ, stats.empujeGolpe)
             if (cayo) voltear(e)
         }
         if (tocados > 0) play(Sfx.IMPACTO)
         return tocados
+    }
+
+    /**
+     * Si un golpe dado en este instante tocaria a [e].
+     *
+     * Es la MISMA cuenta que usa la mira del HUD para prenderse, a proposito:
+     * si fueran dos cuentas parecidas pero distintas, la mira mentiria justo
+     * en los casos limite, que son los unicos donde se la mira.
+     */
+    private fun alcanzaAlBicho(e: Enemy, alcance: Float, ojoY: Float, fx: Float, fz: Float): Boolean {
+        val dx = e.x - posX
+        val dz = e.z - posZ
+        val d = hypot(dx, dz)
+        // El alcance se mide hasta el borde del bicho, no hasta su centro: si
+        // no, a un guardian gordo no le llegabas nunca.
+        if (d > alcance + e.kind.radio + REGALO_GOLPE) return false
+        // Y tiene que estar mas o menos a tu altura: un murcielago que pasa
+        // por arriba de la cabeza no se toca desde el piso.
+        if (abs(e.altura + e.kind.radio - ojoY) > ALTURA_GOLPE) return false
+        // Hay que tenerlo adelante, siempre: a lo que esta a la espalda no se
+        // le pega ni pegado encima. Solo se saltea el angulo cuando el bicho
+        // esta literalmente dentro tuyo, donde "adelante" no quiere decir nada.
+        if (d < 0.05f) return true
+        return (dx * fx + dz * fz) / d >= COS_CONO_GOLPE
+    }
+
+    /**
+     * Si hay algun bicho al alcance del golpe ahora mismo. Lo usa la mira del
+     * HUD para avisar que vale la pena pegar.
+     */
+    fun hayBichoAlAlcance(): Boolean {
+        val yawRad = Math.toRadians(yawDeg.toDouble())
+        val fx = sin(yawRad).toFloat()
+        val fz = cos(yawRad).toFloat()
+        val ojoY = posY + postura.alturaOjo
+        return enemies.any { it.vivo && alcanzaAlBicho(it, stats.alcanceGolpe, ojoY, fx, fz) }
     }
 
     private fun voltear(e: Enemy) {
@@ -1154,7 +1192,6 @@ class GameSession(
                 revealFraction(e.magnitude)
                 toast(if (e.magnitude >= 1f) "Mapa completo" else "Mapa parcial revelado")
             }
-            EffectType.TIZA -> { chalkCharges += e.charges; toast("$chalkCharges marcas de tiza") }
             EffectType.ROMPE_PARED -> { pickCharges += e.charges; toast("Apunta a una pared y toca Romper") }
             EffectType.ATRAVESAR_PARED -> { phaseCharges += e.charges; toast("Apunta a una pared y toca Atravesar") }
             EffectType.DESHACER_TRAMPA -> { undoTrapCharges += e.charges; toast("Proxima trampa anulada") }
@@ -1184,16 +1221,6 @@ class GameSession(
         freeSonarTimer = stats.freeSonarSeconds
         toast("Grito de Eco (Diapason)")
         play(Sfx.USAR)
-        return true
-    }
-
-    /** Deja una marca de tiza en el piso donde estas parado. */
-    fun dropChalk(): Boolean {
-        if (chalkCharges <= 0) { toast("No te queda tiza"); return false }
-        chalkCharges--
-        marks.add(Mark(posX, posZ, marks.size % 4))
-        toast("Marca dejada (${chalkCharges} restantes)")
-        play(Sfx.MARCA)
         return true
     }
 

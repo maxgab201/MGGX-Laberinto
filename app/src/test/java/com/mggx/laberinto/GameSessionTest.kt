@@ -293,19 +293,6 @@ class GameSessionTest {
     }
 
     @Test
-    fun laTizaDejaMarcasYSeAgota() {
-        val save = perfil()
-        save.grantConsumable("tiza_luminosa", 1)
-        val s = GameSession(save, 2, 5L)
-        assertFalse("no deberia poder marcar sin tiza", s.dropChalk())
-        assertTrue(s.useItem("tiza_luminosa"))
-        val cargas = ItemCatalog.require("tiza_luminosa").effect.charges
-        repeat(cargas) { assertTrue(s.dropChalk()) }
-        assertEquals(cargas, s.marks.size)
-        assertFalse("dejo mas marcas de las que tenia", s.dropChalk())
-    }
-
-    @Test
     fun elImanSeLlevaTodosLosEcos() {
         val save = perfil()
         repeat(10) { save.onLevelCompleted(save.maxLevel, 1000, 10) }

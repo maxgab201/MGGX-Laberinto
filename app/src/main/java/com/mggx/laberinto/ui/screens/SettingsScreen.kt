@@ -441,7 +441,6 @@ private fun GamepadMapHelp() {
             "A" to "Saltar",
             "R3 (pulsar stick derecho)" to "Agacharte: normal, bien bajo y de nuevo de pie",
             "X" to "Usar el objeto elegido",
-            "L2" to "Dejar una marca de tiza",
             "Y" to "Cambiar de objeto",
             "B" to "Volver atras",
             "R1" to "Golpear con lo que tengas en la mano",

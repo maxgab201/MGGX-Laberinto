@@ -24,7 +24,6 @@ class GamepadBridge(
 
     var onPause: () -> Unit = {}
     var onUseItem: () -> Unit = {}
-    var onChalk: () -> Unit = {}
     var onFlashlight: () -> Unit = {}
     var onAttack: () -> Unit = {}
     var onCycleItem: (Int) -> Unit = {}
@@ -69,7 +68,6 @@ class GamepadBridge(
                 // A = saltar, que es lo que espera cualquiera que agarre un mando.
                 KeyEvent.KEYCODE_BUTTON_A -> { input.jumpPending = true; return true }
                 KeyEvent.KEYCODE_BUTTON_X -> { onUseItem(); return true }
-                KeyEvent.KEYCODE_BUTTON_L2 -> { onChalk(); return true }
                 KeyEvent.KEYCODE_BUTTON_Y -> { onCycleItem(1); return true }
                 // R1 golpea. Ciclar objetos ya lo hacen Y y L1, asi que el
                 // gatillo de arriba queda libre para lo que mas se usa.

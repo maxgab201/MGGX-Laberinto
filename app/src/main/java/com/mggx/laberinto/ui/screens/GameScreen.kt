@@ -119,6 +119,19 @@ fun GameHud(
             }
         }
 
+        // ----------------------------------------------------------- mira
+        //
+        // Va en el Box de afuera y no en el de los insets: tiene que caer en
+        // el centro real de la imagen 3D, que es a donde apunta el golpe.
+        if (!paused) {
+            Mira(
+                alAlcance = session.hayBichoAlAlcance(),
+                cargada = session.puedeGolpear(),
+                sem = sem,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+
         // Todo lo que sigue son paneles anclados a un borde de la pantalla
         // (HUD de arriba, minimapa, buffs, botones de accion): a proposito
         // en un Box aparte de las zonas tactiles de arriba, que si tienen
@@ -592,16 +605,15 @@ private fun ActionButtons(
 
         Spacer(Modifier.height(11.dp))
 
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+        // Los botones van en DOS filas y no en una sola larga. En una fila
+        // unica, los de mas a la izquierda quedaban lejos del pulgar y encima
+        // se metian sobre la zona de mirar. Arriba queda lo que se toca de vez
+        // en cuando (acciones del inventario, linterna, agacharse); abajo,
+        // contra la esquina y mas grandes, lo que se toca todo el tiempo.
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
             // Acciones contextuales
-            Column(horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                if (session.chalkCharges > 0) {
-                    RoundActionButton(
-                        IconId.TIZA, { dispatch { session.dropChalk() } },
-                        diameter = (44 * scale).dp, badge = "${session.chalkCharges}"
-                    )
-                }
+            Row(verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                 if (session.pickCharges > 0) {
                     RoundActionButton(
                         IconId.PICO, { dispatch { session.breakWall() } },
@@ -628,45 +640,55 @@ private fun ActionButtons(
 
             // Linterna: solo aparece si compraste el poder.
             if (session.stats.tieneLinterna) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    RoundActionButton(
-                        IconId.LINTERNA,
-                        onClick = { dispatch { session.toggleLinterna() } },
-                        diameter = (44 * scale).dp,
-                        tint = if (session.linternaEncendida) Cave.Amber else Cave.Text,
-                        enabled = session.carburo > 0f || session.linternaEncendida,
-                        badge = "${(session.carburo * 100).roundToInt()}%"
-                    )
-                }
+                RoundActionButton(
+                    IconId.LINTERNA,
+                    onClick = { dispatch { session.toggleLinterna() } },
+                    diameter = (44 * scale).dp,
+                    tint = if (session.linternaEncendida) Cave.Amber else Cave.Text,
+                    enabled = session.carburo > 0f || session.linternaEncendida,
+                    badge = "${(session.carburo * 100).roundToInt()}%"
+                )
             }
 
-            // Saltar y agacharse. El agacharse cicla de pie -> agachado ->
-            // arrastrandose -> de pie, asi es un solo boton y no dos.
-            Column(horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                RoundActionButton(
-                    IconId.SALTAR,
-                    onClick = { input.jumpPending = true },
-                    diameter = (48 * scale).dp,
-                    enabled = session.enSuelo && session.postura.puedeSaltar
-                )
-                RoundActionButton(
-                    when (input.crouchLevel) {
-                        0 -> IconId.AGACHARSE
-                        1 -> IconId.ARRASTRARSE
-                        else -> IconId.DE_PIE
-                    },
-                    onClick = { input.crouchLevel = (input.crouchLevel + 1) % 3 },
-                    diameter = (48 * scale).dp,
-                    tint = if (input.crouchLevel == 0) Cave.Text else Cave.Amber,
-                    badge = when (session.postura) {
-                        Postura.DE_PIE -> null
-                        Postura.AGACHADO -> "bajo"
-                        Postura.ARRASTRANDOSE -> "raso"
-                    }
-                )
-            }
+            // Agacharse: cicla de pie -> agachado -> arrastrandose -> de pie,
+            // asi es un solo boton y no dos.
+            RoundActionButton(
+                when (input.crouchLevel) {
+                    0 -> IconId.AGACHARSE
+                    1 -> IconId.ARRASTRARSE
+                    else -> IconId.DE_PIE
+                },
+                onClick = { input.crouchLevel = (input.crouchLevel + 1) % 3 },
+                diameter = (48 * scale).dp,
+                tint = if (input.crouchLevel == 0) Cave.Text else Cave.Amber,
+                badge = when (session.postura) {
+                    Postura.DE_PIE -> null
+                    Postura.AGACHADO -> "bajo"
+                    Postura.ARRASTRANDOSE -> "raso"
+                }
+            )
+        }
+
+        Spacer(Modifier.height(9.dp))
+
+        // Fila de abajo: lo que se usa a cada rato, ordenado de menos a mas
+        // usado hacia la esquina, que es donde el pulgar llega sin estirarse.
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+            // Usar objeto
+            RoundActionButton(
+                currentItem?.icon ?: IconId.MOCHILA,
+                onClick = { currentId?.let { id -> dispatch { session.useItem(id) } } },
+                diameter = (50 * scale).dp,
+                enabled = currentItem != null,
+                badge = currentId?.let { "${save.stockOf(it)}" }
+            )
+
+            RoundActionButton(
+                IconId.SALTAR,
+                onClick = { input.jumpPending = true },
+                diameter = (52 * scale).dp,
+                enabled = session.enSuelo && session.postura.puedeSaltar
+            )
 
             // Correr: no es un boton de toque sino de mantener apretado, asi que
             // el trabajo lo hace el pointerInput de abajo y no el onClick.
@@ -688,25 +710,16 @@ private fun ActionButtons(
             )
 
             // Golpear. Siempre esta: aunque no tengas arma se pega a mano
-            // limpia, para que nunca quedes sin forma de defenderte. Es el
-            // boton mas grande del HUD a proposito: es la accion que mas se
-            // toca en combate, mas que usar un objeto.
+            // limpia, para que nunca quedes sin forma de defenderte. Va ultimo
+            // y es el mas grande a proposito: es la accion que mas se toca en
+            // combate y la que menos puede fallarse por llegar mal.
             RoundActionButton(
                 ItemCatalog.get(save.armaEquipada)?.icon ?: IconId.PUNO,
                 onClick = { dispatch { session.golpear() } },
-                diameter = (70 * scale).dp,
+                diameter = (74 * scale).dp,
                 enabled = session.puedeGolpear(),
                 tint = if (session.puedeGolpear()) Cave.Text else Cave.TextFaint,
                 accent = Cave.Bad
-            )
-
-            // Usar objeto
-            RoundActionButton(
-                currentItem?.icon ?: IconId.MOCHILA,
-                onClick = { currentId?.let { id -> dispatch { session.useItem(id) } } },
-                diameter = (50 * scale).dp,
-                enabled = currentItem != null,
-                badge = currentId?.let { "${save.stockOf(it)}" }
             )
         }
         if (currentItem == null) {
@@ -725,6 +738,48 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectTa
             val ev = awaitPointerEvent()
             val c = ev.changes.firstOrNull { it.pressed && !it.previousPressed }
             if (c != null) { c.consume(); onTap() }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ mira
+
+/**
+ * La mira del centro de la pantalla.
+ *
+ * Es chiquita y apagada mientras no haya nada que pegar, y se abre en cruz
+ * roja cuando hay un bicho REALMENTE al alcance (la cuenta es la misma que
+ * usa el golpe, ver GameSession.hayBichoAlAlcance). Sin esto no habia forma
+ * de saber si estabas en rango salvo pegar y ver si pasaba algo, que es
+ * justo lo que hacia sentir que habia que estar encima del bicho.
+ *
+ * [cargada] en false es el golpe todavia recargando: la mira se apaga para
+ * que se entienda que el problema no es la punteria sino el tiempo.
+ */
+@Composable
+private fun Mira(alAlcance: Boolean, cargada: Boolean, sem: Semantics, modifier: Modifier = Modifier) {
+    Canvas(modifier.size(46.dp)) {
+        // La lambda captura los dos booleanos, asi que se vuelve a dibujar
+        // cuando cambian y no antes.
+        val c = Offset(size.width / 2f, size.height / 2f)
+        val color = when {
+            alAlcance && cargada -> sem.bad
+            alAlcance -> sem.bad.copy(alpha = 0.45f)
+            else -> Cave.Text.copy(alpha = 0.35f)
+        }
+        val hueco = if (alAlcance) 7f * density else 4f * density
+        val brazo = if (alAlcance) 9f * density else 4.5f * density
+        val grosor = if (alAlcance) 2.4f * density else 1.6f * density
+        drawCircle(color.copy(alpha = 0.9f), 1.5f * density, c)
+        for (a in 0 until 4) {
+            val dx = if (a == 0) -1f else if (a == 1) 1f else 0f
+            val dy = if (a == 2) -1f else if (a == 3) 1f else 0f
+            drawLine(
+                color,
+                Offset(c.x + dx * hueco, c.y + dy * hueco),
+                Offset(c.x + dx * (hueco + brazo), c.y + dy * (hueco + brazo)),
+                grosor, cap = StrokeCap.Round
+            )
         }
     }
 }
@@ -812,9 +867,20 @@ private fun Minimap(session: GameSession, sem: Semantics, tick: Int, modifier: M
                 )
             }
 
-            // Marcas de tiza
-            for (mk in session.marks) {
-                drawCircle(Cave.Ice, cell * 0.4f, aPantalla(mk.x, mk.z))
+            // Vetagris y cofres ya descubiertos: no se regala donde estan,
+            // pero una vez que pasaste por la zona el mapa te lo recuerda.
+            // Sin esto era comun cruzarse uno, seguir de largo y no volver a
+            // encontrarlo nunca.
+            for (pk in session.pickups) {
+                if (pk.taken) continue
+                if (pk.kind != GameSession.PickupKind.VETAGRIS &&
+                    pk.kind != GameSession.PickupKind.COFRE
+                ) continue
+                if (!session.revealed[m.index(pk.gx, pk.gy)]) continue
+                val p = aPantalla((pk.gx + 0.5f) * GameSession.CELL, (pk.gy + 0.5f) * GameSession.CELL)
+                val col = if (pk.kind == GameSession.PickupKind.VETAGRIS) Cave.Vetagris else Cave.AmberSoft
+                drawCircle(col.copy(alpha = 0.35f), cell * 0.8f, p)
+                drawCircle(col, cell * 0.34f, p)
             }
 
             // Salida: se ve si esta revelada o si la reliquia hace ping
