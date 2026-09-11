@@ -115,6 +115,13 @@ fun GameHud(
     val loadout = save.bolsaDeMano()
     if (selectedSlot >= max(1, loadout.size)) selectedSlot = 0
 
+    // El objeto elegido en la barra viaja al hilo de OpenGL para que se vea en
+    // la mano izquierda. Va por InputState, que es el canal que ya existe entre
+    // la UI y el renderer: no es una preferencia guardada, es lo que tenes en
+    // la mano AHORA.
+    val objetoEnMano = loadout.getOrNull(selectedSlot).orEmpty()
+    LaunchedEffect(objetoEnMano) { input.objetoEnMano = objetoEnMano }
+
     Box(Modifier.fillMaxSize()) {
 
         // ------------------------------------------------- zonas tactiles

@@ -319,8 +319,160 @@ object ArmsMesh {
         }
     }
 
+    // ----------------------------------------------------------- objeto de mano
+
+    /**
+     * Marca de vertice del objeto que se lleva en la MANO IZQUIERDA.
+     *
+     * Es negativo a proposito, y eso hace las dos cosas de una: el vertex
+     * shader elige la matriz del brazo con `aSide < 0.0`, asi que un tag
+     * negativo ya viaja con la mano izquierda sin tocar nada; y el fragment
+     * shader se queda con `vSide < -1.5` para pintarlo con su propio material,
+     * que no es ni piel ni guante ni arma.
+     *
+     * Asi el objeto entra en la MISMA malla que los brazos, sin un programa
+     * aparte, sin otro buffer y sin otra llamada de dibujo: acompana solo el
+     * balanceo del brazo al caminar, como tiene que ser.
+     */
+    const val TAG_OBJETO = -2f
+
+    /**
+     * Las familias de objeto que se pueden llevar en la mano.
+     *
+     * Son ocho y no veinticuatro porque lo que importa es que se RECONOZCA de
+     * un vistazo que llevas un frasco, un mapa o un pan: en primera persona, de
+     * reojo y en movimiento, un tonico y un elixir son el mismo objeto. Cada
+     * familia ademas se pinta de su color, asi que dos frascos distintos no se
+     * ven iguales.
+     */
+    enum class Objeto {
+        /** Pociones, elixires, tonicos, viales, aceites, nectares. */
+        FRASCO,
+
+        /** Antorchas y bengalas: un palo con fuego arriba. */
+        ANTORCHA,
+
+        /** Mapas y bocetos: papel enrollado con el sello. */
+        MAPA,
+
+        /** Pan de cueva: hogaza redonda con el corte arriba. */
+        PAN,
+
+        /** Hilo de Ariadna: ovillo. */
+        OVILLO,
+
+        /** Brujula de hueso, reloj de arena: cosas con tapa y cristal. */
+        INSTRUMENTO,
+
+        /** Piedras, cristales, semillas: algo chico que se aprieta en el puno. */
+        PIEDRA,
+
+        /** Vendaje de musgo: un rollo de tela. */
+        VENDA;
+
+        companion object {
+            /**
+             * De que familia es cada consumible de la tienda.
+             *
+             * Cuando aparezca uno nuevo y no este en esta lista, cae en
+             * [PIEDRA], que es la forma mas neutra: algo chico en el puno. Es a
+             * proposito, y no una excepcion: un objeto sin modelo se veria como
+             * una mano vacia, y eso se lee como que el juego perdio el objeto.
+             */
+            fun por(id: String): Objeto? = when (id) {
+                "" -> null
+                "pocion_zancada", "elixir_aliento", "ojo_murcielago", "tonico_hierro",
+                "nectar_suerte", "vial_sombra", "aceite_resbaladizo" -> FRASCO
+                "antorcha_sebo", "antorcha_fosforo", "bengala" -> ANTORCHA
+                "mapa_parcial", "mapa_completo" -> MAPA
+                "pan_cueva" -> PAN
+                "hilo_ariadna" -> OVILLO
+                "brujula_hueso", "reloj_arena" -> INSTRUMENTO
+                "vendaje_musgo" -> VENDA
+                else -> PIEDRA
+            }
+        }
+    }
+
+    /**
+     * Cuanto se levanta el objeto respecto del eje del antebrazo, en radianes.
+     *
+     * Menos que el arma (55 grados): un arma se lleva lista para pegar, apuntando
+     * arriba y atras, pero un objeto se lleva PARA MIRARLO. Con 38 grados queda
+     * levantado hacia adelante, dentro del cuadro, sin taparte el centro de la
+     * pantalla ni la mira.
+     */
+    private val CABECEO_OBJETO = Math.toRadians(38.0).toFloat()
+
+    /** Punto del objeto que cae dentro del puno izquierdo. */
+    private const val AGARRE_OBJETO_Z = -0.06f
+
+    /**
+     * El objeto que se lleva en la mano, modelado con el agarre en el origen y
+     * el cuerpo hacia -Z (igual convencion que el arma).
+     */
+    private fun buildObjeto(b: Builder, objeto: Objeto) {
+        val t = TAG_OBJETO
+        val s = 1f     // no se espeja: el tag ya lo manda a la mano izquierda
+        when (objeto) {
+            Objeto.FRASCO -> {
+                // Cuerpo panzon, cuello fino y tapon de corcho.
+                taperedTube(b, s, 0f, 0f, 0.02f, -0.05f, 0.030f, 0.052f, 12, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.05f, -0.135f, 0.052f, 0.048f, 12, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.135f, -0.175f, 0.048f, 0.020f, 10, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.175f, -0.205f, 0.020f, 0.021f, 10, 1f, t)
+                box(b, s, 0f, 0f, -0.218f, 0.019f, 0.019f, 0.014f, 0f, 0f, t)
+            }
+            Objeto.ANTORCHA -> {
+                // Mango, trapo embreado y llama.
+                taperedTube(b, s, 0f, 0f, 0.06f, -0.16f, 0.018f, 0.021f, 8, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.16f, -0.235f, 0.040f, 0.034f, 10, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.235f, -0.335f, 0.034f, 0.004f, 8, 1f, t)
+            }
+            Objeto.MAPA -> {
+                // Rollo de papel con el cordel y el sello en la punta.
+                taperedTube(b, s, 0f, 0f, 0.03f, -0.20f, 0.034f, 0.034f, 12, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.085f, -0.105f, 0.038f, 0.038f, 12, 1f, t)
+                box(b, s, 0.030f, 0f, -0.095f, 0.012f, 0.012f, 0.008f, 0f, 0f, t)
+            }
+            Objeto.PAN -> {
+                // Hogaza: una bola achatada con dos cortes cruzados arriba.
+                taperedTube(b, s, 0f, 0f, 0.01f, -0.06f, 0.036f, 0.062f, 12, 0.72f, t)
+                taperedTube(b, s, 0f, 0f, -0.06f, -0.135f, 0.062f, 0.030f, 12, 0.72f, t)
+                box(b, s, 0f, 0.030f, -0.070f, 0.044f, 0.007f, 0.007f, 0f, 0f, t)
+                box(b, s, 0f, 0.030f, -0.070f, 0.007f, 0.007f, 0.040f, 0f, 0f, t)
+            }
+            Objeto.OVILLO -> {
+                // Bola de hilo, con una hebra suelta colgando. Es gorda a
+                // proposito: un ovillo va apoyado en la palma, no agarrado por
+                // el medio como un frasco, asi que si fuera chico se perderia
+                // adentro del puno y no se veria nada.
+                taperedTube(b, s, 0f, 0f, 0.005f, -0.068f, 0.034f, 0.068f, 12, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.068f, -0.150f, 0.068f, 0.030f, 12, 1f, t)
+                box(b, s, 0.054f, -0.016f, -0.072f, 0.005f, 0.005f, 0.055f, 0.5f, 0f, t)
+            }
+            Objeto.INSTRUMENTO -> {
+                // Caja chata con tapa y cristal: sirve de brujula y de reloj.
+                taperedTube(b, s, 0f, 0f, 0.00f, -0.105f, 0.055f, 0.055f, 14, 0.42f, t)
+                taperedTube(b, s, 0f, 0f, -0.105f, -0.122f, 0.050f, 0.046f, 14, 0.42f, t)
+                // La bisagra de la tapa, al costado.
+                box(b, s, 0.052f, 0f, -0.055f, 0.010f, 0.014f, 0.030f, 0f, 0f, t)
+            }
+            Objeto.PIEDRA -> {
+                // Algo chico y facetado que se aprieta en el puno.
+                taperedTube(b, s, 0f, 0f, 0.00f, -0.045f, 0.022f, 0.044f, 6, 0.85f, t)
+                taperedTube(b, s, 0f, 0f, -0.045f, -0.098f, 0.044f, 0.014f, 6, 0.85f, t)
+            }
+            Objeto.VENDA -> {
+                // Rollo de tela con la punta suelta.
+                taperedTube(b, s, 0f, 0f, 0.00f, -0.115f, 0.042f, 0.042f, 12, 1f, t)
+                box(b, s, 0f, -0.040f, -0.090f, 0.034f, 0.004f, 0.030f, 0.35f, 0f, t)
+            }
+        }
+    }
+
     /** Los dos brazos, con el arma en la mano derecha si hay alguna equipada. */
-    fun build(arma: Arma? = null): Mesh {
+    fun build(arma: Arma? = null, objeto: Objeto? = null): Mesh {
         val b = Builder()
         buildArm(b, -1f)   // izquierdo
         buildArm(b, 1f)    // derecho
@@ -335,6 +487,17 @@ object ArmsMesh {
                 b, a, CABECEO_ARMA,
                 PUNO_Y + AGARRE_Z * sp,
                 PUNO_Z - AGARRE_Z * cp
+            )
+        }
+        if (objeto != null) {
+            val o = Builder()
+            buildObjeto(o, objeto)
+            val sp = sin(CABECEO_OBJETO.toDouble()).toFloat()
+            val cp = cos(CABECEO_OBJETO.toDouble()).toFloat()
+            agregarGirandoEnX(
+                b, o, CABECEO_OBJETO,
+                PUNO_Y + AGARRE_OBJETO_Z * sp,
+                PUNO_Z - AGARRE_OBJETO_Z * cp
             )
         }
         return Mesh(b.v.toArray(), b.idx.toArray())

@@ -536,6 +536,9 @@ uniform int uStyle;
 uniform int uSkinStyle;
 // Color del arma que se lleva en la mano (madera, hierro, cristal, piedra).
 uniform vec3 uArma;
+// Color y familia del objeto que se lleva en la mano IZQUIERDA.
+uniform vec3 uObjeto;
+uniform int uObjetoTipo;
 
 out vec4 fragColor;
 
@@ -551,6 +554,74 @@ void main() {
     float dist = length(vViewPos);
     float atten = uLightIntensity * clamp(1.0 - dist / 1.9, 0.12, 1.0);
     float ndl = max(dot(n, L), 0.0);
+
+    // El objeto de la mano izquierda viaja en la misma malla, marcado con
+    // aSide = -2. El signo hace las dos cosas: negativo ya lo manda a la matriz
+    // del brazo izquierdo (el vertex shader elige con `aSide < 0.0`), y aca se
+    // lo reconoce por ser menor que -1.5 para darle su propio material.
+    if (vSide < -1.5) {
+        vec3 mat = uObjeto;
+        vec3 emision = vec3(0.0);
+        float brillo = 0.10;
+
+        if (uObjetoTipo == 0) {
+            // FRASCO: vidrio con liquido adentro. El liquido llena la panza y
+            // el cuello queda transparente, que es lo que lo hace leerse como
+            // una botella y no como un bolo de color.
+            float lleno = smoothstep(-0.16, -0.10, vLocal.y);
+            mat = mix(uObjeto, vec3(0.72, 0.80, 0.84), lleno * 0.75);
+            brillo = 0.55;
+            // El liquido brilla apenas desde adentro: es una pocion, no agua.
+            emision = uObjeto * (1.0 - lleno) * 0.16;
+        } else if (uObjetoTipo == 1) {
+            // ANTORCHA: mango de madera y llama viva en la punta.
+            float fuego = smoothstep(0.16, 0.30, vLocal.y);
+            float lame = 0.72 + 0.28 * sin(uTime * 11.0 + vLocal.y * 24.0);
+            mat = mix(vec3(0.34, 0.22, 0.13), vec3(1.0, 0.62, 0.20), fuego);
+            emision = vec3(1.0, 0.55, 0.18) * fuego * lame * 1.7;
+        } else if (uObjetoTipo == 2) {
+            // MAPA: papel con las lineas de tinta del dibujo.
+            float linea = step(0.86, hash(floor(vLocal.zy * 70.0)));
+            mat = mix(uObjeto, uObjeto * 0.45, linea * 0.8);
+            brillo = 0.04;
+        } else if (uObjetoTipo == 3) {
+            // PAN: corteza tostada arriba y miga mas clara adentro del corte.
+            float miga = smoothstep(0.02, 0.075, vLocal.y);
+            mat = mix(uObjeto * 0.72, uObjeto * 1.25, miga);
+            mat *= 1.0 + (hash(floor(vLocal.xz * 150.0)) - 0.5) * 0.22;
+            brillo = 0.03;
+        } else if (uObjetoTipo == 4) {
+            // OVILLO: las vueltas del hilo, una encima de la otra.
+            float vuelta = 0.5 + 0.5 * sin(vLocal.y * 130.0 + vLocal.z * 40.0);
+            mat = uObjeto * (0.82 + 0.28 * vuelta);
+            brillo = 0.05;
+        } else if (uObjetoTipo == 5) {
+            // INSTRUMENTO: caja de metal con el cristal de la tapa.
+            float cara = smoothstep(0.02, 0.06, vLocal.y);
+            mat = mix(uObjeto, vec3(0.60, 0.78, 0.86), cara * 0.6);
+            brillo = 0.70;
+            emision = vec3(0.22, 0.45, 0.55) * cara * 0.10;
+        } else if (uObjetoTipo == 6) {
+            // PIEDRA: mineral con caras que devuelven la luz de a destellos.
+            float faceta = hash(floor(vLocal.xyz * 26.0).xy + floor(vLocal.z * 26.0));
+            mat = uObjeto * (0.80 + 0.40 * faceta);
+            brillo = 0.45;
+            emision = uObjeto * 0.14;
+        } else {
+            // VENDA: tela, mate y con trama.
+            float trama = step(0.5, fract(vLocal.z * 90.0)) * step(0.5, fract(vLocal.x * 90.0));
+            mat = uObjeto * (0.88 + 0.16 * trama);
+            brillo = 0.02;
+        }
+
+        vec3 c = mat * (uAmbient * 1.8 + vec3(0.05) + uLightColor * ndl * atten) + emision;
+        float spec = pow(max(dot(reflect(-L, n), vec3(0.0, 0.0, 1.0)), 0.0), 30.0);
+        c += uLightColor * spec * brillo * atten;
+        c *= uBrightness;
+        c = c / (c + vec3(0.85));
+        fragColor = vec4(pow(c, vec3(1.0 / 2.2)), 1.0);
+        return;
+    }
 
     // El arma viaja en la misma malla que los brazos, marcada con aSide = 2:
     // sigue a la mano derecha (envion del golpe incluido) pero no es ni piel
@@ -778,6 +849,91 @@ void main() {
     // la casilla y arruina la ilusion de que el agua siguio el terreno.
     float alfa = mix(0.35, 0.93, turbio);
     fragColor = vec4(pow(color, vec3(1.0 / 2.2)), alfa);
+}
+"""
+
+    // ------------------------------------------------------------------ polvo
+    //
+    // Motas de polvo flotando en el aire, dibujadas como cuadraditos que
+    // siempre miran a la camara. Se orientan en el VERTEX shader a partir de
+    // los ejes de la vista: asi no hay que armar una matriz por mota ni
+    // ordenarlas, y con mezcla aditiva tampoco hace falta.
+    const val MOTA_VS = """#version 300 es
+layout(location = 0) in vec2 aEsquina;        // -1..1, la esquina del cuadrado
+layout(location = 1) in vec4 iPosTam;         // xyz mundo, w tamano en metros
+layout(location = 2) in float iBrillo;
+
+uniform mat4 uViewProj;
+uniform vec3 uCamDerecha;
+uniform vec3 uCamArriba;
+
+out vec2 vEsquina;
+out float vBrillo;
+out vec3 vMundo;
+
+void main() {
+    vEsquina = aEsquina;
+    vBrillo = iBrillo;
+    vec3 p = iPosTam.xyz
+        + uCamDerecha * (aEsquina.x * iPosTam.w)
+        + uCamArriba  * (aEsquina.y * iPosTam.w);
+    vMundo = p;
+    gl_Position = uViewProj * vec4(p, 1.0);
+}
+"""
+
+    const val MOTA_FS = """#version 300 es
+precision mediump float;
+
+in vec2 vEsquina;
+in float vBrillo;
+in vec3 vMundo;
+
+uniform vec3 uCamPos;
+uniform vec3 uLightColor;
+uniform float uLightRadius;
+uniform vec3 uFogColor;
+uniform float uFogDensity;
+uniform float uBrightness;
+
+#define MAX_LUCES 8
+uniform vec4 uLuzPos[MAX_LUCES];
+uniform vec3 uLuzColor[MAX_LUCES];
+uniform int uNumLuces;
+
+out vec4 fragColor;
+
+void main() {
+    // Punto redondo y con el borde desvanecido: un cuadrado se ve como un
+    // cuadrado, y una mota de polvo no tiene esquinas.
+    float r = length(vEsquina);
+    if (r > 1.0) discard;
+    float forma = 1.0 - smoothstep(0.25, 1.0, r);
+
+    float dist = length(uCamPos - vMundo);
+
+    // Una mota no tiene color propio: SOLO se ve si le pega una luz. Es lo que
+    // hace que el polvo dibuje el haz de la antorcha en vez de flotar como
+    // puntitos blancos en el vacio.
+    float att = max(1.0 - dist / max(uLightRadius, 0.001), 0.0);
+    vec3 luz = uLightColor * att * att;
+    for (int i = 0; i < MAX_LUCES; i++) {
+        if (i >= uNumLuces) break;
+        vec3 d = uLuzPos[i].xyz - vMundo;
+        float dd = length(d);
+        float k = max(1.0 - dd / max(uLuzPos[i].w, 0.001), 0.0);
+        luz += uLuzColor[i] * k * k;
+    }
+
+    // Las de muy cerca se apagan: pasarte una mota por delante del ojo es
+    // molesto y no aporta nada.
+    float cerca = smoothstep(0.25, 0.9, dist);
+    // Y las de lejos tambien, con la misma niebla que el resto de la cueva.
+    float lejos = exp(-uFogDensity * uFogDensity * dist * dist);
+
+    vec3 color = luz * vBrillo * uBrightness;
+    float alfa = forma * cerca * lejos * 0.55;
+    fragColor = vec4(color, clamp(alfa, 0.0, 1.0));
 }
 """
 

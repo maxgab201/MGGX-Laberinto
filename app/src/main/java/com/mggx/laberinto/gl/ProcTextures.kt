@@ -213,6 +213,46 @@ object ProcTextures {
         return contraste(h.coerceIn(0f, 1f), 1.25f)
     }
 
+    /**
+     * Chorreadura de agua: regueros verticales por la pared.
+     *
+     * Es la unica marca de la roca que tiene una direccion OBLIGADA, porque la
+     * hace la gravedad. Una pared con chorreadura horizontal se lee mal aunque
+     * nadie sepa decir por que.
+     *
+     * Se consigue estirando el ruido en V (la coordenada vertical): el mismo
+     * campo, muy comprimido en X y muy estirado en Y, da rayas finas que caen.
+     */
+    private fun chorreado(u: Float, v: Float, per: Int, seed: Int): Float {
+        val pAncho = periodo(per, 2.2f)
+        val pLargo = periodo(per, 0.35f)
+        // El ruido se muestrea con mucha frecuencia horizontal y poca vertical:
+        // eso es lo que alarga las manchas para abajo.
+        val n = fbm(u * pAncho, v * pLargo, 3, pAncho, seed + 1201)
+        // Umbral alto: pocos regueros y separados, no una pared entera mojada.
+        val reguero = ((n - 0.56f) / 0.20f).coerceIn(0f, 1f)
+        // Se desvanece hacia abajo, como el agua que se va secando al caer.
+        val desvanece = smoothstep(0f, 0.45f, v)
+        return reguero * reguero * (0.35f + 0.65f * desvanece)
+    }
+
+    /**
+     * Liquen y verdin: manchones esponjosos que crecen en las juntas.
+     *
+     * Crece SOLO donde la roca esta hundida ([altura] baja): en las grietas y
+     * las juntas, que es donde se junta la humedad. Repartido al azar por toda
+     * la pared se veria como pintura salpicada, y es justo lo que no es.
+     */
+    private fun liquen(u: Float, v: Float, per: Int, seed: Int, altura: Float): Float {
+        val pMancha = periodo(per, 0.7f)
+        val mancha = fbm(u * pMancha, v * pMancha, 4, pMancha, seed + 1307)
+        val pGrumo = periodo(per, 2.6f)
+        val grumo = fbm(u * pGrumo, v * pGrumo, 2, pGrumo, seed + 1409)
+        // Donde hay manchon Y la roca esta hundida.
+        val donde = smoothstep(0.50f, 0.78f, mancha) * (1f - smoothstep(0.30f, 0.68f, altura))
+        return (donde * (0.55f + 0.45f * grumo)).coerceIn(0f, 1f)
+    }
+
     private fun height(
         layer: Int, u: Float, v: Float, per: Int, seed: Int, rough: Float,
         patron: Patron = Patron.ROCA
@@ -375,12 +415,42 @@ object ProcTextures {
         val base = layer * size * size * 4
         val h = FloatArray(size * size)
 
+        // La pared es la unica capa donde crece liquen y chorrea el agua: en el
+        // piso el liquen lo pisarias y en el techo el agua no chorrea, gotea.
+        val conVida = layer == LAYER_WALL
+        val fuerzaLiquen = if (conVida) theme.liquen else 0f
+        val fuerzaHumedad = if (conVida) theme.humedad else 0f
+        // El liquen y el chorreado por pixel, guardados aparte: se calculan una
+        // vez y los usan tanto la altura como el color. Volver a calcularlos en
+        // el paso del albedo seria hacer el doble de ruido para lo mismo.
+        val liq = if (fuerzaLiquen > 0f) FloatArray(size * size) else null
+        val moj = if (fuerzaHumedad > 0f) FloatArray(size * size) else null
+
         // 1) campo de altura de la capa
         for (y in 0 until size) {
             val v = y.toFloat() / size
             for (x in 0 until size) {
                 val u = x.toFloat() / size
-                h[y * size + x] = height(layer, u, v, per, seed, theme.roughness, theme.patron)
+                var hv = height(layer, u, v, per, seed, theme.roughness, theme.patron)
+
+                if (moj != null) {
+                    // El agua que chorrea PULE la roca: la deja mas lisa y mas
+                    // baja. Eso hace dos cosas gratis en el shader, que ya lee
+                    // la altura para decidir la rugosidad: la zona mojada se ve
+                    // mas oscura y ademas devuelve mas brillo.
+                    val c = chorreado(u, v, per, seed) * fuerzaHumedad
+                    moj[y * size + x] = c
+                    hv -= c * 0.16f
+                }
+                if (liq != null) {
+                    // El liquen es esponjoso: SUMA altura. Si solo cambiara el
+                    // color quedaria como una mancha pintada sobre piedra lisa,
+                    // que es exactamente lo que no es.
+                    val l = liquen(u, v, per, seed, hv) * fuerzaLiquen
+                    liq[y * size + x] = l
+                    hv += l * 0.13f
+                }
+                h[y * size + x] = hv.coerceIn(0f, 1f)
             }
         }
 
@@ -421,6 +491,27 @@ object ProcTextures {
                 r = r * (1f - vm * 0.28f) + theme.veinR * vm * 0.28f
                 g = g * (1f - vm * 0.28f) + theme.veinG * vm * 0.28f
                 b = b * (1f - vm * 0.28f) + theme.veinB * vm * 0.28f
+
+                // Lo mojado se oscurece, como cualquier cosa mojada: el agua
+                // llena los poros y la superficie deja de dispersar la luz.
+                if (moj != null) {
+                    val k = 1f - moj[y * size + x] * 0.42f
+                    r *= k; g *= k; b *= k
+                }
+                // El liquen tira al color de la veta del bioma, no a un verde
+                // cualquiera: asi el verdin de la mina y el del bosque de
+                // esporas no son la misma mancha pegada sobre dos paredes
+                // distintas.
+                val l = liq?.get(y * size + x) ?: 0f
+                if (l > 0.002f) {
+                    val lr = 0.20f + theme.veinR * 0.16f
+                    val lg = 0.38f + theme.veinG * 0.22f
+                    val lb = 0.17f + theme.veinB * 0.14f
+                    r = r * (1f - l) + lr * l
+                    g = g * (1f - l) + lg * l
+                    b = b * (1f - l) + lb * l
+                }
+
                 albedo[ai++] = toByte(r); albedo[ai++] = toByte(g)
                 albedo[ai++] = toByte(b); albedo[ai++] = toByte(vm)
             }

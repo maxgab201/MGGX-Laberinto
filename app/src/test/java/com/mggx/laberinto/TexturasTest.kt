@@ -128,6 +128,55 @@ class TexturasTest {
      * lo largo de todo el pasillo.
      */
     @Test
+    fun dondeHayHumedadLaParedSeVeDistintaQueDondeNoHay() {
+        // El magma no tiene ni liquen ni chorreaduras (no crece nada ahi y el
+        // agua no llega), y el bosque de esporas tiene las dos cosas al maximo.
+        // Si las dos paredes salieran con el mismo relieve, la roca seria la
+        // misma pintada de otro color y el bioma no significaria nada.
+        fun rugosidad(tema: CaveTheme): Float {
+            val p = ProcTextures.generate(tema, 1)
+            val porCapa = p.size * p.size * 4
+            // Desvio de la altura guardada en el alfa del mapa de normales.
+            var suma = 0.0
+            var suma2 = 0.0
+            var n = 0
+            var i = ProcTextures.LAYER_WALL * porCapa + 3
+            while (i < (ProcTextures.LAYER_WALL + 1) * porCapa) {
+                val v = (p.normal[i].toInt() and 0xFF) / 255.0
+                suma += v; suma2 += v * v; n++
+                i += 4
+            }
+            val media = suma / n
+            return sqrt((suma2 / n - media * media)).toFloat()
+        }
+        val seco = rugosidad(CaveTheme.MAGMA)
+        val humedo = rugosidad(CaveTheme.HONGOS)
+        assertTrue("el bioma humedo no cambia el relieve de la pared", humedo != seco)
+        assertTrue("la pared seca quedo sin relieve", seco > 0.05f)
+        assertTrue("la pared humeda quedo sin relieve", humedo > 0.05f)
+    }
+
+    @Test
+    fun elLiquenYLaHumedadSonCoherentesConCadaBioma() {
+        // Los valores son una descripcion del lugar, no un numero decorativo:
+        // si el magma tuviera verdin, la textura estaria contando una mentira
+        // sobre donde estas parado.
+        assertEquals("en el magma no puede crecer nada", 0f, CaveTheme.MAGMA.liquen, 0f)
+        assertTrue(
+            "las cisternas anegadas tendrian que ser lo mas humedo",
+            CaveTheme.RUINAS.humedad >= 0.9f
+        )
+        assertTrue(
+            "las galerias de musgo tendrian que ser lo mas cubierto de verdin",
+            CaveTheme.MUSGO.liquen >= 0.9f
+        )
+        for (t in CaveTheme.entries) {
+            assertTrue("${t.name} tiene un liquen fuera de rango", t.liquen in 0f..1f)
+            assertTrue("${t.name} tiene una humedad fuera de rango", t.humedad in 0f..1f)
+        }
+    }
+
+    @Test
     fun generarDaSiempreExactamenteLoMismo() {
         // Las cuatro capas se calculan en hilos distintos (ver
         // ProcTextures.generate). Eso es correcto solo si cada hilo escribe su

@@ -39,55 +39,79 @@ enum class CaveTheme(
     /** Que clase de lugar es. */
     val biome: Biome = Biome.CUEVA,
     /** Como esta labrada la pared. */
-    val patron: Patron = Patron.ROCA
+    val patron: Patron = Patron.ROCA,
+    /**
+     * Cuanto liquen y verdin crece en la roca, de 0 (nada) a 1 (tapizado).
+     *
+     * Es lo que mas diferencia una galeria humeda de una seca cuando las dos
+     * estan talladas en la misma piedra. En el magma y la obsidiana es cero: no
+     * crece nada ahi, y poner verdin seria contar una mentira sobre el lugar.
+     */
+    val liquen: Float = 0.35f,
+    /**
+     * Cuanto chorrea el agua por la pared, de 0 a 1.
+     *
+     * Deja regueros VERTICALES: es la unica marca de la roca que tiene una
+     * direccion obligada, porque la hace la gravedad. Una pared con chorreadura
+     * horizontal se lee mal aunque nadie sepa decir por que.
+     */
+    val humedad: Float = 0.45f
 ) {
     ENTRADA(
         "Boca de la Cueva", "Piedra caliza humeda y raices colgantes.",
         0.42f, 0.38f, 0.33f, 0.30f, 0.27f, 0.23f,
         0.055f, 0.052f, 0.048f, 0.055f, 0.052f, 0.050f,
-        1.00f, 0.72f, 0.30f, 0.030f, 0.62f, 1
+        1.00f, 0.72f, 0.30f, 0.030f, 0.62f, 1,
+        Biome.CUEVA, Patron.ROCA, liquen = 0.55f, humedad = 0.70f
     ),
     MUSGO(
         "Galerias de Musgo", "Verdin fosforescente que trepa por la roca.",
         0.34f, 0.40f, 0.32f, 0.24f, 0.28f, 0.22f,
         0.040f, 0.058f, 0.046f, 0.042f, 0.058f, 0.046f,
-        0.45f, 1.00f, 0.55f, 0.038f, 0.70f, 2
+        0.45f, 1.00f, 0.55f, 0.038f, 0.70f, 2,
+        Biome.CUEVA, Patron.ROCA, liquen = 1.00f, humedad = 0.85f
     ),
     CRISTAL(
         "Cavernas de Cuarzo", "Cristales azules que laten con luz propia.",
         0.31f, 0.35f, 0.46f, 0.22f, 0.25f, 0.34f,
         0.038f, 0.048f, 0.075f, 0.038f, 0.048f, 0.078f,
-        0.42f, 0.78f, 1.00f, 0.042f, 0.55f, 3
+        0.42f, 0.78f, 1.00f, 0.042f, 0.55f, 3,
+        Biome.CUEVA, Patron.ROCA, liquen = 0.12f, humedad = 0.30f
     ),
     HIELO(
         "Sima Helada", "Escarcha eterna y ecos que se congelan.",
         0.48f, 0.54f, 0.60f, 0.40f, 0.46f, 0.53f,
         0.062f, 0.072f, 0.086f, 0.060f, 0.070f, 0.086f,
-        0.70f, 0.92f, 1.00f, 0.036f, 0.42f, 4
+        0.70f, 0.92f, 1.00f, 0.036f, 0.42f, 4,
+        Biome.CUEVA, Patron.ROCA, liquen = 0.05f, humedad = 0.20f
     ),
     AZUFRE(
         "Pozos de Azufre", "Vapor acido y roca amarillenta.",
         0.46f, 0.40f, 0.26f, 0.34f, 0.30f, 0.19f,
         0.068f, 0.058f, 0.034f, 0.062f, 0.054f, 0.032f,
-        1.00f, 0.86f, 0.30f, 0.048f, 0.75f, 5
+        1.00f, 0.86f, 0.30f, 0.048f, 0.75f, 5,
+        Biome.CUEVA, Patron.ROCA, liquen = 0.08f, humedad = 0.35f
     ),
     MAGMA(
         "Venas de Magma", "El calor sube desde las grietas del suelo.",
         0.38f, 0.24f, 0.20f, 0.28f, 0.17f, 0.14f,
         0.078f, 0.036f, 0.026f, 0.070f, 0.032f, 0.024f,
-        1.00f, 0.42f, 0.14f, 0.050f, 0.80f, 6
+        1.00f, 0.42f, 0.14f, 0.050f, 0.80f, 6,
+        Biome.CUEVA, Patron.ROCA, liquen = 0.00f, humedad = 0.00f
     ),
     OBSIDIANA(
         "Corredores de Obsidiana", "Vidrio volcanico negro que refleja tu antorcha.",
         0.17f, 0.16f, 0.20f, 0.13f, 0.12f, 0.16f,
         0.024f, 0.022f, 0.032f, 0.026f, 0.024f, 0.034f,
-        0.72f, 0.40f, 1.00f, 0.055f, 0.28f, 7
+        0.72f, 0.40f, 1.00f, 0.055f, 0.28f, 7,
+        Biome.CUEVA, Patron.ROCA, liquen = 0.00f, humedad = 0.10f
     ),
     VETAGRIS(
         "Corazon de Vetagris", "El mineral mas raro de toda la sima.",
         0.30f, 0.31f, 0.34f, 0.22f, 0.23f, 0.26f,
         0.040f, 0.042f, 0.048f, 0.044f, 0.046f, 0.052f,
-        0.86f, 0.92f, 0.98f, 0.046f, 0.50f, 8
+        0.86f, 0.92f, 0.98f, 0.046f, 0.50f, 8,
+        Biome.CUEVA, Patron.ROCA, liquen = 0.18f, humedad = 0.45f
     ),
 
     // ----------------------------------------------- lo que ya no es cueva
@@ -96,28 +120,28 @@ enum class CaveTheme(
         0.40f, 0.34f, 0.27f, 0.29f, 0.25f, 0.20f,
         0.052f, 0.045f, 0.036f, 0.050f, 0.044f, 0.036f,
         0.95f, 0.66f, 0.28f, 0.040f, 0.58f, 9,
-        Biome.MINA, Patron.MADERA
+        Biome.MINA, Patron.MADERA, liquen = 0.30f, humedad = 0.55f
     ),
     RUINAS(
         "Cisternas Anegadas", "Sillares tallados, agua quieta y columnas partidas.",
         0.36f, 0.38f, 0.39f, 0.26f, 0.29f, 0.31f,
         0.036f, 0.046f, 0.052f, 0.038f, 0.048f, 0.054f,
         0.55f, 0.86f, 0.92f, 0.044f, 0.36f, 10,
-        Biome.RUINAS, Patron.SILLAR
+        Biome.RUINAS, Patron.SILLAR, liquen = 0.85f, humedad = 1.00f
     ),
     HONGOS(
         "Bosque de Esporas", "Sombreros gigantes que alumbran mas que tu antorcha.",
         0.33f, 0.36f, 0.28f, 0.25f, 0.29f, 0.22f,
         0.042f, 0.060f, 0.040f, 0.046f, 0.064f, 0.044f,
         0.58f, 1.00f, 0.62f, 0.034f, 0.66f, 11,
-        Biome.HONGOS, Patron.ORGANICO
+        Biome.HONGOS, Patron.ORGANICO, liquen = 1.00f, humedad = 0.80f
     ),
     TEMPLO(
         "Templo Sepultado", "Piedra labrada con oro en las juntas y braseros apagados.",
         0.44f, 0.39f, 0.30f, 0.34f, 0.30f, 0.23f,
         0.058f, 0.050f, 0.034f, 0.056f, 0.050f, 0.038f,
         1.00f, 0.80f, 0.34f, 0.042f, 0.30f, 12,
-        Biome.TEMPLO, Patron.SILLAR
+        Biome.TEMPLO, Patron.SILLAR, liquen = 0.40f, humedad = 0.50f
     );
 
     companion object {

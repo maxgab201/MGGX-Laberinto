@@ -87,9 +87,102 @@ object PlayerMeshes {
         trasladar(escalar(brazoPerfil(), 1f, 0.34f, 1f), 0.205f * lado, 0.610f, 0f)
 
     /**
-     * Cuerpo completo: piernas, abrigo y los dos brazos colgando a los
-     * costados. Antes no tenia brazos; ahora que el minero se ve de lejos en
-     * los pasillos, sin ellos se leia como un maniqui.
+     * La mochila que lleva a la espalda.
+     *
+     * De todo lo que se le puede agregar a un modelo que se ve de lejos, esto
+     * es lo que mas rinde: no se distingue ni la cara ni la ropa a diez metros
+     * en un pasillo oscuro, pero la SILUETA si. Un bulto en la espalda convierte
+     * un tubo con patas en alguien que anda cargando cosas.
+     *
+     * Va hacia -Z porque el modelo mira hacia +Z (la visera del casco marca el
+     * frente, ver [mineroCasco]).
+     */
+    private fun mochila(): Geometry {
+        val cuerpo = trasladar(
+            escalar(DetailMeshes.roundedBox(), 0.22f, 0.28f, 0.15f),
+            0f, 0.655f, -0.145f
+        )
+        // La tapa con la correa, un poco mas angosta.
+        val tapa = trasladar(
+            escalar(DetailMeshes.roundedBox(), 0.20f, 0.06f, 0.13f),
+            0f, 0.790f, -0.150f
+        )
+        // El rollo de soga atado arriba.
+        val soga = trasladar(
+            escalar(lathe(
+                arrayOf(
+                    floatArrayOf(0.00f, -0.50f),
+                    floatArrayOf(0.45f, -0.30f),
+                    floatArrayOf(0.50f, 0.00f),
+                    floatArrayOf(0.45f, 0.30f),
+                    floatArrayOf(0.00f, 0.50f)
+                ),
+                segmentos = 8
+            ), 0.17f, 0.09f, 0.17f),
+            0f, 0.845f, -0.150f
+        )
+        return combinar(cuerpo, tapa, soga)
+    }
+
+    /**
+     * El pico colgado a la espalda.
+     *
+     * Es lo que dice "minero" de un vistazo, sin leer nada.
+     *
+     * La cabeza del pico va ATRAVESADA (a lo ancho, sobre los hombros) y no
+     * apuntando hacia atras. Las dos cosas a la vez: es como se carga un pico
+     * de verdad, y ademas no convierte al companiero en una silueta que
+     * sobresale medio metro por la espalda. Puesta hacia atras medía 46 cm de
+     * saliente en un cuerpo de 1,72 m, que de costado se veia como una cola.
+     */
+    private fun picoALaEspalda(): Geometry {
+        val cabo = trasladar(
+            escalar(DetailMeshes.roundedBox(), 0.028f, 0.40f, 0.028f),
+            0.090f, 0.650f, -0.205f
+        )
+        val cabeza = trasladar(
+            escalar(DetailMeshes.roundedBox(), 0.230f, 0.030f, 0.022f),
+            0.075f, 0.845f, -0.205f
+        )
+        // La punta, del lado largo de la cabeza.
+        val punta = trasladar(
+            escalar(DetailMeshes.roundedBox(), 0.060f, 0.018f, 0.016f),
+            -0.065f, 0.845f, -0.205f
+        )
+        return combinar(cabo, cabeza, punta)
+    }
+
+    /** El cinturon, con la hebilla marcada adelante. */
+    private fun cinturon(): Geometry {
+        val tira = trasladar(
+            escalar(lathe(
+                arrayOf(
+                    floatArrayOf(0.000f, -0.50f),
+                    floatArrayOf(0.145f, -0.36f),
+                    floatArrayOf(0.150f, 0.00f),
+                    floatArrayOf(0.145f, 0.36f),
+                    floatArrayOf(0.000f, 0.50f)
+                ),
+                segmentos = 12
+            ), 1f, 0.062f, 1f),
+            0f, 0.560f, 0f
+        )
+        val hebilla = trasladar(
+            escalar(DetailMeshes.roundedBox(), 0.058f, 0.048f, 0.030f),
+            0f, 0.560f, 0.142f
+        )
+        return combinar(tira, hebilla)
+    }
+
+    /**
+     * Cuerpo completo: piernas, abrigo, brazos, cinturon, mochila y el pico
+     * cruzado a la espalda.
+     *
+     * Fue creciendo por etapas y cada una respondia a lo mismo: de lejos, en un
+     * pasillo, lo unico que se lee es la silueta. Primero era un apilado de
+     * cajas sin brazos (un maniqui); despues cuerpos de revolucion con brazos;
+     * ahora ademas carga cosas, que es lo que lo vuelve un minero y no una
+     * persona generica.
      */
     fun mineroCuerpo(): Geometry {
         val unaPierna = pierna()
@@ -98,8 +191,68 @@ object PlayerMeshes {
             trasladar(unaPierna, 0.105f, 0f, 0f),
             torso(),
             mineroBrazo(-1f),
-            mineroBrazo(1f)
+            mineroBrazo(1f),
+            cinturon(),
+            mochila(),
+            picoALaEspalda()
         )
+    }
+
+    /**
+     * La cabeza, en malla aparte del cuerpo.
+     *
+     * Va separada porque el renderer pinta cada instancia de UN color: con la
+     * cabeza adentro del cuerpo, la cara saldria del color del abrigo. En malla
+     * propia se dibuja con tono de piel y el companiero deja de ser un traje
+     * con casco encima.
+     *
+     * Mide 1 de alto y se apoya en y=0, como todas: el renderer la escala y la
+     * pone a la altura del cuello.
+     */
+    fun mineroCabeza(): Geometry {
+        val craneo = lathe(
+            arrayOf(
+                floatArrayOf(0.000f, 0.000f),   // base del cuello
+                floatArrayOf(0.230f, 0.060f),
+                floatArrayOf(0.260f, 0.170f),   // mandibula
+                floatArrayOf(0.330f, 0.380f),   // pomulos, lo mas ancho
+                floatArrayOf(0.330f, 0.640f),
+                floatArrayOf(0.250f, 0.860f),
+                floatArrayOf(0.000f, 1.000f)    // coronilla
+            ),
+            segmentos = 12
+        )
+        // Nariz: es lo que le da frente a la cara. Sin ella, de lejos la
+        // cabeza es una bola y no se sabe si viene o va. Tiene que sobresalir
+        // de verdad del craneo: una nariz que no pasa el perfil de la cara no
+        // se ve nunca, y era justo lo que pasaba con la primera version.
+        val nariz = trasladar(
+            escalar(DetailMeshes.roundedBox(), 0.100f, 0.130f, 0.150f),
+            0f, 0.470f, 0.320f
+        )
+        // Ceja: una barra sobre los ojos. En una cueva la luz viene casi
+        // siempre de abajo o de costado, y esta sombra es lo que hace que la
+        // cara tenga ojos en vez de ser una superficie lisa.
+        val ceja = trasladar(
+            escalar(DetailMeshes.roundedBox(), 0.400f, 0.060f, 0.090f),
+            0f, 0.590f, 0.275f
+        )
+        // Barba: el bulto de abajo de la cara. Un minero con barba se lee como
+        // persona mucho antes que una cabeza lisa.
+        val barba = trasladar(
+            escalar(lathe(
+                arrayOf(
+                    floatArrayOf(0.000f, -0.50f),
+                    floatArrayOf(0.380f, -0.20f),
+                    floatArrayOf(0.420f, 0.10f),
+                    floatArrayOf(0.300f, 0.40f),
+                    floatArrayOf(0.000f, 0.50f)
+                ),
+                segmentos = 10
+            ), 0.64f, 0.38f, 0.50f),
+            0f, 0.230f, 0.090f
+        )
+        return combinar(craneo, ceja, nariz, barba)
     }
 
     /**
@@ -126,6 +279,21 @@ object PlayerMeshes {
             escalar(DetailMeshes.roundedBox(), 0.34f, 0.07f, 0.26f),
             0f, 0.10f, 0.30f
         )
-        return combinar(domo, visera)
+        // La lampara montada al frente del casco. El brillo lo pone el
+        // renderer aparte; esto es la carcasa, para que la luz salga de algo y
+        // no de la nada.
+        val farol = trasladar(
+            escalar(lathe(
+                arrayOf(
+                    floatArrayOf(0.00f, -0.50f),
+                    floatArrayOf(0.42f, -0.40f),
+                    floatArrayOf(0.50f, 0.20f),
+                    floatArrayOf(0.36f, 0.50f)
+                ),
+                segmentos = 10
+            ), 0.22f, 0.20f, 0.22f),
+            0f, 0.32f, 0.21f
+        )
+        return combinar(domo, visera, farol)
     }
 }

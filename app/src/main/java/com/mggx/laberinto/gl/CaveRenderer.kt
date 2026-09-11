@@ -117,6 +117,16 @@ class CaveRenderer(
         @Volatile var padLookY = 0f
         @Volatile var padSensitivity = 1f
 
+        /**
+         * Id del consumible que el jugador tiene elegido en la barra.
+         *
+         * Va por aca y no se lee de SaveData porque no es una preferencia
+         * guardada: es el objeto que tenes en la mano AHORA, y lo elige la
+         * barra del HUD, que vive en el hilo de la UI. El hilo de GL lo lee
+         * cada cuadro para saber que modelo poner en la mano izquierda.
+         */
+        @Volatile var objetoEnMano: String = ""
+
         /** Postura pedida: 0 de pie, 1 agachado, 2 arrastrandose. */
         @Volatile var crouchLevel = 0
         /** Se pone en true al tocar saltar y lo consume el frame siguiente. */
@@ -195,6 +205,18 @@ class CaveRenderer(
     private val worldVbo = IntArray(1)
     private val worldEbo = IntArray(1)
     private var worldIndexCount = 0
+
+    /** Polvo en el aire: instancias que se rearman cada cuadro. */
+    private var motaProg = 0
+    private val motaVao = IntArray(1)
+    private val motaQuadVbo = IntArray(1)
+    private val motaVbo = IntArray(1)
+    private var motaCapacidad = 0
+    private var motaDatos = FloatArray(0)
+    private val motaPos = FloatArray(3)
+    /** Ejes de la camara, para que cada mota mire siempre al ojo. */
+    private var camRightX = 1f; private var camRightY = 0f; private var camRightZ = 0f
+    private var camUpX = 0f; private var camUpY = 1f; private var camUpZ = 0f
 
     /** El espejo de agua del nivel. Va aparte porque se dibuja transparente. */
     private var waterProg = 0
@@ -410,6 +432,7 @@ class CaveRenderer(
     /** Los companieros de sala. Solo se usan en partida de a varios. */
     private var shapeMinero: InstancedShape? = null
     private var shapeCasco: InstancedShape? = null
+    private var shapeCabeza: InstancedShape? = null
 
     private var shapePost: InstancedShape? = null
     /** Estalactita: punta fina colgando del techo. */
@@ -427,6 +450,7 @@ class CaveRenderer(
      * rehacerla. Pasa solo al equipar otra en el menu, no en cada cuadro.
      */
     private var armaEnMalla: String? = null
+    private var objetoEnMalla: String? = null
 
     // --------------------------------------------------------- decals
     private val decalVao = IntArray(1)
@@ -501,6 +525,7 @@ class CaveRenderer(
         decalProg = GLUtil.program(Shaders.DECAL_VS, Shaders.DECAL_FS)
         overlayProg = GLUtil.program(Shaders.OVERLAY_VS, Shaders.OVERLAY_FS)
         waterProg = GLUtil.program(Shaders.WATER_VS, Shaders.WATER_FS)
+        motaProg = GLUtil.program(Shaders.MOTA_VS, Shaders.MOTA_FS)
 
         GLES30.glGenVertexArrays(1, worldVao, 0)
         GLES30.glGenBuffers(1, worldVbo, 0)
@@ -511,6 +536,7 @@ class CaveRenderer(
 
         buildArms()
         buildDecalBuffer(2048)
+        buildMotas()
         buildOverlay()
         buildShapes()
 
@@ -625,6 +651,22 @@ class CaveRenderer(
         val fz = (cos(yaw) * cp).toFloat()
         // El haz de la linterna sale por donde mira la camara.
         camDirX = fx; camDirY = fy; camDirZ = fz
+        // Ejes de la camara, para orientar las motas de polvo hacia el ojo.
+        //
+        // Es la misma base que arma `Matrix.setLookAtM` mas abajo, calculada
+        // aparte porque las motas la necesitan por separado: derecha es
+        // `frente x arriba`, que con arriba = (0,1,0) da (-fz, 0, fx); y el
+        // arriba de la camara es `derecha x frente`, para que quede
+        // perpendicular tambien cuando estas mirando al techo o al piso.
+        run {
+            val rx = -fz
+            val rz = fx
+            val rl = kotlin.math.sqrt(rx * rx + rz * rz).coerceAtLeast(1e-5f)
+            camRightX = rx / rl; camRightY = 0f; camRightZ = rz / rl
+            camUpX = camRightY * fz - camRightZ * fy
+            camUpY = camRightZ * fx - camRightX * fz
+            camUpZ = camRightX * fy - camRightY * fx
+        }
 
         Matrix.setLookAtM(
             view, 0,
@@ -661,6 +703,7 @@ class CaveRenderer(
         // El agua va al final de lo del mundo: es transparente, asi que
         // necesita que ya este dibujado todo lo opaco que puede verse debajo.
         drawWater(s, lr, lg, lb, lightRadius, amb, fogDensity, brightness)
+        drawMotas(s, lr, lg, lb, lightRadius, fogDensity, brightness)
         if (save.settings.showArms && !vitrina) drawArms(s, lr, lg, lb, amb, brightness, aspect, dt)
         if (!vitrina) drawOverlay(s, theme, brightness)
 
@@ -806,6 +849,95 @@ class CaveRenderer(
         GLES30.glDisable(GLES30.GL_BLEND)
     }
 
+    /** Arma el cuadradito base y el buffer de instancias de las motas. */
+    private fun buildMotas() {
+        motaCapacidad = Motas.cuantas(3)
+        motaDatos = FloatArray(motaCapacidad * 5)
+        GLES30.glGenVertexArrays(1, motaVao, 0)
+        GLES30.glGenBuffers(1, motaQuadVbo, 0)
+        GLES30.glGenBuffers(1, motaVbo, 0)
+        GLES30.glBindVertexArray(motaVao[0])
+
+        // El cuadrado, uno solo para todas: dos triangulos de -1 a 1.
+        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, motaQuadVbo[0])
+        val quad = floatArrayOf(
+            -1f, -1f, 1f, -1f, 1f, 1f,
+            -1f, -1f, 1f, 1f, -1f, 1f
+        )
+        GLES30.glBufferData(
+            GLES30.GL_ARRAY_BUFFER, quad.size * 4, GLUtil.floatBuffer(quad), GLES30.GL_STATIC_DRAW
+        )
+        GLES30.glEnableVertexAttribArray(0)
+        GLES30.glVertexAttribPointer(0, 2, GLES30.GL_FLOAT, false, 8, 0)
+
+        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, motaVbo[0])
+        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, motaDatos.size * 4, null, GLES30.GL_DYNAMIC_DRAW)
+        GLES30.glEnableVertexAttribArray(1)
+        GLES30.glVertexAttribPointer(1, 4, GLES30.GL_FLOAT, false, 20, 0)
+        GLES30.glVertexAttribDivisor(1, 1)
+        GLES30.glEnableVertexAttribArray(2)
+        GLES30.glVertexAttribPointer(2, 1, GLES30.GL_FLOAT, false, 20, 16)
+        GLES30.glVertexAttribDivisor(2, 1)
+        GLES30.glBindVertexArray(0)
+    }
+
+    /**
+     * El polvo del aire.
+     *
+     * Se dibuja al final, con mezcla ADITIVA y sin escribir profundidad: una
+     * mota no tapa nada, solo suma un poco de luz donde esta. Con mezcla
+     * aditiva tampoco hace falta ordenarlas de atras para adelante, que es lo
+     * que suele volver caro dibujar particulas.
+     */
+    private fun drawMotas(
+        s: GameSession, lr: Float, lg: Float, lb: Float,
+        radius: Float, fogDensity: Float, brightness: Float
+    ) {
+        val cuantas = Motas.cuantas(save.settings.quality)
+        if (cuantas == 0 || motaCapacidad == 0) return
+        val n = min(cuantas, motaCapacidad)
+
+        val px = s.posX
+        val py = s.alturaCamara()
+        val pz = s.posZ
+        var k = 0
+        for (i in 0 until n) {
+            Motas.posicion(i, time, px, py, pz, motaPos)
+            motaDatos[k++] = motaPos[0]
+            motaDatos[k++] = motaPos[1]
+            motaDatos[k++] = motaPos[2]
+            motaDatos[k++] = Motas.tamano(i)
+            motaDatos[k++] = Motas.brillo(i, time)
+        }
+
+        val p = motaProg
+        GLES30.glUseProgram(p)
+        GLES30.glUniformMatrix4fv(u(p, "uViewProj"), 1, false, viewProj, 0)
+        GLES30.glUniform3f(u(p, "uCamDerecha"), camRightX, camRightY, camRightZ)
+        GLES30.glUniform3f(u(p, "uCamArriba"), camUpX, camUpY, camUpZ)
+        GLES30.glUniform3f(u(p, "uCamPos"), px, py, pz)
+        GLES30.glUniform3f(u(p, "uLightColor"), lr, lg, lb)
+        GLES30.glUniform1f(u(p, "uLightRadius"), radius)
+        val t = s.theme
+        GLES30.glUniform3f(u(p, "uFogColor"), t.fogR, t.fogG, t.fogB)
+        GLES30.glUniform1f(u(p, "uFogDensity"), fogDensity)
+        GLES30.glUniform1f(u(p, "uBrightness"), brightness)
+        subirLuces(p)
+
+        GLES30.glBindVertexArray(motaVao[0])
+        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, motaVbo[0])
+        GLES30.glBufferSubData(
+            GLES30.GL_ARRAY_BUFFER, 0, n * 5 * 4, GLUtil.floatBuffer(motaDatos)
+        )
+        GLES30.glEnable(GLES30.GL_BLEND)
+        GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE)
+        GLES30.glDepthMask(false)
+        GLES30.glDrawArraysInstanced(GLES30.GL_TRIANGLES, 0, 6, n)
+        GLES30.glDepthMask(true)
+        GLES30.glDisable(GLES30.GL_BLEND)
+        GLES30.glBindVertexArray(0)
+    }
+
     private fun uploadWorld(mesh: WorldMesh.Mesh) {
         GLES30.glBindVertexArray(worldVao[0])
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, worldVbo[0])
@@ -868,9 +1000,10 @@ class CaveRenderer(
         // salen baratos (una sala no tiene mas de un punado de jugadores).
         shapeMinero = InstancedShape(PlayerMeshes.mineroCuerpo(), 16)
         shapeCasco = InstancedShape(PlayerMeshes.mineroCasco(), 16)
+        shapeCabeza = InstancedShape(PlayerMeshes.mineroCabeza(), 16)
     }
 
-    private fun buildArms(arma: String = "") {
+    private fun buildArms(arma: String = "", objeto: String = "") {
         GLES30.glGenVertexArrays(1, armsVao, 0)
         GLES30.glGenBuffers(1, armsVbo, 0)
         GLES30.glGenBuffers(1, armsEbo, 0)
@@ -884,7 +1017,7 @@ class CaveRenderer(
         GLES30.glEnableVertexAttribArray(2)
         GLES30.glVertexAttribPointer(2, 1, GLES30.GL_FLOAT, false, st, 24)
         GLES30.glBindVertexArray(0)
-        subirMallaDeBrazos(arma)
+        subirMallaDeBrazos(arma, objeto)
     }
 
     /**
@@ -893,9 +1026,10 @@ class CaveRenderer(
      * Se reusan el VAO y los buffers: solo cambia el contenido. Pasa cuando
      * el jugador equipa otra arma, no en cada cuadro.
      */
-    private fun subirMallaDeBrazos(arma: String) {
-        val mesh = ArmsMesh.build(ArmsMesh.Arma.por(arma))
+    private fun subirMallaDeBrazos(arma: String, objeto: String) {
+        val mesh = ArmsMesh.build(ArmsMesh.Arma.por(arma), ArmsMesh.Objeto.por(objeto))
         armaEnMalla = arma
+        objetoEnMalla = objeto
         GLES30.glBindVertexArray(armsVao[0])
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, armsVbo[0])
         val vb = GLUtil.floatBuffer(mesh.vertices)
@@ -914,6 +1048,25 @@ class CaveRenderer(
         ArmsMesh.Arma.AGUIJON -> floatArrayOf(0.55f, 0.86f, 0.95f)   // cristal
         ArmsMesh.Arma.MAZA -> floatArrayOf(0.30f, 0.30f, 0.33f)      // basalto
         ArmsMesh.Arma.HACHA -> floatArrayOf(0.72f, 0.80f, 0.88f)     // vetagris
+        null -> floatArrayOf(0f, 0f, 0f)
+    }
+
+    /**
+     * De que color va cada familia de objeto en la mano.
+     *
+     * El color lo da la FAMILIA y no el objeto suelto a proposito: asi dos
+     * frascos distintos comparten forma pero no color, y de reojo se distingue
+     * si llevas la pocion verde o el vial de sombra.
+     */
+    private fun colorDeObjeto(objeto: ArmsMesh.Objeto?): FloatArray = when (objeto) {
+        ArmsMesh.Objeto.FRASCO -> floatArrayOf(0.36f, 0.78f, 0.42f)        // pocion
+        ArmsMesh.Objeto.ANTORCHA -> floatArrayOf(0.40f, 0.26f, 0.15f)      // madera
+        ArmsMesh.Objeto.MAPA -> floatArrayOf(0.82f, 0.73f, 0.55f)          // papel
+        ArmsMesh.Objeto.PAN -> floatArrayOf(0.72f, 0.51f, 0.28f)           // corteza
+        ArmsMesh.Objeto.OVILLO -> floatArrayOf(0.86f, 0.84f, 0.74f)        // lino
+        ArmsMesh.Objeto.INSTRUMENTO -> floatArrayOf(0.58f, 0.56f, 0.48f)   // laton
+        ArmsMesh.Objeto.PIEDRA -> floatArrayOf(0.62f, 0.72f, 0.86f)        // mineral
+        ArmsMesh.Objeto.VENDA -> floatArrayOf(0.52f, 0.64f, 0.44f)         // musgo
         null -> floatArrayOf(0f, 0f, 0f)
     }
 
@@ -1030,6 +1183,7 @@ class CaveRenderer(
         val obelisco = shapeObelisco ?: return
         val minero = shapeMinero ?: return
         val casco = shapeCasco ?: return
+        val cabezaMinero = shapeCabeza ?: return
 
         val cull = when (save.settings.quality) { 0 -> 22f; 1 -> 28f; 2 -> 34f; else -> 42f }
         val cull2 = cull * cull
@@ -1047,7 +1201,7 @@ class CaveRenderer(
         topo.begin(); pala.begin(); arana.begin()
         antorcha.begin(); llama.begin(); cristal.begin(); cofre.begin()
         hongo.begin(); pincho.begin(); estacion.begin(); obelisco.begin()
-        minero.begin(); casco.begin()
+        minero.begin(); casco.begin(); cabezaMinero.begin()
         val C = GameSession.CELL
         val m = s.maze
 
@@ -1484,6 +1638,15 @@ class CaveRenderer(
                 // aparte y hay que subirlas y bajarlas desde aca.
                 val balanceo = if (j.caido) 0f
                 else kotlin.math.abs(sin((j.paso * 3.4f + giro).toDouble()).toFloat()) * 0.018f * alto
+                // La cabeza va en instancia aparte para poder pintarla con
+                // tono de piel: con una sola instancia por companiero, la cara
+                // saldria del color del abrigo y el minero se veria como un
+                // traje vacio con un casco encima.
+                cabezaMinero.add(
+                    j.dibX, j.dibY + alto * 0.855f + balanceo, j.dibZ, alto * 0.155f,
+                    0.66f * apagado, 0.48f * apagado, 0.36f * apagado, 0f,
+                    giro, 0f, 0f, 1f
+                )
                 casco.add(
                     j.dibX, j.dibY + alto * 0.88f + balanceo, j.dibZ, alto * 0.30f,
                     1.00f, 0.74f, 0.16f, if (j.caido) 0.10f else 0.35f,
@@ -1559,7 +1722,7 @@ class CaveRenderer(
         GLES30.glUniform1i(material, 4)
         ala.draw(); murcielago.draw(); rastrero.draw(); pata.draw(); hongo.draw()
         GLES30.glUniform1i(material, 5)
-        minero.draw()
+        minero.draw(); cabezaMinero.draw()
         GLES30.glUniform1i(material, 6)
         llama.draw()
     }
@@ -1643,7 +1806,11 @@ class CaveRenderer(
         if (armsIndexCount == 0) return
         // El arma va adentro de la misma malla que los brazos, asi que si
         // cambiaste de arma hay que rehacerla. Pasa al equipar, no por cuadro.
-        if (save.armaEquipada != armaEnMalla) subirMallaDeBrazos(save.armaEquipada)
+        // La malla de los brazos se rehace cuando cambia el arma O el objeto
+        // elegido. No es por cuadro: pasa cuando el jugador toca la barra.
+        if (save.armaEquipada != armaEnMalla || input.objetoEnMano != objetoEnMalla) {
+            subirMallaDeBrazos(save.armaEquipada, input.objetoEnMano)
+        }
         // Los brazos usan su propia proyeccion, mas cerrada, y limpian profundidad
         // para que nunca los atraviese una pared.
         Matrix.perspectiveM(armProj, 0, 62f, aspect, 0.01f, 4f)
@@ -1720,6 +1887,10 @@ class CaveRenderer(
         GLES30.glUniform1f(u(p, "uBrightness"), brightness)
         GLES30.glUniform1f(u(p, "uTime"), time)
         GLES30.glUniform1i(u(p, "uStyle"), style)
+        val objeto = ArmsMesh.Objeto.por(input.objetoEnMano)
+        val co = colorDeObjeto(objeto)
+        GLES30.glUniform3f(u(p, "uObjeto"), co[0], co[1], co[2])
+        GLES30.glUniform1i(u(p, "uObjetoTipo"), objeto?.ordinal ?: 0)
         val arma = colorDeArma(save.armaEquipada)
         GLES30.glUniform3f(
             u(p, "uArma"), arma[0], arma[1], arma[2]
