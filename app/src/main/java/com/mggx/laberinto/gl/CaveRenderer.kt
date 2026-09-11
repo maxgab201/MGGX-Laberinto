@@ -3,6 +3,7 @@ package com.mggx.laberinto.gl
 import android.opengl.GLES30
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
+import com.mggx.laberinto.core.AhorroDeEnergia
 import com.mggx.laberinto.core.SaveData
 import com.mggx.laberinto.game.GameSession
 import com.mggx.laberinto.maze.CaveTheme
@@ -32,6 +33,36 @@ class CaveRenderer(
     companion object {
         /** Tiene que coincidir con el MAX_LUCES de los shaders. */
         const val MAX_LUCES = 8
+
+        /**
+         * Fuerza de la antorcha que lleva el jugador.
+         *
+         * Bajo de 2.45 a 1.55 en la 1.8.0. Con 2.45 la antorcha alumbraba como
+         * un reflector: la cueva se veia entera hasta el fondo del pasillo y no
+         * daba ninguna sensacion de estar bajo tierra a oscuras. Con este
+         * valor hay un circulo de luz alrededor tuyo y despues negro, que es
+         * lo que hace que una antorcha de la pared o un cristal a lo lejos
+         * signifiquen algo.
+         */
+        const val LUZ_JUGADOR = 1.55f
+
+        /**
+         * Cuanto se apaga la luz ambiente del bioma.
+         *
+         * El ambiente es la luz "que hay porque si", sin fuente: es lo que
+         * evita que un rincon sin antorchas quede completamente negro. Mientras
+         * estuvo al 100% no habia oscuridad de verdad en ningun lado, se veia
+         * hasta el fondo del pasillo y la linterna no se extranaba nunca.
+         *
+         * Se aplica ACA, al subir el uniform, y NO adentro de cada shader. Es a
+         * proposito: el mundo, los objetos, los bichos y los brazos son cinco
+         * programas distintos que leen el mismo `uAmbient`. Oscurecer solo uno
+         * de ellos deja a los objetos MAS claros que la roca sobre la que
+         * estan apoyados, y eso se ve como si flotaran recortados encima de la
+         * cueva. Un solo lugar para tocarlo es la unica forma de que los cinco
+         * sigan estando de acuerdo.
+         */
+        const val AMBIENTE = 0.52f
 
         // Radio en metros de cada pickup (el octaedro base de shapeGem mide
         // radio 1.0, asi que esto ES el radio real del objeto). Antes eran
@@ -137,6 +168,22 @@ class CaveRenderer(
     private var lastPhase = GameSession.Phase.JUGANDO
 
     // ---------------------------------------------------------- programas
+    /**
+     * Posiciones de uniforms, preguntadas una sola vez por nombre.
+     *
+     * Antes cada `GLES30.glGetUniformLocation` de cada cuadro le pedia al
+     * driver que buscara el nombre por string en la tabla del programa: 62
+     * busquedas por cuadro, casi 3.700 por segundo, siempre con el mismo
+     * resultado. La posicion de un uniform no cambia mientras el programa siga
+     * enlazado, asi que preguntarlo de nuevo es trabajo de CPU tirado, y en un
+     * telefono eso se paga en bateria.
+     */
+    private val uniforms = UniformCache()
+
+    /** La posicion del uniform [nombre] en [prog], de la cache. */
+    private fun u(prog: Int, nombre: String): Int =
+        uniforms.loc(prog, nombre) { pr, n -> GLES30.glGetUniformLocation(pr, n) }
+
     private var worldProg = 0
     private var propProg = 0
     private var armsProg = 0
@@ -148,6 +195,13 @@ class CaveRenderer(
     private val worldVbo = IntArray(1)
     private val worldEbo = IntArray(1)
     private var worldIndexCount = 0
+
+    /** El espejo de agua del nivel. Va aparte porque se dibuja transparente. */
+    private var waterProg = 0
+    private val waterVao = IntArray(1)
+    private val waterVbo = IntArray(1)
+    private val waterEbo = IntArray(1)
+    private var waterIndexCount = 0
     private var albedoTex = 0
     private var normalTex = 0
     private var texturedTheme: CaveTheme? = null
@@ -198,6 +252,10 @@ class CaveRenderer(
     private val luzColor = FloatArray(MAX_LUCES * 3)
     private var luzCount = 0
 
+    /** Arrays de trabajo de [elegirLuces], reusados cuadro a cuadro. */
+    private val mejoresLuz = arrayOfNulls<Farol>(MAX_LUCES)
+    private val distLuz = FloatArray(MAX_LUCES)
+
     /**
      * Elige las [MAX_LUCES] luces mas cercanas al jugador y las deja armadas
      * en los arrays que van al shader. Es un barrido lineal: con unos cientos
@@ -208,9 +266,15 @@ class CaveRenderer(
         if (calidad <= 0 || faroles.isEmpty()) return
         val cupo = if (calidad >= 3) MAX_LUCES else if (calidad == 2) 6 else 4
 
-        // Distancias al cuadrado de las elegidas, para ir descartando.
-        val mejores = arrayOfNulls<Farol>(cupo)
-        val dist = FloatArray(cupo) { Float.MAX_VALUE }
+        // Los dos arrays de trabajo son CAMPOS, no locales: creados aca
+        // adentro eran dos objetos nuevos por cuadro (120 por segundo) que no
+        // sobrevivian al cuadro siguiente. Basura asi no se nota en cuadros
+        // por segundo, se nota en el recolector corriendo todo el tiempo, y
+        // eso es bateria.
+        java.util.Arrays.fill(mejoresLuz, null)
+        java.util.Arrays.fill(distLuz, Float.MAX_VALUE)
+        val mejores = mejoresLuz
+        val dist = distLuz
         for (f in faroles) {
             val dx = f.x - px
             val dz = f.z - pz
@@ -240,10 +304,10 @@ class CaveRenderer(
 
     /** Sube las luces elegidas al programa que este activo. */
     private fun subirLuces(prog: Int) {
-        GLES30.glUniform1i(GLES30.glGetUniformLocation(prog, "uNumLuces"), luzCount)
+        GLES30.glUniform1i(u(prog, "uNumLuces"), luzCount)
         if (luzCount == 0) return
-        GLES30.glUniform4fv(GLES30.glGetUniformLocation(prog, "uLuzPos"), luzCount, luzPos, 0)
-        GLES30.glUniform3fv(GLES30.glGetUniformLocation(prog, "uLuzColor"), luzCount, luzColor, 0)
+        GLES30.glUniform4fv(u(prog, "uLuzPos"), luzCount, luzPos, 0)
+        GLES30.glUniform3fv(u(prog, "uLuzColor"), luzCount, luzColor, 0)
     }
 
     /** Junta todas las fuentes fijas del nivel. Se llama al armar el nivel. */
@@ -427,15 +491,23 @@ class CaveRenderer(
         GLES30.glCullFace(GLES30.GL_BACK)
         GLES30.glFrontFace(GLES30.GL_CCW)
 
+        // Se perdio el contexto: los programas de recien tienen ids nuevos, y
+        // una posicion de uniform guardada apuntaria a cualquier lado.
+        uniforms.limpiar()
+
         worldProg = GLUtil.program(Shaders.WORLD_VS, Shaders.WORLD_FS)
         propProg = GLUtil.program(Shaders.PROP_VS, Shaders.PROP_FS)
         armsProg = GLUtil.program(Shaders.ARMS_VS, Shaders.ARMS_FS)
         decalProg = GLUtil.program(Shaders.DECAL_VS, Shaders.DECAL_FS)
         overlayProg = GLUtil.program(Shaders.OVERLAY_VS, Shaders.OVERLAY_FS)
+        waterProg = GLUtil.program(Shaders.WATER_VS, Shaders.WATER_FS)
 
         GLES30.glGenVertexArrays(1, worldVao, 0)
         GLES30.glGenBuffers(1, worldVbo, 0)
         GLES30.glGenBuffers(1, worldEbo, 0)
+        GLES30.glGenVertexArrays(1, waterVao, 0)
+        GLES30.glGenBuffers(1, waterVbo, 0)
+        GLES30.glGenBuffers(1, waterEbo, 0)
 
         buildArms()
         buildDecalBuffer(2048)
@@ -492,6 +564,7 @@ class CaveRenderer(
         if (s.geometryDirty) {
             s.geometryDirty = false
             uploadWorld(WorldMesh.build(s.maze, save.settings.quality))
+            uploadWater(WaterMesh.build(s.maze))
         }
 
         // ------------------------------------------------------- tiempo
@@ -585,6 +658,9 @@ class CaveRenderer(
         drawWorld(s, lr, lg, lb, lightRadius, amb, fogDensity, brightness)
         drawProps(s, lr, lg, lb, lightRadius, amb, fogDensity, brightness)
         drawDecals(s, fogDensity, brightness)
+        // El agua va al final de lo del mundo: es transparente, asi que
+        // necesita que ya este dibujado todo lo opaco que puede verse debajo.
+        drawWater(s, lr, lg, lb, lightRadius, amb, fogDensity, brightness)
         if (save.settings.showArms && !vitrina) drawArms(s, lr, lg, lb, amb, brightness, aspect, dt)
         if (!vitrina) drawOverlay(s, theme, brightness)
 
@@ -613,9 +689,15 @@ class CaveRenderer(
     /**
      * Techo de cuadros por segundo. Dormir un toque baja el consumo de bateria
      * y el calor del telefono cuando el aparato podria ir mas rapido de lo pedido.
+     *
+     * El techo no es siempre el mismo: con el menu de pausa abierto la escena
+     * de atras esta CONGELADA, asi que dibujarla 60 veces por segundo es pintar
+     * 60 veces la misma imagen. La vitrina del lobby es un paseo lento de
+     * camara, que a 30 se ve igual. Solo jugando de verdad hace falta todo lo
+     * que el jugador haya elegido en Ajustes.
      */
     private fun limitFrameRate() {
-        val target = save.settings.targetFps
+        val target = AhorroDeEnergia.fpsObjetivo(dondeEstoy(), save.settings.targetFps)
         if (target <= 0) return
         val frameNs = 1_000_000_000L / target
         val now = System.nanoTime()
@@ -627,6 +709,14 @@ class CaveRenderer(
             }
         }
         lastPresentNs = System.nanoTime()
+    }
+
+    /** En que situacion esta el renderer, para decidir cuanto trabajo hacer. */
+    private fun dondeEstoy(): AhorroDeEnergia.Donde = when {
+        vitrina -> AhorroDeEnergia.Donde.VITRINA
+        input.paused -> AhorroDeEnergia.Donde.PAUSA
+        session?.phase != GameSession.Phase.JUGANDO -> AhorroDeEnergia.Donde.PAUSA
+        else -> AhorroDeEnergia.Donde.JUGANDO
     }
 
     // ------------------------------------------------------------ montaje
@@ -641,7 +731,79 @@ class CaveRenderer(
             texturedTheme = s.theme
         }
         uploadWorld(WorldMesh.build(s.maze, save.settings.quality))
+        uploadWater(WaterMesh.build(s.maze))
         preparedQuality = save.settings.quality
+    }
+
+    /** Sube el espejo de agua del nivel. Sin agua, deja el contador en cero. */
+    private fun uploadWater(mesh: WaterMesh.Mesh) {
+        waterIndexCount = mesh.indices.size
+        if (waterIndexCount == 0) return
+        GLES30.glBindVertexArray(waterVao[0])
+        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, waterVbo[0])
+        GLES30.glBufferData(
+            GLES30.GL_ARRAY_BUFFER, mesh.vertices.size * 4,
+            GLUtil.floatBuffer(mesh.vertices), GLES30.GL_STATIC_DRAW
+        )
+        val stride = WaterMesh.STRIDE_BYTES
+        GLES30.glEnableVertexAttribArray(0)
+        GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, stride, 0)
+        GLES30.glEnableVertexAttribArray(1)
+        GLES30.glVertexAttribPointer(1, 1, GLES30.GL_FLOAT, false, stride, 12)
+        GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, waterEbo[0])
+        GLES30.glBufferData(
+            GLES30.GL_ELEMENT_ARRAY_BUFFER, mesh.indices.size * 4,
+            GLUtil.intBuffer(mesh.indices), GLES30.GL_STATIC_DRAW
+        )
+        GLES30.glBindVertexArray(0)
+    }
+
+    /**
+     * El agua, despues de todo lo opaco.
+     *
+     * Mezclada y SIN escribir profundidad: si escribiera, un charco taparia lo
+     * que viene detras aunque sea medio transparente, y ademas dos casillas de
+     * agua vecinas se pelearian entre si. Leer profundidad si, para que la
+     * roca que esta delante del charco lo tape.
+     */
+    private fun drawWater(
+        s: GameSession, lr: Float, lg: Float, lb: Float,
+        radius: Float, ambBoost: Float, fogDensity: Float, brightness: Float
+    ) {
+        if (waterIndexCount == 0) return
+        val p = waterProg
+        GLES30.glUseProgram(p)
+        GLES30.glUniformMatrix4fv(u(p, "uViewProj"), 1, false, viewProj, 0)
+        GLES30.glUniform3f(u(p, "uCamPos"), s.posX, s.alturaCamara(), s.posZ)
+        GLES30.glUniform1f(u(p, "uTime"), time)
+        GLES30.glUniform3f(u(p, "uLightColor"), lr, lg, lb)
+        GLES30.glUniform1f(u(p, "uLightRadius"), radius)
+        GLES30.glUniform1f(u(p, "uLightIntensity"), LUZ_JUGADOR * flicker)
+        val t = s.theme
+        GLES30.glUniform3f(
+            u(p, "uAmbient"),
+            (t.ambientR + ambBoost) * AMBIENTE,
+            (t.ambientG + ambBoost) * AMBIENTE,
+            (t.ambientB + ambBoost) * AMBIENTE
+        )
+        GLES30.glUniform3f(u(p, "uFogColor"), t.fogR, t.fogG, t.fogB)
+        GLES30.glUniform1f(u(p, "uFogDensity"), fogDensity)
+        // El agua toma el color de la veta del bioma, apagado: en la mina es
+        // turbia y ocre, en el templo tira a turquesa. Que sea siempre azul la
+        // haria ver puesta encima, ajena a la cueva.
+        GLES30.glUniform3f(u(p, "uAgua"), t.veinR * 0.30f + 0.04f, t.veinG * 0.34f + 0.06f, t.veinB * 0.38f + 0.09f)
+        GLES30.glUniform1f(u(p, "uBrightness"), brightness)
+        GLES30.glUniform1i(u(p, "uQuality"), save.settings.quality)
+        subirLuces(p)
+
+        GLES30.glEnable(GLES30.GL_BLEND)
+        GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
+        GLES30.glDepthMask(false)
+        GLES30.glBindVertexArray(waterVao[0])
+        GLES30.glDrawElements(GLES30.GL_TRIANGLES, waterIndexCount, GLES30.GL_UNSIGNED_INT, 0)
+        GLES30.glBindVertexArray(0)
+        GLES30.glDepthMask(true)
+        GLES30.glDisable(GLES30.GL_BLEND)
     }
 
     private fun uploadWorld(mesh: WorldMesh.Mesh) {
@@ -793,40 +955,42 @@ class CaveRenderer(
         if (worldIndexCount == 0) return
         val p = worldProg
         GLES30.glUseProgram(p)
-        GLES30.glUniformMatrix4fv(GLES30.glGetUniformLocation(p, "uViewProj"), 1, false, viewProj, 0)
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uCamPos"), s.posX, s.alturaCamara(), s.posZ)
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uLightColor"), lr, lg, lb)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightRadius"), radius)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightIntensity"), 2.45f * flicker)
+        GLES30.glUniformMatrix4fv(u(p, "uViewProj"), 1, false, viewProj, 0)
+        GLES30.glUniform3f(u(p, "uCamPos"), s.posX, s.alturaCamara(), s.posZ)
+        GLES30.glUniform3f(u(p, "uLightColor"), lr, lg, lb)
+        GLES30.glUniform1f(u(p, "uLightRadius"), radius)
+        GLES30.glUniform1f(u(p, "uLightIntensity"), LUZ_JUGADOR * flicker)
         val t = s.theme
         GLES30.glUniform3f(
-            GLES30.glGetUniformLocation(p, "uAmbient"),
-            t.ambientR + ambBoost, t.ambientG + ambBoost, t.ambientB + ambBoost
+            u(p, "uAmbient"),
+            (t.ambientR + ambBoost) * AMBIENTE,
+            (t.ambientG + ambBoost) * AMBIENTE,
+            (t.ambientB + ambBoost) * AMBIENTE
         )
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uFogColor"), t.fogR, t.fogG, t.fogB)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uFogDensity"), fogDensity)
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uVeinColor"), t.veinR, t.veinG, t.veinB)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uVeinPulse"), 0.055f)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uBrightness"), brightness)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uTime"), time)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uNormalStrength"), if (save.settings.quality >= 2) 1.35f else 0.7f)
-        GLES30.glUniform1i(GLES30.glGetUniformLocation(p, "uQuality"), save.settings.quality)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSonarRange"), if (s.isSonarOn()) s.sonarRange() else 0f)
+        GLES30.glUniform3f(u(p, "uFogColor"), t.fogR, t.fogG, t.fogB)
+        GLES30.glUniform1f(u(p, "uFogDensity"), fogDensity)
+        GLES30.glUniform3f(u(p, "uVeinColor"), t.veinR, t.veinG, t.veinB)
+        GLES30.glUniform1f(u(p, "uVeinPulse"), 0.055f)
+        GLES30.glUniform1f(u(p, "uBrightness"), brightness)
+        GLES30.glUniform1f(u(p, "uTime"), time)
+        GLES30.glUniform1f(u(p, "uNormalStrength"), if (save.settings.quality >= 2) 1.35f else 0.7f)
+        GLES30.glUniform1i(u(p, "uQuality"), save.settings.quality)
+        GLES30.glUniform1f(u(p, "uSonarRange"), if (s.isSonarOn()) s.sonarRange() else 0f)
         // Linterna de carburo: con fuerza 0 el shader la ignora entera.
         val fuerza = s.linternaFuerza()
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uSpotDir"), camDirX, camDirY, camDirZ)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotPower"), fuerza * 2.6f)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotRange"), radius * 2.6f)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotCos"), 0.90f)
+        GLES30.glUniform3f(u(p, "uSpotDir"), camDirX, camDirY, camDirZ)
+        GLES30.glUniform1f(u(p, "uSpotPower"), fuerza * 2.6f)
+        GLES30.glUniform1f(u(p, "uSpotRange"), radius * 2.6f)
+        GLES30.glUniform1f(u(p, "uSpotCos"), 0.90f)
         subirLuces(p)
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uSonarColor"), 0.35f, 0.85f, 1.0f)
+        GLES30.glUniform3f(u(p, "uSonarColor"), 0.35f, 0.85f, 1.0f)
 
         GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D_ARRAY, albedoTex)
-        GLES30.glUniform1i(GLES30.glGetUniformLocation(p, "uAlbedo"), 0)
+        GLES30.glUniform1i(u(p, "uAlbedo"), 0)
         GLES30.glActiveTexture(GLES30.GL_TEXTURE1)
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D_ARRAY, normalTex)
-        GLES30.glUniform1i(GLES30.glGetUniformLocation(p, "uNormalMap"), 1)
+        GLES30.glUniform1i(u(p, "uNormalMap"), 1)
 
         GLES30.glBindVertexArray(worldVao[0])
         GLES30.glDrawElements(GLES30.GL_TRIANGLES, worldIndexCount, GLES30.GL_UNSIGNED_INT, 0)
@@ -1356,31 +1520,33 @@ class CaveRenderer(
         // ------------------------------------------------------- draw
         val p = propProg
         GLES30.glUseProgram(p)
-        GLES30.glUniformMatrix4fv(GLES30.glGetUniformLocation(p, "uViewProj"), 1, false, viewProj, 0)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uTime"), time)
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uCamPos"), px, s.alturaCamara(), pz)
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uLightColor"), lr, lg, lb)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightRadius"), radius)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightIntensity"), 2.45f * flicker)
+        GLES30.glUniformMatrix4fv(u(p, "uViewProj"), 1, false, viewProj, 0)
+        GLES30.glUniform1f(u(p, "uTime"), time)
+        GLES30.glUniform3f(u(p, "uCamPos"), px, s.alturaCamara(), pz)
+        GLES30.glUniform3f(u(p, "uLightColor"), lr, lg, lb)
+        GLES30.glUniform1f(u(p, "uLightRadius"), radius)
+        GLES30.glUniform1f(u(p, "uLightIntensity"), LUZ_JUGADOR * flicker)
         val t = s.theme
         GLES30.glUniform3f(
-            GLES30.glGetUniformLocation(p, "uAmbient"),
-            t.ambientR + ambBoost, t.ambientG + ambBoost, t.ambientB + ambBoost
+            u(p, "uAmbient"),
+            (t.ambientR + ambBoost) * AMBIENTE,
+            (t.ambientG + ambBoost) * AMBIENTE,
+            (t.ambientB + ambBoost) * AMBIENTE
         )
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uFogColor"), t.fogR, t.fogG, t.fogB)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uFogDensity"), fogDensity)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uBrightness"), brightness)
+        GLES30.glUniform3f(u(p, "uFogColor"), t.fogR, t.fogG, t.fogB)
+        GLES30.glUniform1f(u(p, "uFogDensity"), fogDensity)
+        GLES30.glUniform1f(u(p, "uBrightness"), brightness)
 
         val fuerza = s.linternaFuerza()
-        val spotDir = GLES30.glGetUniformLocation(p, "uSpotDir")
+        val spotDir = u(p, "uSpotDir")
         GLES30.glUniform3f(spotDir, camDirX, camDirY, camDirZ)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotPower"), fuerza * 2.6f)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotRange"), radius * 2.6f)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uSpotCos"), 0.90f)
+        GLES30.glUniform1f(u(p, "uSpotPower"), fuerza * 2.6f)
+        GLES30.glUniform1f(u(p, "uSpotRange"), radius * 2.6f)
+        GLES30.glUniform1f(u(p, "uSpotCos"), 0.90f)
         subirLuces(p)
 
-        GLES30.glUniform1i(GLES30.glGetUniformLocation(p, "uQuality"), save.settings.quality)
-        val material = GLES30.glGetUniformLocation(p, "uMaterial")
+        GLES30.glUniform1i(u(p, "uQuality"), save.settings.quality)
+        val material = u(p, "uMaterial")
         GLES30.glUniform1i(material, 0)
         cone.draw(); stalactite.draw(); boulder.draw(); torso.draw(); cabeza.draw(); brazo.draw()
         GLES30.glUniform1i(material, 1)
@@ -1452,10 +1618,10 @@ class CaveRenderer(
 
         val p = decalProg
         GLES30.glUseProgram(p)
-        GLES30.glUniformMatrix4fv(GLES30.glGetUniformLocation(p, "uViewProj"), 1, false, viewProj, 0)
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uCamPos"), s.posX, s.alturaCamara(), s.posZ)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uFogDensity"), fogDensity)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uBrightness"), brightness)
+        GLES30.glUniformMatrix4fv(u(p, "uViewProj"), 1, false, viewProj, 0)
+        GLES30.glUniform3f(u(p, "uCamPos"), s.posX, s.alturaCamara(), s.posZ)
+        GLES30.glUniform1f(u(p, "uFogDensity"), fogDensity)
+        GLES30.glUniform1f(u(p, "uBrightness"), brightness)
 
         GLES30.glEnable(GLES30.GL_BLEND)
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
@@ -1530,15 +1696,17 @@ class CaveRenderer(
 
         val p = armsProg
         GLES30.glUseProgram(p)
-        GLES30.glUniformMatrix4fv(GLES30.glGetUniformLocation(p, "uProj"), 1, false, armProj, 0)
-        GLES30.glUniformMatrix4fv(GLES30.glGetUniformLocation(p, "uArmL"), 1, false, armMatL, 0)
-        GLES30.glUniformMatrix4fv(GLES30.glGetUniformLocation(p, "uArmR"), 1, false, armMatR, 0)
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uLightColor"), lr, lg, lb)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uLightIntensity"), 1.15f * flicker)
+        GLES30.glUniformMatrix4fv(u(p, "uProj"), 1, false, armProj, 0)
+        GLES30.glUniformMatrix4fv(u(p, "uArmL"), 1, false, armMatL, 0)
+        GLES30.glUniformMatrix4fv(u(p, "uArmR"), 1, false, armMatR, 0)
+        GLES30.glUniform3f(u(p, "uLightColor"), lr, lg, lb)
+        GLES30.glUniform1f(u(p, "uLightIntensity"), 1.15f * flicker)
         val t = s.theme
         GLES30.glUniform3f(
-            GLES30.glGetUniformLocation(p, "uAmbient"),
-            t.ambientR + ambBoost, t.ambientG + ambBoost, t.ambientB + ambBoost
+            u(p, "uAmbient"),
+            (t.ambientR + ambBoost) * AMBIENTE,
+            (t.ambientG + ambBoost) * AMBIENTE,
+            (t.ambientB + ambBoost) * AMBIENTE
         )
         // El guante decide el DETALLE (malla, ceniza, gema...) y la skin decide
         // los colores de la piel y del traje. Son dos cosmeticos distintos y se
@@ -1546,15 +1714,15 @@ class CaveRenderer(
         val style = s.stats.gloveStyle
         val skin = sRgbLineal(s.stats.skinTint)
         val cloth = sRgbLineal(s.stats.suitTint)
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uSkin"), skin[0], skin[1], skin[2])
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uCloth"), cloth[0], cloth[1], cloth[2])
-        GLES30.glUniform1i(GLES30.glGetUniformLocation(p, "uSkinStyle"), s.stats.skinStyle)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uBrightness"), brightness)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uTime"), time)
-        GLES30.glUniform1i(GLES30.glGetUniformLocation(p, "uStyle"), style)
+        GLES30.glUniform3f(u(p, "uSkin"), skin[0], skin[1], skin[2])
+        GLES30.glUniform3f(u(p, "uCloth"), cloth[0], cloth[1], cloth[2])
+        GLES30.glUniform1i(u(p, "uSkinStyle"), s.stats.skinStyle)
+        GLES30.glUniform1f(u(p, "uBrightness"), brightness)
+        GLES30.glUniform1f(u(p, "uTime"), time)
+        GLES30.glUniform1i(u(p, "uStyle"), style)
         val arma = colorDeArma(save.armaEquipada)
         GLES30.glUniform3f(
-            GLES30.glGetUniformLocation(p, "uArma"), arma[0], arma[1], arma[2]
+            u(p, "uArma"), arma[0], arma[1], arma[2]
         )
 
         GLES30.glBindVertexArray(armsVao[0])
@@ -1565,11 +1733,11 @@ class CaveRenderer(
     private fun drawOverlay(s: GameSession, theme: CaveTheme, brightness: Float) {
         val p = overlayProg
         GLES30.glUseProgram(p)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uStrength"), 0.62f)
-        GLES30.glUniform3f(GLES30.glGetUniformLocation(p, "uTintColor"), theme.fogR, theme.fogG, theme.fogB)
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uTintAmount"), 0.30f)
+        GLES30.glUniform1f(u(p, "uStrength"), 0.62f)
+        GLES30.glUniform3f(u(p, "uTintColor"), theme.fogR, theme.fogG, theme.fogB)
+        GLES30.glUniform1f(u(p, "uTintAmount"), 0.30f)
         val lowHp = if (s.healthFraction() < 0.28f) (0.28f - s.healthFraction()) * 1.7f else 0f
-        GLES30.glUniform1f(GLES30.glGetUniformLocation(p, "uHurt"), max(hurtFlash * 0.55f, lowHp))
+        GLES30.glUniform1f(u(p, "uHurt"), max(hurtFlash * 0.55f, lowHp))
 
         GLES30.glEnable(GLES30.GL_BLEND)
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)

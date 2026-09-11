@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
-import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -31,7 +30,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // La bandera de pantalla siempre prendida NO se pone aca: la maneja
+        // MggxApp segun donde este el jugador (ver AhorroDeEnergia). Puesta
+        // aca se prendia al arrancar y no se apagaba nunca, ni en la tienda ni
+        // en los ajustes.
         hideSystemBars()
 
         save = SaveData.get(this)

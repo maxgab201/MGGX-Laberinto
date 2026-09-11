@@ -162,6 +162,11 @@ object MazeGenerator {
             maze.ladder.fill(false)
         }
 
+        // El agua va DESPUES del relieve: la napa se calcula sobre las alturas
+        // ya definitivas, que es lo que hace que los charcos caigan justo en
+        // los pozos en vez de en cualquier lado.
+        maze.waterY = AguaDeLaCueva.nivelDeAgua(maze, level, rnd)
+
         val populated = populate(maze, level, rnd, theme)
         return populated.copy(seed = seed)
     }

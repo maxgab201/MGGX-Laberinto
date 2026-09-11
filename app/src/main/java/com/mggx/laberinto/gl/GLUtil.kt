@@ -90,3 +90,50 @@ class IntList(initial: Int = 4096) {
     fun clear() { size = 0 }
     fun toArray(): IntArray = data.copyOf(size)
 }
+
+/**
+ * Cache de posiciones de uniforms.
+ *
+ * `glGetUniformLocation` no es gratis: cada llamada cruza a JNI y le hace al
+ * driver una busqueda por NOMBRE (string) dentro de la tabla del programa. El
+ * renderer hacia ~62 de esas por cuadro, o sea unas 3.700 por segundo a 60
+ * fps, para preguntar 62 veces lo mismo: la posicion de un uniform no cambia
+ * nunca mientras el programa siga enlazado.
+ *
+ * Aca se pregunta una sola vez por nombre y despues sale de un HashMap. En un
+ * telefono eso no se nota tanto en cuadros por segundo como en BATERIA: es
+ * trabajo de CPU que se hace en el hilo de GL, cuadro tras cuadro, sin que
+ * cambie ningun resultado.
+ *
+ * La busqueda entra por parametro ([buscar]) en vez de llamar a GLES30 aca
+ * adentro: asi esta clase es aritmetica pura y se puede verificar en un test
+ * de JVM, donde las llamadas a GLES30 no hacen nada de verdad.
+ *
+ * IMPORTANTE: cuando se pierde el contexto de GL los programas se vuelven a
+ * crear con ids nuevos, y una posicion vieja apuntaria a cualquier lado. Por
+ * eso [limpiar] se llama en `onSurfaceCreated`.
+ */
+class UniformCache {
+
+    private val porPrograma = HashMap<Int, HashMap<String, Int>>()
+
+    /** Cuantas veces se fue de verdad a preguntarle al driver. Lo mira el test. */
+    var consultasReales = 0
+        private set
+
+    fun loc(programa: Int, nombre: String, buscar: (Int, String) -> Int): Int {
+        val mapa = porPrograma.getOrPut(programa) { HashMap() }
+        val cacheado = mapa[nombre]
+        if (cacheado != null) return cacheado
+        consultasReales++
+        val loc = buscar(programa, nombre)
+        mapa[nombre] = loc
+        return loc
+    }
+
+    /** Se llama al recrear el contexto de GL: los ids de programa cambiaron. */
+    fun limpiar() {
+        porPrograma.clear()
+        consultasReales = 0
+    }
+}

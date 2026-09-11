@@ -7,6 +7,27 @@
 
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!--
+        El juego entero anda SIN internet: la cueva, las texturas, los modelos,
+        la musica y los efectos se generan por codigo, y el perfil vive en el
+        telefono. Lo unico que necesita red es el multijugador, que habla con
+        el relay de Firebase.
+
+        Los dos permisos se declaran aca aunque la libreria de Firebase ya los
+        traiga en su propio manifest y se mezclen solos. Un permiso que entra
+        escondido por una dependencia es un permiso que nadie sabe que esta:
+        no se ve leyendo el manifest del proyecto, y el dia que se cambie de
+        servicio se rompe sin que nadie entienda por que. Aca queda escrito
+        que los pedimos nosotros y para que.
+
+        ACCESS_NETWORK_STATE es el que permite preguntar si hay red ANTES de
+        abrir una sala (ver PuedeJugarEnRed). Sin el, Firebase offline no
+        falla: guarda todo en una cola local y la sala se queda esperando para
+        siempre sin decir nada.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:name=".GameApp"
         android:allowBackup="true"

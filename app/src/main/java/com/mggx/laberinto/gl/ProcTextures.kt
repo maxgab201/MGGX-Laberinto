@@ -334,91 +334,125 @@ object ProcTextures {
 
         val albedo = ByteArray(size * size * 4 * LAYERS)
         val normal = ByteArray(size * size * 4 * LAYERS)
-        var ai = 0
-        var ni = 0
 
+        // Las cuatro capas se calculan EN PARALELO.
+        //
+        // Esto no es micro-optimizacion: medido en JVM de escritorio, generar
+        // las texturas tardaba 358 ms en calidad alta y 722 ms en ultra, y en
+        // un telefono es varias veces eso. Peor todavia, corre en el HILO DE
+        // OPENGL al preparar el nivel, asi que ese tiempo es la pantalla
+        // congelada al bajar a una cueva de bioma nuevo.
+        //
+        // Las capas son independientes entre si: cada una escribe su propio
+        // pedazo de los arrays y no lee el de las otras, asi que repartirlas no
+        // necesita ningun candado y el resultado es byte por byte el mismo que
+        // secuencial (lo verifica TexturasTest).
+        val hilos = ArrayList<Thread>(LAYERS)
+        for (layer in 0 until LAYERS) {
+            hilos.add(
+                Thread {
+                    capa(layer, size, per, seed, theme, albedo, normal)
+                }.apply { start() }
+            )
+        }
+        for (t in hilos) t.join()
+
+        return Pixels(size, albedo, normal)
+    }
+
+    /**
+     * Calcula una capa entera (campo de altura, albedo y mapa de normales) y la
+     * escribe en su pedazo de [albedo] y [normal].
+     *
+     * Los indices se calculan a partir de [layer] en vez de llevar un contador
+     * corrido: es lo que permite que cuatro hilos escriban a la vez sin
+     * pisarse, porque cada uno toca un rango distinto y ninguno lee el del otro.
+     */
+    private fun capa(
+        layer: Int, size: Int, per: Int, seed: Int, theme: CaveTheme,
+        albedo: ByteArray, normal: ByteArray
+    ) {
+        val base = layer * size * size * 4
         val h = FloatArray(size * size)
 
-        for (layer in 0 until LAYERS) {
-            // 1) campo de altura de la capa
-            for (y in 0 until size) {
-                val v = y.toFloat() / size
-                for (x in 0 until size) {
-                    val u = x.toFloat() / size
-                    h[y * size + x] = height(layer, u, v, per, seed, theme.roughness, theme.patron)
-                }
-            }
-
-            // 2) albedo tenido por el tema
-            val (cr, cg, cb) = when (layer) {
-                LAYER_WALL -> Triple(theme.rockR, theme.rockG, theme.rockB)
-                LAYER_FLOOR -> Triple(theme.floorR, theme.floorG, theme.floorB)
-                LAYER_CEIL -> Triple(theme.rockR * 0.78f, theme.rockG * 0.78f, theme.rockB * 0.8f)
-                else -> Triple(theme.veinR * 0.5f, theme.veinG * 0.5f, theme.veinB * 0.5f)
-            }
-            for (y in 0 until size) {
-                val v = y.toFloat() / size
-                for (x in 0 until size) {
-                    val u = x.toFloat() / size
-                    val hv = h[y * size + x]
-                    // Variacion de tono ligada a la altura: hondo = mas oscuro
-                    val shade = 0.46f + hv * 0.92f
-                    val grain = (hash2(x, y, seed + 3) - 0.5f) * 0.06f
-                    val vm = if (layer == LAYER_VEIN) 0.85f else veinMask(u, v, per, seed)
-
-                    // Manchones grandes de tono, del tamano de varias baldosas
-                    // juntas. La roca de verdad no es de un solo color parejo:
-                    // sin esto, una pared larga se lee como una unica lamina
-                    // repetida, que es lo que hacia que la cueva se viera
-                    // "de plastico" aunque el relieve estuviera bien.
-                    val mancha = fbm(u * 2f, v * 2f, 3, 2, seed + 97)
-                    val tinte = 0.84f + mancha * 0.34f
-                    // Ademas de aclarar y oscurecer, los manchones tiran un
-                    // poco hacia el color de la veta del bioma: es lo que le da
-                    // aire de mineral y no de cemento pintado.
-                    val hacia = ((mancha - 0.5f) * 0.22f).coerceIn(0f, 0.22f)
-
-                    var r = (cr * (1f - hacia) + theme.veinR * hacia) * shade * tinte + grain
-                    var g = (cg * (1f - hacia) + theme.veinG * hacia) * shade * tinte + grain
-                    var b = (cb * (1f - hacia) + theme.veinB * hacia) * shade * tinte + grain
-                    // La veta tine apenas el albedo de alrededor
-                    r = r * (1f - vm * 0.28f) + theme.veinR * vm * 0.28f
-                    g = g * (1f - vm * 0.28f) + theme.veinG * vm * 0.28f
-                    b = b * (1f - vm * 0.28f) + theme.veinB * vm * 0.28f
-                    albedo[ai++] = toByte(r); albedo[ai++] = toByte(g)
-                    albedo[ai++] = toByte(b); albedo[ai++] = toByte(vm)
-                }
-            }
-
-            // 3) mapa de normales por diferencias centrales (con envolvente)
-            val strength = when (layer) {
-                LAYER_WALL -> 3.3f
-                LAYER_FLOOR -> 2.1f
-                LAYER_CEIL -> 2.7f
-                else -> 1.2f
-            }
-            for (y in 0 until size) {
-                for (x in 0 until size) {
-                    val xm = (x - 1 + size) % size
-                    val xp = (x + 1) % size
-                    val ym = (y - 1 + size) % size
-                    val yp = (y + 1) % size
-                    val dx = (h[y * size + xp] - h[y * size + xm]) * strength
-                    val dy = (h[yp * size + x] - h[ym * size + x]) * strength
-                    var nx = -dx
-                    var ny = -dy
-                    var nz = 1f
-                    val len = sqrt(nx * nx + ny * ny + nz * nz)
-                    nx /= len; ny /= len; nz /= len
-                    normal[ni++] = toByte(nx * 0.5f + 0.5f)
-                    normal[ni++] = toByte(ny * 0.5f + 0.5f)
-                    normal[ni++] = toByte(nz * 0.5f + 0.5f)
-                    normal[ni++] = toByte(h[y * size + x])   // altura: la usa el especular
-                }
+        // 1) campo de altura de la capa
+        for (y in 0 until size) {
+            val v = y.toFloat() / size
+            for (x in 0 until size) {
+                val u = x.toFloat() / size
+                h[y * size + x] = height(layer, u, v, per, seed, theme.roughness, theme.patron)
             }
         }
 
-        return Pixels(size, albedo, normal)
+        // 2) albedo tenido por el tema
+        val (cr, cg, cb) = when (layer) {
+            LAYER_WALL -> Triple(theme.rockR, theme.rockG, theme.rockB)
+            LAYER_FLOOR -> Triple(theme.floorR, theme.floorG, theme.floorB)
+            LAYER_CEIL -> Triple(theme.rockR * 0.78f, theme.rockG * 0.78f, theme.rockB * 0.8f)
+            else -> Triple(theme.veinR * 0.5f, theme.veinG * 0.5f, theme.veinB * 0.5f)
+        }
+        var ai = base
+        for (y in 0 until size) {
+            val v = y.toFloat() / size
+            for (x in 0 until size) {
+                val u = x.toFloat() / size
+                val hv = h[y * size + x]
+                // Variacion de tono ligada a la altura: hondo = mas oscuro
+                val shade = 0.46f + hv * 0.92f
+                val grain = (hash2(x, y, seed + 3) - 0.5f) * 0.06f
+                val vm = if (layer == LAYER_VEIN) 0.85f else veinMask(u, v, per, seed)
+
+                // Manchones grandes de tono, del tamano de varias baldosas
+                // juntas. La roca de verdad no es de un solo color parejo:
+                // sin esto, una pared larga se lee como una unica lamina
+                // repetida, que es lo que hacia que la cueva se viera
+                // "de plastico" aunque el relieve estuviera bien.
+                val mancha = fbm(u * 2f, v * 2f, 3, 2, seed + 97)
+                val tinte = 0.84f + mancha * 0.34f
+                // Ademas de aclarar y oscurecer, los manchones tiran un
+                // poco hacia el color de la veta del bioma: es lo que le da
+                // aire de mineral y no de cemento pintado.
+                val hacia = ((mancha - 0.5f) * 0.22f).coerceIn(0f, 0.22f)
+
+                var r = (cr * (1f - hacia) + theme.veinR * hacia) * shade * tinte + grain
+                var g = (cg * (1f - hacia) + theme.veinG * hacia) * shade * tinte + grain
+                var b = (cb * (1f - hacia) + theme.veinB * hacia) * shade * tinte + grain
+                // La veta tine apenas el albedo de alrededor
+                r = r * (1f - vm * 0.28f) + theme.veinR * vm * 0.28f
+                g = g * (1f - vm * 0.28f) + theme.veinG * vm * 0.28f
+                b = b * (1f - vm * 0.28f) + theme.veinB * vm * 0.28f
+                albedo[ai++] = toByte(r); albedo[ai++] = toByte(g)
+                albedo[ai++] = toByte(b); albedo[ai++] = toByte(vm)
+            }
+        }
+
+        // 3) mapa de normales por diferencias centrales (con envolvente)
+        val strength = when (layer) {
+            LAYER_WALL -> 3.3f
+            LAYER_FLOOR -> 2.1f
+            LAYER_CEIL -> 2.7f
+            else -> 1.2f
+        }
+        var ni = base
+        for (y in 0 until size) {
+            for (x in 0 until size) {
+                val xm = (x - 1 + size) % size
+                val xp = (x + 1) % size
+                val ym = (y - 1 + size) % size
+                val yp = (y + 1) % size
+                val dx = (h[y * size + xp] - h[y * size + xm]) * strength
+                val dy = (h[yp * size + x] - h[ym * size + x]) * strength
+                var nx = -dx
+                var ny = -dy
+                var nz = 1f
+                val len = sqrt(nx * nx + ny * ny + nz * nz)
+                nx /= len; ny /= len; nz /= len
+                normal[ni++] = toByte(nx * 0.5f + 0.5f)
+                normal[ni++] = toByte(ny * 0.5f + 0.5f)
+                normal[ni++] = toByte(nz * 0.5f + 0.5f)
+                normal[ni++] = toByte(h[y * size + x])   // altura: la usa el especular
+            }
+        }
     }
 
     /** Sube los pixeles ya calculados a dos GL_TEXTURE_2D_ARRAY. */

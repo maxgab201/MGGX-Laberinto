@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mggx.laberinto.core.AhorroDeEnergia
 import com.mggx.laberinto.core.SaveData
 import com.mggx.laberinto.game.EffectType
 import com.mggx.laberinto.game.GameSession
@@ -86,13 +87,21 @@ fun GameHud(
     dispatch: (() -> Unit) -> Unit
 ) {
     val s = save.settings
-    // Refresco del HUD a ~30 Hz: suficiente para las barras y baratisimo.
+    // Refresco del HUD a ~30 Hz jugando, y mucho mas lento en pausa.
+    //
+    // Con el menu de pausa abierto la partida esta congelada: no cambia ni una
+    // barra de vida ni una casilla del mapa, asi que rehacer el dibujo 30 veces
+    // por segundo es trabajo tirado. Y el minimapa no es barato: recorre 169
+    // casillas y dibuja los bordes de cada una.
     var uiTick by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
+    val ritmoHud = AhorroDeEnergia.intervaloHudMs(
+        if (paused) AhorroDeEnergia.Donde.PAUSA else AhorroDeEnergia.Donde.JUGANDO
+    ) * 1_000_000L
+    LaunchedEffect(ritmoHud) {
         var last = 0L
         while (true) {
             withFrameNanos { t ->
-                if (t - last > 33_000_000L) { last = t; uiTick++ }
+                if (t - last > ritmoHud) { last = t; uiTick++ }
             }
         }
     }
@@ -939,10 +948,14 @@ private fun Minimap(session: GameSession, sem: Semantics, tick: Int, modifier: M
                     val f = fundido(p)
                     if (f <= 0.01f) continue
                     // Por donde pasaste se ve calido; lo que te revelo algun
-                    // poder pero no pisaste, apagado.
-                    val col =
-                        if (session.walked[i]) Cave.AmberDeep.copy(alpha = 0.55f * f)
-                        else Cave.StoneHi.copy(alpha = 0.5f * f)
+                    // poder pero no pisaste, apagado. El agua va en frio: es
+                    // informacion que importa (chapotear hace ruido y te oyen),
+                    // y de un vistazo tiene que distinguirse del piso seco.
+                    val col = when {
+                        m.hayAgua(gx, gy) -> Cave.Ice.copy(alpha = 0.42f * f)
+                        session.walked[i] -> Cave.AmberDeep.copy(alpha = 0.55f * f)
+                        else -> Cave.StoneHi.copy(alpha = 0.5f * f)
+                    }
                     rotate(yaw, p) {
                         drawRect(
                             col,

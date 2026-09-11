@@ -1,6 +1,7 @@
 package com.mggx.laberinto.game
 
 import com.mggx.laberinto.core.SaveData
+import com.mggx.laberinto.maze.AguaDeLaCueva
 import com.mggx.laberinto.maze.CaveTheme
 import com.mggx.laberinto.maze.Maze
 import com.mggx.laberinto.maze.MazeGenerator
@@ -543,6 +544,9 @@ class GameSession(
         if (runBurstLeft > 0f) speed *= (1f + stats.startBurstSpeed)
         // El poder Reptador saca la penalidad de ir agachado.
         speed *= if (stats.posturaLibre) 1f else postura.velocidad
+        // El agua frena, pero poco: es ambiente y un estorbo chico, no un
+        // castigo (ver AguaDeLaCueva.frenoPorAgua).
+        speed *= AguaDeLaCueva.frenoPorAgua(honduraDelAgua())
 
         val wantsRun = (input.running || save.settings.autoRun) && stamina > 1f && postura.puedeCorrer
         val moving = abs(input.moveX) > 0.02f || abs(input.moveY) > 0.02f
@@ -805,6 +809,17 @@ class GameSession(
         }
         return false
     }
+
+    /**
+     * Cuantos metros de agua te tapan los pies ahora mismo. Cero en seco.
+     *
+     * Lo usan el freno al caminar, el ruido que hacen tus pasos y el HUD.
+     */
+    fun honduraDelAgua(): Float =
+        AguaDeLaCueva.hondura(maze, maze.waterY, gridX(), gridY())
+
+    /** Si estas metido en el agua. */
+    fun enElAgua(): Boolean = honduraDelAgua() > 0f
 
     private fun markWalked() {
         val i = maze.index(gridX(), gridY())
@@ -1110,8 +1125,13 @@ class GameSession(
         if (enemies.isEmpty()) return
         // Arrastrandose con Paso de Sombra directamente no te ven.
         val invisible = stats.invisibleArrastrandose && postura == Postura.ARRASTRANDOSE
-        val ruidoso = (input.running || save.settings.autoRun) &&
-            (abs(input.moveX) > 0.02f || abs(input.moveY) > 0.02f) && postura.puedeCorrer
+        val moviendose = abs(input.moveX) > 0.02f || abs(input.moveY) > 0.02f
+        // Chapotear hace tanto ruido como correr. Es lo que le da sentido de
+        // juego al agua y no solo de decorado: un tramo inundado es un tramo
+        // donde el sigilo no te sirve, y eso cambia por donde elegis ir.
+        val chapoteando = AguaDeLaCueva.haceRuido(honduraDelAgua(), moviendose)
+        val ruidoso = chapoteando ||
+            ((input.running || save.settings.autoRun) && moviendose && postura.puedeCorrer)
         val r = red
         // En una sala los bichos los mueve el anfitrion y los demas copian.
         // Jugando solo no hay a quien copiarle, asi que los mueve uno.

@@ -128,6 +128,48 @@ class TexturasTest {
      * lo largo de todo el pasillo.
      */
     @Test
+    fun generarDaSiempreExactamenteLoMismo() {
+        // Las cuatro capas se calculan en hilos distintos (ver
+        // ProcTextures.generate). Eso es correcto solo si cada hilo escribe su
+        // propio pedazo y ninguno lee el del otro: si se pisaran, el resultado
+        // cambiaria de una corrida a la otra y la cueva se veria distinta cada
+        // vez que bajas, o directamente con franjas de basura.
+        //
+        // Repetirlo varias veces es a proposito: una carrera entre hilos casi
+        // nunca falla en el primer intento.
+        val tema = com.mggx.laberinto.maze.CaveTheme.forLevel(9)
+        val referencia = ProcTextures.generate(tema, 1)
+        repeat(6) { intento ->
+            val otra = ProcTextures.generate(tema, 1)
+            assertEquals(referencia.size, otra.size)
+            assertTrue(
+                "el albedo salio distinto en el intento $intento: hay hilos pisandose",
+                referencia.albedo.contentEquals(otra.albedo)
+            )
+            assertTrue(
+                "el mapa de normales salio distinto en el intento $intento",
+                referencia.normal.contentEquals(otra.normal)
+            )
+        }
+    }
+
+    @Test
+    fun todasLasCapasSeLlenan() {
+        // Si un hilo se colgara o escribiera en el rango equivocado, alguna
+        // capa quedaria en ceros y en el juego se veria como una superficie
+        // negra lisa. Un array de ceros no da ningun error.
+        val p = ProcTextures.generate(com.mggx.laberinto.maze.CaveTheme.forLevel(3), 1)
+        val porCapa = p.size * p.size * 4
+        for (capa in 0 until ProcTextures.LAYERS) {
+            var noCero = 0
+            for (i in capa * porCapa until (capa + 1) * porCapa) {
+                if (p.albedo[i].toInt() != 0) noCero++
+            }
+            assertTrue("la capa $capa quedo vacia", noCero > porCapa / 2)
+        }
+    }
+
+    @Test
     fun laTexturaCierraSinCostura() {
         for (theme in CaveTheme.entries) {
             val p = ProcTextures.generate(theme, 2)

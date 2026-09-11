@@ -1,6 +1,8 @@
 package com.mggx.laberinto.ui
 
 import android.opengl.GLSurfaceView
+import com.mggx.laberinto.core.AhorroDeEnergia
+import com.mggx.laberinto.net.PuedeJugarEnRed
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.LinearEasing
@@ -119,6 +121,31 @@ fun MggxApp(
         val vivo = screen == Screen.JUEGO || screen == Screen.LOBBY
         renderer.vitrina = screen == Screen.LOBBY
         if (vivo) glView.onResume() else glView.onPause()
+        onDispose { }
+    }
+
+    // La pantalla se fuerza prendida SOLO donde hace falta.
+    //
+    // Antes la bandera se prendia una vez al arrancar la app y no se apagaba
+    // nunca: dejabas el juego abierto en la tienda o en los ajustes y la
+    // pantalla se quedaba encendida hasta que se acababa la bateria. Jugando
+    // si hace falta (podes estar un rato largo caminando sin tocar nada, y que
+    // se apague seria insoportable) y en pausa tambien, porque leer el mapa no
+    // es estar inactivo. En los menus el telefono se apaga solo, como con
+    // cualquier otra app.
+    val donde = when {
+        screen == Screen.JUEGO && !paused -> AhorroDeEnergia.Donde.JUGANDO
+        screen == Screen.JUEGO -> AhorroDeEnergia.Donde.PAUSA
+        screen == Screen.LOBBY -> AhorroDeEnergia.Donde.VITRINA
+        else -> AhorroDeEnergia.Donde.MENU
+    }
+    DisposableEffect(donde) {
+        val ventana = (context as? android.app.Activity)?.window
+        if (AhorroDeEnergia.mantenerPantallaPrendida(donde)) {
+            ventana?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            ventana?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
         onDispose { }
     }
 
@@ -652,20 +679,19 @@ private fun abrirSala(
     }.getOrElse {
         runCatching { com.google.firebase.FirebaseApp.initializeApp(context) }.getOrNull()
     }
-    if (app == null) {
-        // Sin esto el cartel decia siempre "se compilo sin el
-        // google-services.json", que es una conclusion y no un dato: son dos
-        // problemas distintos con arreglos distintos. Si el APK viene sin la
-        // configuracion hay que recompilarlo; si la trae y aun asi Firebase no
-        // arranca, recompilar no cambia nada y el laburo esta en otro lado.
-        return null to if (appIdDeFirebase(context) == null) {
-            "Este APK se compilo sin la configuracion de Firebase " +
-                "(falta google-services.json). Hay que compilarlo de nuevo con " +
-                "el archivo puesto: el multijugador no puede andar."
-        } else {
-            "La configuracion de Firebase esta en el APK, pero el SDK no " +
-                "arranco igual. Probá cerrar la app del todo y volver a abrirla."
-        }
+
+    // Las tres cosas que pueden faltar, evaluadas juntas y en orden (ver
+    // PuedeJugarEnRed). Antes NO se miraba la red, y eso era lo peor de los
+    // tres casos: Firebase sin internet no falla, guarda todo en una cola
+    // local y promete mandarlo "cuando se pueda". El jugador veia una sala
+    // que se quedaba esperando para siempre, sin cartel y sin error.
+    val motivo = PuedeJugarEnRed.evaluar(
+        hayInternet = hayInternet(context),
+        configEnElApk = appIdDeFirebase(context) != null,
+        firebaseArranco = app != null
+    )
+    if (motivo != PuedeJugarEnRed.Motivo.OK) {
+        return null to PuedeJugarEnRed.mensaje(motivo)
     }
     return try {
         com.mggx.laberinto.net.TransporteFirebase(codigo) to null
@@ -677,6 +703,28 @@ private fun abrirSala(
 }
 
 /**
+ * Si el telefono tiene una red utilizable ahora mismo.
+ *
+ * No alcanza con que haya una red conectada: un wifi de hotel con portal
+ * cautivo esta "conectado" y no llega a ningun lado. `NET_CAPABILITY_VALIDATED`
+ * es Android diciendo que EL probo salir a internet por esa red y funciono.
+ *
+ * Ante la duda devuelve true: es preferible dejar intentar y que falle con el
+ * error de verdad, antes que bloquear el multijugador de alguien que si tenia
+ * internet porque una API no contesto.
+ */
+private fun hayInternet(context: android.content.Context): Boolean {
+    val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+        as? android.net.ConnectivityManager ?: return true
+    return runCatching {
+        val red = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(red) ?: return false
+        caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }.getOrDefault(true)
+}
+
+/**
  * Que ve la app de su propia configuracion de Firebase.
  *
  * Se muestra en la pantalla de multijugador cuando algo falla. Es la
@@ -685,12 +733,13 @@ private fun abrirSala(
  * el que esta registrado en la consola.
  */
 private fun diagnosticoFirebase(context: android.content.Context): String {
+    val red = if (hayInternet(context)) "SI" else "NO"
     val app = runCatching { com.google.firebase.FirebaseApp.getInstance() }.getOrNull()
-        ?: return "Firebase: NO iniciado | " +
+        ?: return "Internet: $red | Firebase: NO iniciado | " +
             "Config en el APK: ${if (appIdDeFirebase(context) != null) "SI" else "NO"} | " +
             "Paquete: ${context.packageName}"
     val o = app.options
-    return "Base: ${o.databaseUrl ?: "(ninguna)"} | " +
+    return "Internet: $red | Base: ${o.databaseUrl ?: "(ninguna)"} | " +
         "Proyecto: ${o.projectId ?: "(ninguno)"} | " +
         "Paquete: ${context.packageName}"
 }

@@ -35,6 +35,17 @@ class Maze(val cols: Int, val rows: Int) {
     /** Casillas con escalera: se puede subir y bajar por ellas. */
     val ladder = BooleanArray(gw * gh)
 
+    /**
+     * Altura del espejo de agua de la cueva, o [AguaDeLaCueva.SIN_AGUA] si
+     * esta seca. Todo lo que tenga el piso por debajo de esta altura esta
+     * inundado (ver [AguaDeLaCueva]).
+     */
+    var waterY: Float = AguaDeLaCueva.SIN_AGUA
+        internal set
+
+    /** Si esa casilla esta bajo el agua. */
+    fun hayAgua(gx: Int, gy: Int): Boolean = AguaDeLaCueva.hayAgua(this, waterY, gx, gy)
+
     fun floorY(gx: Int, gy: Int): Float =
         if (inBounds(gx, gy)) floorLevel[index(gx, gy)] * ESCALON else 0f
 
