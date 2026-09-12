@@ -1643,12 +1643,15 @@ class CaveRenderer(
                 // saldria del color del abrigo y el minero se veria como un
                 // traje vacio con un casco encima.
                 cabezaMinero.add(
-                    j.dibX, j.dibY + alto * 0.855f + balanceo, j.dibZ, alto * 0.155f,
+                    j.dibX, j.dibY + alto * 0.845f + balanceo, j.dibZ, alto * 0.150f,
                     0.66f * apagado, 0.48f * apagado, 0.36f * apagado, 0f,
                     giro, 0f, 0f, 1f
                 )
+                // El casco: a 0.105 del alto del cuerpo, o sea unos 18 cm en un
+                // minero de 1,72 m. Estaba en 0.30, que son 52 cm: se tragaba
+                // la cabeza entera y de lejos el companiero era un hongo.
                 casco.add(
-                    j.dibX, j.dibY + alto * 0.88f + balanceo, j.dibZ, alto * 0.30f,
+                    j.dibX, j.dibY + alto * 0.945f + balanceo, j.dibZ, alto * 0.105f,
                     1.00f, 0.74f, 0.16f, if (j.caido) 0.10f else 0.35f,
                     giro, 0f, 0f, 1f
                 )
@@ -1657,7 +1660,7 @@ class CaveRenderer(
                 if (!j.caido) {
                     gem.add(
                         j.dibX + sin(yr).toFloat() * 0.20f,
-                        j.dibY + alto * 0.92f + balanceo,
+                        j.dibY + alto * 0.975f + balanceo,
                         j.dibZ + cos(yr).toFloat() * 0.20f,
                         0.07f, 1f, 0.90f, 0.55f, 1.7f, 0f, 0f, 0f, 1f
                     )

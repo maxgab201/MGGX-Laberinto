@@ -102,13 +102,27 @@ object ArmsMesh {
         }
     }
 
-    /** Tubo conico a lo largo de Z, de z0 a z1 con radios r0 y r1. */
+    /**
+     * Tubo conico a lo largo de Z, de z0 a z1 con radios r0 y r1.
+     *
+     * [tapas] cierra las dos puntas con un abanico de triangulos. Por defecto
+     * va en false porque la mayoria de los tubos del juego se encadenan uno
+     * atras del otro y las puntas quedan tapadas por el siguiente, asi que
+     * cerrarlas seria geometria al pedo.
+     *
+     * Pero un tubo SUELTO sin tapas es un cano hueco: se ve el interior y la
+     * pieza se lee como una cascara partida al medio. Le paso al rollo de venda
+     * y se vio recien al mirarlo con VisorDeMallas (por numeros estaba bien: las
+     * caras que habia miraban todas para afuera, el problema era las que
+     * faltaban).
+     */
     private fun taperedTube(
         b: Builder, side: Float,
         cx: Float, cy: Float,
         z0: Float, z1: Float, r0: Float, r1: Float,
         segments: Int = 10, flatten: Float = 0.78f,
-        tag: Float = side
+        tag: Float = side,
+        tapas: Boolean = false
     ) {
         // El anillo se recorre en sentido contrario al de las cajas, asi que
         // aca la condicion del giro va al reves (lo verifica MeshWindingTest).
@@ -136,6 +150,35 @@ object ArmsMesh {
             val i2 = b.vertex(v2[0], v2[1], v2[2], n1[0], n1[1], n1[2], tag)
             val i3 = b.vertex(v3[0], v3[1], v3[2], n0[0], n0[1], n0[2], tag)
             b.quad(i0, i1, i2, i3, flip)
+        }
+
+        if (!tapas) return
+        // Las tapas: un abanico desde el centro de cada punta. La normal de
+        // cada una mira a lo largo del eje, hacia afuera del tubo.
+        for ((z, r, nz) in listOf(
+            Triple(z0, r0, -1f), Triple(z1, r1, 1f)
+        )) {
+            if (r <= 1e-5f) continue
+            val centro = b.vertex(cx * side, cy, z, 0f, 0f, nz, tag)
+            var anterior = -1
+            var primero = -1
+            for (i in 0..segments) {
+                val a = i * 2.0 * PI / segments
+                val c = cos(a).toFloat(); val sn = sin(a).toFloat()
+                val v = b.vertex(
+                    (cx + c * r) * side, cy + sn * r * flatten, z,
+                    0f, 0f, nz, tag
+                )
+                if (i == 0) { primero = v; anterior = v; continue }
+                // El sentido del anillo depende de para donde mire la tapa y
+                // de si la pieza esta espejada: con el orden al reves la tapa
+                // se ve desde adentro, o sea que no se ve.
+                val haciaAdelante = (nz > 0f) != (side < 0f)
+                if (haciaAdelante) { b.idx.add(centro); b.idx.add(anterior); b.idx.add(v) }
+                else { b.idx.add(centro); b.idx.add(v); b.idx.add(anterior) }
+                anterior = v
+            }
+            if (primero < 0) continue
         }
     }
 
@@ -284,37 +327,93 @@ object ArmsMesh {
         val s = 1f       // siempre en la mano derecha: no se espeja
         when (arma) {
             Arma.GARROTE -> {
-                taperedTube(b, s, 0f, 0f, 0.09f, -0.30f, 0.019f, 0.024f, 10, 1f, t)
-                taperedTube(b, s, 0f, 0f, -0.30f, -0.60f, 0.031f, 0.046f, 10, 1f, t)
-                // Nudos de la madera en la punta.
-                box(b, s, 0.030f, 0.014f, -0.53f, 0.012f, 0.012f, 0.020f, 0f, 0f, t)
-                box(b, s, -0.028f, -0.016f, -0.45f, 0.011f, 0.011f, 0.018f, 0f, 0f, t)
+                // Garrote de roble: mango fino, tronco que engorda y cabeza
+                // REDONDEADA y cerrada.
+                //
+                // La primera version iba engordando sin cerrar la punta, asi
+                // que era un cono hueco: en la foto se veia un megafono. Un
+                // garrote no termina en boca abierta, termina en un bollo.
+                taperedTube(b, s, 0f, 0f, 0.09f, -0.14f, 0.019f, 0.024f, 10, 1f, t, tapas = true)
+                taperedTube(b, s, 0f, 0f, -0.14f, -0.32f, 0.024f, 0.040f, 10, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.32f, -0.44f, 0.040f, 0.050f, 10, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.44f, -0.52f, 0.050f, 0.038f, 10, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.52f, -0.56f, 0.038f, 0.008f, 10, 1f, t, tapas = true)
+                // Nudos de la madera, para que no sea un tronco liso.
+                box(b, s, 0.034f, 0.016f, -0.40f, 0.014f, 0.014f, 0.022f, 0f, 0f, t)
+                box(b, s, -0.030f, -0.020f, -0.30f, 0.012f, 0.012f, 0.020f, 0f, 0f, t)
+                // El cuero que envuelve el agarre.
+                taperedTube(b, s, 0f, 0f, 0.01f, -0.06f, 0.026f, 0.026f, 10, 1f, t)
             }
             Arma.PICO -> {
-                taperedTube(b, s, 0f, 0f, 0.09f, -0.52f, 0.017f, 0.020f, 8, 1f, t)
-                // Cabeza cruzada: la punta para un lado y la pala para el otro.
-                box(b, s, 0.10f, 0f, -0.50f, 0.105f, 0.017f, 0.020f, 0f, 0f, t)
-                box(b, s, -0.10f, 0f, -0.50f, 0.105f, 0.017f, 0.020f, 0f, 0f, t)
-                box(b, s, 0.215f, 0f, -0.50f, 0.038f, 0.011f, 0.013f, 0f, 0f, t)
+                // Pico de hierro: cabo, ojo, y la cabeza CURVA.
+                //
+                // Antes la cabeza era una sola barra recta cruzando el cabo, y
+                // el conjunto se leia como una T o un signo mas. Lo que hace a
+                // un pico es que la cabeza se ARQUEA hacia adelante: se arma
+                // con tres tramos a los que se les va subiendo el `roll`, que
+                // los hace girar alrededor del eje del cabo y dibuja el arco.
+                taperedTube(b, s, 0f, 0f, 0.09f, -0.46f, 0.017f, 0.021f, 8, 1f, t, tapas = true)
+                // El ojo: el engrosamiento donde entra el cabo.
+                taperedTube(b, s, 0f, 0f, -0.44f, -0.52f, 0.030f, 0.030f, 8, 1f, t)
+                // La punta, arqueando hacia adelante en tres tramos.
+                box(b, s, 0.065f, 0f, -0.48f, 0.055f, 0.019f, 0.021f, 0f, -0.10f, t)
+                box(b, s, 0.150f, 0f, -0.48f, 0.048f, 0.015f, 0.017f, 0f, -0.26f, t)
+                box(b, s, 0.215f, 0f, -0.48f, 0.032f, 0.009f, 0.011f, 0f, -0.44f, t)
+                // La pala del otro lado: mas corta, ancha y chata.
+                box(b, s, -0.060f, 0f, -0.48f, 0.045f, 0.018f, 0.020f, 0f, 0.10f, t)
+                box(b, s, -0.125f, 0f, -0.48f, 0.032f, 0.010f, 0.034f, 0f, 0.22f, t)
             }
             Arma.AGUIJON -> {
-                taperedTube(b, s, 0f, 0f, 0.09f, -0.16f, 0.018f, 0.021f, 8, 1f, t)
-                // Guarda y hoja larga y fina, que se afina hasta la punta.
-                box(b, s, 0f, 0f, -0.17f, 0.052f, 0.013f, 0.012f, 0f, 0f, t)
-                taperedTube(b, s, 0f, 0f, -0.18f, -0.66f, 0.026f, 0.004f, 6, 0.34f, t)
+                // Estoque de cristal: puno, guarda y hoja larga que se afina
+                // hasta la punta. De las cinco, es la que ya se leia bien.
+                taperedTube(b, s, 0f, 0f, 0.09f, -0.10f, 0.018f, 0.022f, 8, 1f, t, tapas = true)
+                // El pomo, atras del puno.
+                taperedTube(b, s, 0f, 0f, 0.09f, 0.12f, 0.022f, 0.026f, 8, 1f, t, tapas = true)
+                // Guarda cruzada.
+                box(b, s, 0f, 0f, -0.125f, 0.058f, 0.014f, 0.013f, 0f, 0f, t)
+                box(b, s, 0f, 0f, -0.125f, 0.013f, 0.026f, 0.013f, 0f, 0f, t)
+                // Hoja: ancha en la base, fina en la punta.
+                taperedTube(b, s, 0f, 0f, -0.14f, -0.42f, 0.026f, 0.016f, 6, 0.30f, t)
+                taperedTube(b, s, 0f, 0f, -0.42f, -0.60f, 0.016f, 0.003f, 6, 0.30f, t)
             }
             Arma.MAZA -> {
-                taperedTube(b, s, 0f, 0f, 0.09f, -0.40f, 0.019f, 0.022f, 8, 1f, t)
-                // Bloque de basalto en la punta, con las esquinas comidas.
-                box(b, s, 0f, 0f, -0.50f, 0.058f, 0.058f, 0.085f, 0f, 0f, t)
-                box(b, s, 0f, 0f, -0.60f, 0.040f, 0.040f, 0.030f, 0f, 0f, t)
+                // Maza de basalto: cabo y una piedra OVALADA atada en la punta.
+                //
+                // Antes la cabeza era una caja, y una caja en la punta de un
+                // palo es un martillo, no una maza. Una maza de piedra es un
+                // bulto redondeado con caras irregulares.
+                taperedTube(b, s, 0f, 0f, 0.09f, -0.34f, 0.019f, 0.023f, 8, 1f, t, tapas = true)
+                // La atadura de cuero que sujeta la piedra.
+                taperedTube(b, s, 0f, 0f, -0.34f, -0.38f, 0.030f, 0.030f, 8, 1f, t)
+                // La piedra.
+                taperedTube(b, s, 0f, 0f, -0.38f, -0.44f, 0.030f, 0.062f, 8, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.44f, -0.54f, 0.062f, 0.058f, 8, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.54f, -0.60f, 0.058f, 0.014f, 8, 1f, t, tapas = true)
+                // Dos lascas saltadas, para que la piedra no sea un huevo liso.
+                box(b, s, 0.050f, 0.022f, -0.49f, 0.022f, 0.022f, 0.030f, 0f, 0f, t)
+                box(b, s, -0.044f, -0.030f, -0.47f, 0.020f, 0.020f, 0.026f, 0f, 0f, t)
             }
             Arma.HACHA -> {
-                taperedTube(b, s, 0f, 0f, 0.09f, -0.50f, 0.018f, 0.021f, 8, 1f, t)
-                // Hoja ancha de un solo filo, montada al costado del cabo.
-                box(b, s, 0.085f, 0f, -0.46f, 0.085f, 0.014f, 0.062f, 0f, 0f, t)
-                box(b, s, 0.165f, 0f, -0.46f, 0.020f, 0.006f, 0.072f, 0f, 0f, t)
-                box(b, s, -0.030f, 0f, -0.46f, 0.030f, 0.020f, 0.030f, 0f, 0f, t)
+                // Hacha de vetagris: cabo, ojo y una HOJA ancha y CHATA.
+                //
+                // Antes la hoja era una caja gorda montada al costado, y eso es
+                // un martillo de un lado. Una hoja de hacha es una lamina: fina
+                // en un eje y ancha en los otros dos, abriendose hacia el filo.
+                // Se arma con tres placas que van adelgazando y ensanchandose.
+                taperedTube(b, s, 0f, 0f, 0.09f, -0.44f, 0.018f, 0.022f, 8, 1f, t, tapas = true)
+                taperedTube(b, s, 0f, 0f, -0.42f, -0.50f, 0.031f, 0.031f, 8, 1f, t)
+                // La hoja: fina en Y, ANCHA en Z, abriendose hacia afuera en X.
+                //
+                // La primera version era fina pero chica, y de lejos se leia
+                // como un bloque: lo que hace a un hacha no es solo que la hoja
+                // sea delgada, es que sea GRANDE. Con 10 cm de alto parecia un
+                // martillo con una tapa; con 22 se ve el abanico del filo.
+                box(b, s, 0.055f, 0f, -0.460f, 0.040f, 0.011f, 0.072f, 0f, 0f, t)
+                box(b, s, 0.112f, 0f, -0.460f, 0.032f, 0.007f, 0.098f, 0f, 0f, t)
+                // El filo, casi una lamina.
+                box(b, s, 0.156f, 0f, -0.460f, 0.014f, 0.003f, 0.108f, 0f, 0f, t)
+                // La cotilla del otro lado, para equilibrar la silueta.
+                box(b, s, -0.048f, 0f, -0.460f, 0.024f, 0.020f, 0.026f, 0f, 0f, t)
             }
         }
     }
@@ -424,39 +523,104 @@ object ArmsMesh {
                 box(b, s, 0f, 0f, -0.218f, 0.019f, 0.019f, 0.014f, 0f, 0f, t)
             }
             Objeto.ANTORCHA -> {
-                // Mango, trapo embreado y llama.
-                taperedTube(b, s, 0f, 0f, 0.06f, -0.16f, 0.018f, 0.021f, 8, 1f, t)
-                taperedTube(b, s, 0f, 0f, -0.16f, -0.235f, 0.040f, 0.034f, 10, 1f, t)
-                taperedTube(b, s, 0f, 0f, -0.235f, -0.335f, 0.034f, 0.004f, 8, 1f, t)
+                // Mango fino, TRAPO EMBREADO gordo y llama corta.
+                //
+                // Dos cosas que se corrigieron mirandola: antes el trapo era un
+                // cono que se afinaba y la llama una aguja, y junto se leia como
+                // una LANZA. Lo que hace a una antorcha es que la cabeza sea
+                // mucho mas gorda que el palo y termine redonda.
+                //
+                // Y el largo: la primera version medía medio metro de punta a
+                // punta. Una antorcha que llevas en la mano mide unos 35 cm; con
+                // 50 te tapa media pantalla. Lo agarro el test de tamano, no el
+                // ojo: en la foto, sola y centrada, se veia bien.
+                taperedTube(b, s, 0f, 0f, 0.05f, -0.09f, 0.016f, 0.019f, 8, 1f, t, tapas = true)
+                // El anillo que ata el trapo al palo.
+                taperedTube(b, s, 0f, 0f, -0.09f, -0.115f, 0.029f, 0.029f, 10, 1f, t)
+                // El bollo de trapo: gordo y redondeado en las dos puntas.
+                taperedTube(b, s, 0f, 0f, -0.115f, -0.165f, 0.029f, 0.050f, 10, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.165f, -0.215f, 0.050f, 0.042f, 10, 1f, t)
+                // Llama: una gota ANCHA y corta.
+                taperedTube(b, s, 0f, 0f, -0.215f, -0.250f, 0.042f, 0.055f, 10, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.250f, -0.288f, 0.055f, 0.044f, 10, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.288f, -0.318f, 0.044f, 0.020f, 10, 1f, t)
+                taperedTube(b, s, 0f, 0f, -0.318f, -0.332f, 0.020f, 0.004f, 10, 1f, t)
             }
             Objeto.MAPA -> {
-                // Rollo de papel con el cordel y el sello en la punta.
-                taperedTube(b, s, 0f, 0f, 0.03f, -0.20f, 0.034f, 0.034f, 12, 1f, t)
-                taperedTube(b, s, 0f, 0f, -0.085f, -0.105f, 0.038f, 0.038f, 12, 1f, t)
-                box(b, s, 0.030f, 0f, -0.095f, 0.012f, 0.012f, 0.008f, 0f, 0f, t)
+                // Rollo de papel: el cilindro con las PUNTAS TAPADAS (si no se
+                // ve el hueco y parece un cano) y, sobre todo, la hoja suelta
+                // que asoma por el costado. Ese pico de papel es lo unico que
+                // distingue un rollo de un tubo, y sin el se leia como un cano.
+                taperedTube(b, s, 0f, 0f, 0.04f, -0.20f, 0.032f, 0.032f, 12, 1f, t, tapas = true)
+                // La hoja que asoma: una LAMINA ancha y fina despegandose del
+                // rollo, no un bultito. Es lo unico que distingue un rollo de
+                // papel de un cano, asi que tiene que verse de lejos.
+                // OJO: la hoja tiene que TOCAR el rollo. El rollo mide 0.032 de
+                // radio, asi que una lamina de medio grosor 0.006 centrada en
+                // 0.044 arranca en 0.038 y deja 6 mm de aire: en la foto se
+                // veia una plancha flotando al lado del cano.
+                box(b, s, 0.031f, 0f, -0.105f, 0.007f, 0.030f, 0.090f, 0f, 0f, t)
+                box(b, s, 0.048f, 0f, -0.182f, 0.006f, 0.028f, 0.050f, 0.40f, 0f, t)
+                // El cordel que lo mantiene enrollado.
+                taperedTube(b, s, 0f, 0f, -0.080f, -0.098f, 0.036f, 0.036f, 10, 1f, t)
             }
             Objeto.PAN -> {
-                // Hogaza: una bola achatada con dos cortes cruzados arriba.
-                taperedTube(b, s, 0f, 0f, 0.01f, -0.06f, 0.036f, 0.062f, 12, 0.72f, t)
-                taperedTube(b, s, 0f, 0f, -0.06f, -0.135f, 0.062f, 0.030f, 12, 0.72f, t)
-                box(b, s, 0f, 0.030f, -0.070f, 0.044f, 0.007f, 0.007f, 0f, 0f, t)
-                box(b, s, 0f, 0.030f, -0.070f, 0.007f, 0.007f, 0.040f, 0f, 0f, t)
+                // Hogaza: una cupula ANCHA y baja, no un bicono. Lo que hace a
+                // un pan es la panza redonda y la base chata, y arriba los dos
+                // cortes cruzados de la cocción.
+                taperedTube(b, s, 0f, 0f, 0.02f, -0.02f, 0.052f, 0.066f, 14, 0.66f, t, tapas = true)
+                taperedTube(b, s, 0f, 0f, -0.02f, -0.075f, 0.066f, 0.062f, 14, 0.66f, t)
+                taperedTube(b, s, 0f, 0f, -0.075f, -0.125f, 0.062f, 0.040f, 14, 0.66f, t)
+                taperedTube(b, s, 0f, 0f, -0.125f, -0.150f, 0.040f, 0.012f, 14, 0.66f, t, tapas = true)
+                // Los dos cortes: van HUNDIDOS respecto de la corteza, por eso
+                // se ponen un poco adentro del volumen y se cruzan arriba.
+                box(b, s, 0f, 0.030f, -0.070f, 0.052f, 0.010f, 0.009f, 0f, 0f, t)
+                box(b, s, 0f, 0.030f, -0.070f, 0.009f, 0.010f, 0.048f, 0f, 0f, t)
             }
             Objeto.OVILLO -> {
-                // Bola de hilo, con una hebra suelta colgando. Es gorda a
-                // proposito: un ovillo va apoyado en la palma, no agarrado por
-                // el medio como un frasco, asi que si fuera chico se perderia
-                // adentro del puno y no se veria nada.
+                // Bola de hilo con las VUELTAS marcadas. Una bola lisa es una
+                // piedra; lo que la vuelve un ovillo son los aros cruzados y la
+                // hebra que se escapa.
                 taperedTube(b, s, 0f, 0f, 0.005f, -0.068f, 0.034f, 0.068f, 12, 1f, t)
                 taperedTube(b, s, 0f, 0f, -0.068f, -0.150f, 0.068f, 0.030f, 12, 1f, t)
+                // Las vueltas del hilo: barras FINAS que cruzan la bola en
+                // distintas direcciones. Finas en DOS ejes, no en uno: el
+                // primer intento las hizo finas solo en uno y quedaron placas
+                // del tamano de la bola, o sea un regalo envuelto.
+                box(b, s, 0f, 0f, -0.072f, 0.072f, 0.006f, 0.006f, 0f, 0f, t)
+                box(b, s, 0f, 0f, -0.072f, 0.006f, 0.072f, 0.006f, 0f, 0f, t)
+                box(b, s, 0f, 0f, -0.072f, 0.070f, 0.006f, 0.006f, 0f, 0.9f, t)
+                box(b, s, 0f, 0f, -0.072f, 0.070f, 0.006f, 0.006f, 0f, -0.9f, t)
+                // La hebra suelta.
                 box(b, s, 0.054f, -0.016f, -0.072f, 0.005f, 0.005f, 0.055f, 0.5f, 0f, t)
             }
             Objeto.INSTRUMENTO -> {
-                // Caja chata con tapa y cristal: sirve de brujula y de reloj.
-                taperedTube(b, s, 0f, 0f, 0.00f, -0.105f, 0.055f, 0.055f, 14, 0.42f, t)
-                taperedTube(b, s, 0f, 0f, -0.105f, -0.122f, 0.050f, 0.046f, 14, 0.42f, t)
-                // La bisagra de la tapa, al costado.
-                box(b, s, 0.052f, 0f, -0.055f, 0.010f, 0.014f, 0.030f, 0f, 0f, t)
+                // Brujula de bolsillo: caja redonda y CHATA, con la tapa
+                // levantada. La tapa abierta es lo unico que distingue una
+                // brujula de una lata de conserva, que es como se veia antes.
+                taperedTube(b, s, 0f, 0f, 0.010f, -0.030f, 0.062f, 0.062f, 16, 1f, t, tapas = true)
+                // El bisel de la esfera.
+                taperedTube(b, s, 0f, 0f, -0.030f, -0.042f, 0.062f, 0.056f, 16, 1f, t, tapas = true)
+                // La tapa, abierta hacia atras sobre su bisagra. Va PEGADA al
+                // canto de la caja: separada quedaba como una mesita flotando
+                // encima del reloj.
+                box(b, s, 0f, 0.052f, 0.014f, 0.056f, 0.046f, 0.007f, 1.15f, 0f, t)
+                // La bisagra, en el canto de arriba.
+                box(b, s, 0f, 0.060f, -0.012f, 0.022f, 0.012f, 0.012f, 0f, 0f, t)
+                // La argolla de la cadena, saliendo de la bisagra.
+                taperedTube(b, s, 0f, 0.084f, 0.006f, -0.010f, 0.015f, 0.015f, 8, 1f, t)
+            }
+            Objeto.VENDA -> {
+                // Rollo de tela: cilindro corto y gordo, CON TAPAS (sin ellas se
+                // veia el hueco de adentro y la pieza parecia una cascara
+                // partida al medio), y la punta suelta colgando.
+                taperedTube(b, s, 0f, 0f, 0.015f, -0.115f, 0.046f, 0.046f, 14, 1f, t, tapas = true)
+                // El hueco del centro, hundido: es lo que dice "esto esta
+                // enrollado" en vez de "esto es un cilindro".
+                taperedTube(b, s, 0f, 0f, -0.100f, -0.112f, 0.014f, 0.014f, 8, 1f, t, tapas = true)
+                // La punta que cuelga, en dos tramos para que se curve.
+                box(b, s, 0f, -0.048f, -0.070f, 0.038f, 0.005f, 0.034f, 0.25f, 0f, t)
+                box(b, s, 0f, -0.078f, -0.020f, 0.034f, 0.005f, 0.030f, 0.75f, 0f, t)
             }
             Objeto.PIEDRA -> {
                 // Algo chico y facetado que se aprieta en el puno.
