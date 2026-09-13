@@ -88,16 +88,29 @@ class PropsProporcionesTest {
     }
 
     @Test
-    fun elBrazoDeLaAntorchaLlegaHastaLaPared() {
-        // La antorcha se cuelga a SEPARACION_ANTORCHA del centro de la
-        // casilla; lo que falta hasta la roca lo tiene que cubrir el brazo, si
-        // no queda flotando despegada de la pared.
-        val hastaLaPared = (0.5f - CaveRenderer.SEPARACION_ANTORCHA) * GameSession.CELL
+    fun elBrazoDeLaAntorchaTieneLargoSuficienteParaSepararlaDeLaPared() {
+        // Este test decia otra cosa, y estaba mal.
+        //
+        // Comparaba el largo del brazo contra lo que faltaba desde un
+        // corrimiento fijo hasta el PLANO NOMINAL del borde de la casilla, y
+        // daba verde — pero las antorchas se veian flotando igual, porque la
+        // roca que se dibuja no esta en ese plano: el ruido y la panza del
+        // tunel la corren hasta medio metro mas afuera justo a media altura.
+        // Medir contra el plano teorico es medir contra algo que no existe.
+        //
+        // Ahora la antorcha se apoya en la roca de verdad (ver `Anclajes` y
+        // AntorchasPegadasTest, que lo mide contra la malla que se dibuja), y
+        // lo unico que le toca comprobar a este archivo —que es de
+        // proporciones de modelos— es que el brazo tenga un largo con sentido:
+        // que separe el mastil de la pared lo suficiente para que la llama no
+        // lama la roca, sin ser un palo de escoba.
         val brazo = StructureMeshes.LARGO_BRAZO * CaveRenderer.ALTO_ANTORCHA
+        val radioCuenco = StructureMeshes.RADIO_CUENCO * CaveRenderer.ALTO_ANTORCHA
         assertTrue(
-            "el brazo mide ${brazo}m y hasta la pared hay ${hastaLaPared}m: queda flotando",
-            brazo >= hastaLaPared
+            "el brazo mide ${brazo}m y el cuenco ${radioCuenco}m de radio: la llama roza la pared",
+            brazo >= radioCuenco * 0.9f
         )
+        assertTrue("el brazo de ${brazo}m es una perchas", brazo <= 0.35f)
     }
 
     private fun anchoDe(g: PropMeshes.Geometry): Float {

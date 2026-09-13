@@ -43,6 +43,15 @@ object MazeGenerator {
         val enemies: List<EnemySpawn>
     )
 
+    /**
+     * Alto libre minimo para que una antorcha entre bien en una casilla.
+     *
+     * Cuelga a 1,75 m del piso y la llama termina unos 65 cm mas arriba, asi
+     * que abajo de esto ya no entra de pie. `Anclajes.antorcha` la baja para
+     * que entre igual, pero el generador prefiere no ponerla ahi.
+     */
+    private const val ALTO_PARA_ANTORCHA = 2.6f
+
     data class Trap(val gx: Int, val gy: Int, val kind: TrapKind)
 
     /**
@@ -474,6 +483,13 @@ object MazeGenerator {
         }
 
         // Antorchas: pegadas a pared para que se vean bien montadas.
+        //
+        // Y con techo suficiente. Una antorcha se cuelga a 1,75 m del piso, y
+        // en una gatera de un metro eso queda del otro lado de la roca: la
+        // antorcha metida en el techo y la luz saliendo de adentro de la
+        // pared. El renderer ahora la baja para que entre igual (ver
+        // `Anclajes.antorcha`), pero una antorcha a 25 cm del piso es un
+        // premio consuelo: mejor es no ponerla ahi de entrada.
         val torches = ArrayList<Int>(torchCount)
         val wallHugging = open.filter { gi ->
             val x = gi % maze.gw
@@ -483,7 +499,16 @@ object MazeGenerator {
             s in 1..3 && gi != startI && gi != exitI
         }.toMutableList()
         wallHugging.shuffle(rnd)
-        for (i in 0 until min(torchCount, wallHugging.size)) torches.add(wallHugging[i])
+        // Primero las que tienen altura de sobra; las bajas quedan de reserva
+        // por si un nivel de puras gateras no da para llenar el cupo.
+        val conTecho = ArrayList<Int>()
+        val bajas = ArrayList<Int>()
+        for (gi in wallHugging) {
+            if (Maze.altoLibreReal(maze.ceilClearance[gi]) >= ALTO_PARA_ANTORCHA) conTecho.add(gi)
+            else bajas.add(gi)
+        }
+        for (gi in conTecho) { if (torches.size >= torchCount) break; torches.add(gi) }
+        for (gi in bajas) { if (torches.size >= torchCount) break; torches.add(gi) }
 
         // Estalagmitas decorativas: en casillas libres que no bloqueen (son delgadas).
         val stalag = take(stalagCount)

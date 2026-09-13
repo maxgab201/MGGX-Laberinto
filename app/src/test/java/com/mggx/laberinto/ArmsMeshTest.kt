@@ -129,19 +129,32 @@ class ArmsMeshTest {
         // los dedos se cierran a lo ANCHO de la palma, y con la mano ya
         // parada ese tunel quedo en VERTICAL: un palo horizontal no esta
         // agarrado, esta atravesando los dedos.
+        //
+        // Antes esto se media solo como "se estira mas en Y que en Z". Servia
+        // mientras el arma unicamente se levantaba, pero se rompio al empezar a
+        // LADEARLA (que es lo que la saco de verse como un mastil en pantalla,
+        // ver ArmaEnPantallaTest): ladeada, parte del largo se va en X y el
+        // alto en Y baja sin que el agarre tenga nada de malo. Lo que importa
+        // es que cruce el antebrazo, vaya para arriba o para el costado.
         for (arma in ArmsMesh.Arma.entries) {
             val v = verticesDelArma(arma)
-            val maxY = v.maxOf { it[1] }
-            val minY = v.minOf { it[1] }
-            val minZ = v.minOf { it[2] }
-            val maxZ = v.maxOf { it[2] }
+            val ancho = v.maxOf { it[0] } - v.minOf { it[0] }
+            val alto = v.maxOf { it[1] } - v.minOf { it[1] }
+            val largo = v.maxOf { it[2] } - v.minOf { it[2] }
             assertTrue(
-                "${arma.name} se estira mas para adelante que para arriba " +
-                    "(alto ${maxY - minY}, largo ${maxZ - minZ}): sigue cruzada",
-                (maxY - minY) > (maxZ - minZ)
+                "${arma.name} se estira mas a lo largo del antebrazo que cruzandolo " +
+                    "(cruza ${maxOf(ancho, alto)}, a lo largo $largo): sigue atravesando los dedos",
+                maxOf(ancho, alto) > largo
             )
+            val maxY = v.maxOf { it[1] }
+            val maxZ = v.maxOf { it[2] }
+            val minZ = v.minOf { it[2] }
             assertTrue("${arma.name} no levanta la cabeza (maxY=$maxY)", maxY > 0.2f)
-            assertTrue("${arma.name} sale para atras de la mano (maxZ=$maxZ)", maxZ < 0.02f)
+            // El puno esta en z=-0.11 y el antebrazo se va hacia z=+0.62. Un
+            // par de centimetros del extremo del mango metidos ahi quedan
+            // tapados por el propio antebrazo; lo que no puede es asomar de
+            // verdad por atras de la mano, hacia la cara del jugador.
+            assertTrue("${arma.name} sale para atras de la mano (maxZ=$maxZ)", maxZ < 0.06f)
             assertTrue("${arma.name} no asoma para adelante (minZ=$minZ)", minZ < -0.15f)
         }
     }
@@ -161,29 +174,56 @@ class ArmsMeshTest {
 
     @Test
     fun elMangoPasaPorDondeSeCierranLosDedos() {
-        // El eje del mango tiene que cruzar el hueco del puno: el espacio
-        // entre la palma (z = -0.075) y las falanges (z = -0.17), o sea
-        // z ~ -0.11 a la altura de la muneca (y = 0). Si no pasara por ahi,
-        // el arma quedaria flotando al lado de la mano en vez de agarrada.
+        // El mango tiene que ocupar el hueco del puno: el espacio entre la
+        // palma (z = -0.075) y las falanges (z = -0.17), o sea el punto
+        // (0, 0, -0.11). Si no hubiera mango ahi, el arma estaria flotando al
+        // lado de la mano en vez de agarrada.
         //
-        // El mango no tiene vertices JUSTO en y=0 (los tubos solo ponen
-        // anillos en las puntas), asi que se mide donde cruza: se toman los
-        // vertices del palo (los que estan sobre el eje, |x| chico), el mas
-        // cercano por abajo y el mas cercano por arriba, y se interpola.
+        // Se mide contra las ARISTAS de la malla, no contra los vertices. Un
+        // tubo solo tiene vertices en los anillos de las puntas, que pueden
+        // estar a diez o quince centimetros uno de otro: preguntar por el
+        // vertice mas cercano da numeros enormes aunque el palo pase justo por
+        // el medio del puno. La arista si esta ahi.
+        //
+        // (La version anterior de este test interpolaba entre los vertices de
+        // arriba y de abajo filtrando por |x| chico. Dejo de funcionar al
+        // ladear el arma, porque el palo ahora tambien se corre en X mientras
+        // sube y arriba del puno ya no queda ningun vertice centrado.)
         for (arma in ArmsMesh.Arma.entries) {
-            val palo = verticesDelArma(arma).filter { kotlin.math.abs(it[0]) < 0.05f }
-            val abajo = palo.filter { it[1] < 0f }.maxByOrNull { it[1] }
-            val arriba = palo.filter { it[1] >= 0f }.minByOrNull { it[1] }
-            assertNotNull("${arma.name} no tiene mango por abajo del puno", abajo)
-            assertNotNull("${arma.name} no tiene mango por arriba del puno", arriba)
-            val a = abajo!!; val b = arriba!!
-            val t = (0f - a[1]) / (b[1] - a[1])
-            val z = a[2] + t * (b[2] - a[2])
+            val d = distanciaALaMalla(ArmsMesh.build(arma), { it > 1.5f }, 0f, 0f, -0.11f)
             assertTrue(
-                "${arma.name} no cruza el puno: a la altura de la muneca el " +
-                    "mango esta en z=$z, y el hueco del puno esta en -0.11",
-                kotlin.math.abs(z - (-0.11f)) < 0.04f
+                "${arma.name} no tiene mango en el puno: lo mas cerca que pasa es a $d m",
+                d < 0.045f
             )
         }
+    }
+
+    /** Distancia de un punto a la arista mas cercana de las piezas marcadas. */
+    private fun distanciaALaMalla(
+        mesh: ArmsMesh.Mesh, tagOk: (Float) -> Boolean, px: Float, py: Float, pz: Float
+    ): Float {
+        val st = ArmsMesh.STRIDE_FLOATS
+        var mejor = Float.MAX_VALUE
+
+        fun aSegmento(ai: Int, bi: Int) {
+            val ax = mesh.vertices[ai * st]; val ay = mesh.vertices[ai * st + 1]; val az = mesh.vertices[ai * st + 2]
+            val bx = mesh.vertices[bi * st]; val by = mesh.vertices[bi * st + 1]; val bz = mesh.vertices[bi * st + 2]
+            val ux = bx - ax; val uy = by - ay; val uz = bz - az
+            val len2 = ux * ux + uy * uy + uz * uz
+            val t = if (len2 < 1e-12f) 0f
+            else (((px - ax) * ux + (py - ay) * uy + (pz - az) * uz) / len2).coerceIn(0f, 1f)
+            val dx = px - (ax + ux * t); val dy = py - (ay + uy * t); val dz = pz - (az + uz * t)
+            val d = kotlin.math.sqrt(dx * dx + dy * dy + dz * dz)
+            if (d < mejor) mejor = d
+        }
+
+        var i = 0
+        while (i + 2 < mesh.indices.size) {
+            val a = mesh.indices[i]; val b = mesh.indices[i + 1]; val c = mesh.indices[i + 2]
+            i += 3
+            if (!tagOk(mesh.vertices[a * st + 6])) continue
+            aSegmento(a, b); aSegmento(b, c); aSegmento(c, a)
+        }
+        return mejor
     }
 }

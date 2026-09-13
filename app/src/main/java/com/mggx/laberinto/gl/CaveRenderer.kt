@@ -7,6 +7,7 @@ import com.mggx.laberinto.core.AhorroDeEnergia
 import com.mggx.laberinto.core.SaveData
 import com.mggx.laberinto.game.GameSession
 import com.mggx.laberinto.maze.CaveTheme
+import com.mggx.laberinto.maze.Maze
 import com.mggx.laberinto.maze.MazeGenerator
 import java.util.concurrent.ConcurrentLinkedQueue
 import javax.microedition.khronos.egl.EGLConfig
@@ -83,9 +84,9 @@ class CaveRenderer(
         /**
          * Alto total de la antorcha en metros. Como el modelo de
          * [StructureMeshes.antorcha] mide 1 de alto, la escala de instancia ES
-         * su altura.
+         * su altura. Vive en [Anclajes] porque de ahi depende donde se clava.
          */
-        const val ALTO_ANTORCHA = 0.48f
+        const val ALTO_ANTORCHA = Anclajes.ALTO_ANTORCHA
 
         /**
          * Alto de la llama en metros, antes del parpadeo. El modelo tiene la
@@ -93,13 +94,11 @@ class CaveRenderer(
          * poste (que era el problema con el octaedro, que tenia el centro en
          * su posicion y quedaba media figura adentro).
          */
-        const val ESCALA_LLAMA = 0.22f
+        const val ESCALA_LLAMA = Anclajes.ALTO_LLAMA
 
-        /** Que tan lejos del centro de la casilla se cuelga, hacia la pared. */
-        const val SEPARACION_ANTORCHA = 0.46f
 
         /** A que altura del piso se clava la base de la antorcha, en metros. */
-        const val ALTURA_ANTORCHA = 1.75f
+        const val ALTURA_ANTORCHA = Anclajes.ALTURA_ANTORCHA
     }
 
     /** Estado de entrada compartido con la vista (se escribe desde el hilo de UI). */
@@ -356,20 +355,18 @@ class CaveRenderer(
         val t = s.theme
         val C = GameSession.CELL
 
+        val ancla = FloatArray(4)
         for (gi in s.torches) {
             val gx = gi % m.gw; val gy = gi / m.gw
-            var ox = 0f; var oz = 0f
-            if (m.isSolid(gx - 1, gy)) ox = -C * SEPARACION_ANTORCHA
-            else if (m.isSolid(gx + 1, gy)) ox = C * SEPARACION_ANTORCHA
-            else if (m.isSolid(gx, gy - 1)) oz = -C * SEPARACION_ANTORCHA
-            else if (m.isSolid(gx, gy + 1)) oz = C * SEPARACION_ANTORCHA
+            if (!Anclajes.antorcha(m, gx, gy, ancla)) continue
             lista.add(
                 Farol(
-                    // Justo en la llama: si fuera una altura suelta, al
-                    // mover la antorcha la luz quedaria colgada en otro lado.
-                    (gx + 0.5f) * C + ox,
-                    m.floorY(gx, gy) + ALTURA_ANTORCHA + ALTO_ANTORCHA * StructureMeshes.ALTURA_DEL_FUEGO,
-                    (gy + 0.5f) * C + oz,
+                    // Justo en la llama, y calculada con el MISMO anclaje que
+                    // el dibujo: si fueran dos cuentas distintas, la luz
+                    // quedaria colgada en otro lado que la antorcha.
+                    ancla[0],
+                    ancla[1] + ALTO_ANTORCHA * StructureMeshes.ALTURA_DEL_FUEGO,
+                    ancla[2],
                     1.00f, 0.58f, 0.22f, 7.0f, true
                 )
             )
@@ -781,7 +778,84 @@ class CaveRenderer(
 
     // ------------------------------------------------------------ montaje
 
+    /**
+     * Altura del piso QUE SE VE en el centro de cada casilla, una sola vez por
+     * nivel.
+     *
+     * `maze.floorY` da la altura teorica y plana; la roca que se dibuja esta
+     * hasta 13 cm mas arriba o mas abajo, con el maximo justo en el centro de
+     * la casilla — o sea exactamente donde se apoyan las cosas. Apoyando todo
+     * en la altura teorica, la mitad de los objetos del nivel flotaba un palmo
+     * y la otra mitad quedaba medio enterrada: monedas colgadas del aire,
+     * hongos saliendo de la nada, piedras a medio hundir.
+     *
+     * Se guarda en una tabla porque calcularlo cuesta (rehace la mascara de
+     * continuidad de la casilla) y los objetos no se mueven: sale una vez al
+     * armar el nivel y despues es una lectura.
+     */
+    private var alturaDelPiso: FloatArray = FloatArray(0)
+    private var anchoDelPiso: Int = 0
+
+    /** Altura de apoyo de una casilla, ya con la abolladura de la roca. */
+    private fun pisoDe(gx: Int, gy: Int): Float {
+        if (anchoDelPiso <= 0) return 0f
+        val i = gy * anchoDelPiso + gx
+        return if (i in alturaDelPiso.indices) alturaDelPiso[i] else 0f
+    }
+
+    private fun armarAlturasDePiso(s: GameSession) {
+        val m = s.maze
+        val c = GameSession.CELL
+        anchoDelPiso = m.gw
+        if (alturaDelPiso.size != m.gw * m.gh) alturaDelPiso = FloatArray(m.gw * m.gh)
+        for (gy in 0 until m.gh) {
+            for (gx in 0 until m.gw) {
+                alturaDelPiso[gy * m.gw + gx] =
+                    if (m.isSolid(gx, gy)) m.floorY(gx, gy)
+                    else WorldMesh.realFloorHeight(m, (gx + 0.5f) * c, (gy + 0.5f) * c)
+            }
+        }
+    }
+
+    /**
+     * Las sombras de contacto de todo lo que esta quieto en el nivel.
+     *
+     * Una mancha oscura y blanda abajo de cada cosa. Es lo que hace que un
+     * objeto se vea APOYADO y no pegado con cinta encima del piso: sin ella el
+     * ojo no tiene forma de saber a que altura esta algo, y todo parece
+     * flotando un poco aunque los numeros esten perfectos.
+     *
+     * Se guardan (x, z, tamano) armados una sola vez por nivel: son cientos de
+     * objetos y no se mueven. Los que SI se mueven (bichos, el companiero) se
+     * agregan cuadro a cuadro.
+     */
+    private var sombrasFijas = FloatArray(0)
+    private var cuantasSombrasFijas = 0
+
+    private fun armarSombras(s: GameSession) {
+        val m = s.maze
+        val c = GameSession.CELL
+        val lista = ArrayList<Float>(1024)
+        fun poner(gi: Int, tam: Float) {
+            lista.add((gi % m.gw + 0.5f) * c)
+            lista.add((gi / m.gw + 0.5f) * c)
+            lista.add(tam)
+        }
+        for (gi in s.stalagmites) poner(gi, 0.85f)
+        for (gi in s.rocks) poner(gi, 0.95f)
+        for (gi in s.mushrooms) poner(gi, 0.80f)
+        for (gi in s.crystalClusters) poner(gi, 1.05f)
+        for (gi in s.carbideStations) poner(gi, 1.00f)
+        for (gi in s.beams) poner(gi, 1.20f)
+        poner(m.index(m.exitGx, m.exitGy), 1.70f)
+        for (t in s.traps) poner(t.gy * m.gw + t.gx, 1.25f)
+        sombrasFijas = lista.toFloatArray()
+        cuantasSombrasFijas = lista.size / 3
+    }
+
     private fun prepareLevel(s: GameSession) {
+        armarAlturasDePiso(s)
+        armarSombras(s)
         armarFaroles(s)
         if (texturedTheme != s.theme || albedoTex == 0 || preparedQuality != save.settings.quality) {
             if (albedoTex != 0) GLES30.glDeleteTextures(2, intArrayOf(albedoTex, normalTex), 0)
@@ -1239,7 +1313,7 @@ class CaveRenderer(
             val x = (pk.gx + 0.5f) * C + pk.flyX
             val z = (pk.gy + 0.5f) * C + pk.flyZ
             if (!near(x, z)) continue
-            val fy = WorldMesh.floorHeight(s.maze, pk.gx, pk.gy)
+            val fy = pisoDe(pk.gx, pk.gy)
             when (pk.kind) {
                 GameSession.PickupKind.ECO ->
                     gem.add(x, fy + 0.62f, z, ESCALA_ECO, 0.98f, 0.78f, 0.36f, 0.55f, pk.bob * 1.4f, pk.bob, 1f, 1f)
@@ -1260,7 +1334,7 @@ class CaveRenderer(
             if (!near(x, z)) continue
             val h = 0.42f + ((gx * 7 + gy * 13) % 7) * 0.13f
             val t = s.theme
-            val fy = WorldMesh.floorHeight(s.maze, gx, gy)
+            val fy = pisoDe(gx, gy)
             val giro = ((gx * 31 + gy * 17) % 20) * 0.31f
             when (t.biome) {
                 com.mggx.laberinto.maze.Biome.MINA -> {
@@ -1300,24 +1374,16 @@ class CaveRenderer(
         }
 
         // --- antorchas de pared
+        val ancla = FloatArray(4)
         for (gi in s.torches) {
             val gx = gi % m.gw; val gy = gi / m.gw
             val x = (gx + 0.5f) * C; val z = (gy + 0.5f) * C
             if (!near(x, z)) continue
-            // Se pega a la pared mas cercana
-            var ox = 0f; var oz = 0f
-            if (m.isSolid(gx - 1, gy)) ox = -C * SEPARACION_ANTORCHA
-            else if (m.isSolid(gx + 1, gy)) ox = C * SEPARACION_ANTORCHA
-            else if (m.isSolid(gx, gy - 1)) oz = -C * SEPARACION_ANTORCHA
-            else if (m.isSolid(gx, gy + 1)) oz = C * SEPARACION_ANTORCHA
-            val tx = x + ox; val tz = z + oz
-            val baseY = WorldMesh.floorHeight(s.maze, gx, gy) + ALTURA_ANTORCHA
-            // El brazo del soporte esta modelado hacia -Z, asi que se gira para
-            // que se clave en la pared contra la que quedo apoyada.
-            val haciaPared = Math.atan2(ox.toDouble(), oz.toDouble()).toFloat() + Math.PI.toFloat()
+            if (!Anclajes.antorcha(m, gx, gy, ancla)) continue
+            val tx = ancla[0]; val baseY = ancla[1]; val tz = ancla[2]
             antorcha.add(
                 tx, baseY, tz, ALTO_ANTORCHA,
-                0.28f, 0.19f, 0.12f, 0.02f, haciaPared, 0f, 0f, 1f
+                0.28f, 0.19f, 0.12f, 0.02f, ancla[3], 0f, 0f, 1f
             )
             val ph = ((gx * 41 + gy * 7) % 30) * 0.21f
             val fl = 0.86f + 0.14f * sin((time * 7f + ph).toDouble()).toFloat()
@@ -1336,7 +1402,7 @@ class CaveRenderer(
             val gx = gi % m.gw; val gy = gi / m.gw
             val x = (gx + 0.5f) * C; val z = (gy + 0.5f) * C
             if (!near(x, z)) continue
-            val fy = WorldMesh.floorHeight(s.maze, gx, gy)
+            val fy = pisoDe(gx, gy)
             val h = ((gx * 17 + gy * 5) % 11) * 0.031f
             val ph = ((gx * 23 + gy * 11) % 40) * 0.157f
             val latido = 0.72f + 0.28f * sin((time * 0.9f + ph).toDouble()).toFloat()
@@ -1351,7 +1417,7 @@ class CaveRenderer(
             val gx = gi % m.gw; val gy = gi / m.gw
             val x = (gx + 0.5f) * C; val z = (gy + 0.5f) * C
             if (!near(x, z)) continue
-            val fy = WorldMesh.floorHeight(s.maze, gx, gy)
+            val fy = pisoDe(gx, gy)
             val r = ((gx * 13 + gy * 29) % 20) * 0.31f
             val e = ((gx * 7 + gy * 3) % 5) * 0.045f
             boulder.add(x + 0.24f, fy + 0.19f + e, z - 0.18f, 0.33f + e,
@@ -1363,7 +1429,7 @@ class CaveRenderer(
             val gx = gi % m.gw; val gy = gi / m.gw
             val x = (gx + 0.5f) * C; val z = (gy + 0.5f) * C
             if (!near(x, z)) continue
-            val fy = WorldMesh.floorHeight(s.maze, gx, gy)
+            val fy = pisoDe(gx, gy)
             // Tres hongos de distinto porte, siempre pegados a un costado.
             for (k in 0 until 3) {
                 val ang = ((gx * 5 + gy * 11 + k * 7) % 20) * 0.314f
@@ -1379,7 +1445,7 @@ class CaveRenderer(
             val gx = gi % m.gw; val gy = gi / m.gw
             val x = (gx + 0.5f) * C; val z = (gy + 0.5f) * C
             if (!near(x, z)) continue
-            val fy = WorldMesh.floorHeight(s.maze, gx, gy)
+            val fy = pisoDe(gx, gy)
             val alto = (m.ceilY(gx, gy) - fy).coerceIn(1.4f, 3.4f)
             // El marco cruza el pasillo, asi que se orienta segun por donde se pasa.
             val horizontal = m.isSolid(gx, gy - 1)
@@ -1399,7 +1465,7 @@ class CaveRenderer(
             val gx = gi % m.gw; val gy = gi / m.gw
             val x = (gx + 0.5f) * C; val z = (gy + 0.5f) * C
             if (!near(x, z)) continue
-            val fy = WorldMesh.floorHeight(s.maze, gx, gy)
+            val fy = pisoDe(gx, gy)
             val usada = s.estacionUsada(gi)
             val brillo = if (usada) 0.06f else 1.15f + 0.35f * sin((time * 2.2f + gx).toDouble()).toFloat()
             // Poste de hierro con el bidon y el piloto encendido.
@@ -1421,7 +1487,7 @@ class CaveRenderer(
         for (tr in s.traps) {
             val x = (tr.gx + 0.5f) * C; val z = (tr.gy + 0.5f) * C
             if (!near(x, z)) continue
-            val fy = WorldMesh.floorHeight(s.maze, tr.gx, tr.gy)
+            val fy = pisoDe(tr.gx, tr.gy)
             val pulse = 0.55f + 0.45f * sin((time * 3.4f + tr.gx + tr.gy).toDouble()).toFloat()
             val aviso = if (tr.armed && tr.revealed) 0.22f * pulse else 0.02f
             when (tr.kind) {
@@ -1607,7 +1673,7 @@ class CaveRenderer(
         // --- salida: columna de cristal que se ve de lejos
         run {
             val ex = s.exitWorldX; val ez = s.exitWorldZ
-            val fy = WorldMesh.floorHeight(s.maze, s.maze.exitGx, s.maze.exitGy)
+            val fy = pisoDe(s.maze.exitGx, s.maze.exitGy)
             val d = hypot(ex - px, ez - pz)
             val visible = d < cull * 1.9f
             if (visible) {
@@ -1789,6 +1855,18 @@ class CaveRenderer(
         return sRgbLineal(color)
     }
 
+    /**
+     * El color de una sombra de contacto: negro, y la fuerza la pone el alfa.
+     *
+     * Tiene que ser negro PURO, y no un gris oscuro "para que no sea un pozo".
+     * El shader de las calcomanias le aplica gamma al color antes de mezclar, y
+     * un 0.045 en lineal sale como 0.26 en pantalla: en una cueva oscura eso es
+     * mas CLARO que el piso, o sea que la sombra lo iluminaba. Con negro puro
+     * la mezcla multiplica el piso por (1 - alfa), que es lo que hace una
+     * sombra de verdad: oscurece lo que hay, sea lo que sea.
+     */
+    private val SOMBRA = 0f
+
     private fun drawDecals(s: GameSession, fogDensity: Float, brightness: Float) {
         decalData.clear()
         var quads = 0
@@ -1815,9 +1893,55 @@ class CaveRenderer(
             quads++
         }
 
-        val px = s.posX; val pz = s.posZ
+        // --- sombras de contacto
+        //
+        // Van ANTES del rastro para que una pisada no le coma la sombra a una
+        // piedra, y despues de los props en el orden del cuadro: como el test
+        // de profundidad sigue puesto, la parte que tapa el propio objeto no se
+        // dibuja y queda solo el halo de alrededor, que es justo lo que se
+        // quiere ver.
+        val camX = s.posX
+        val camZ = s.posZ
+        // En calidad baja no se dibujan las fijas: son cientos de cuadrados
+        // transparentes grandes, y eso es relleno de pantalla, que es
+        // justamente lo que ahoga a un telefono flojo. Las de los bichos si
+        // quedan siempre: son cuatro y son las que mas hacen.
+        val alcanceSombra = when (save.settings.quality) {
+            0 -> 0f
+            1 -> 225f
+            else -> 625f
+        }
+        for (k in 0 until cuantasSombrasFijas) {
+            if (alcanceSombra <= 0f) break
+            val sx = sombrasFijas[k * 3]
+            val sz = sombrasFijas[k * 3 + 1]
+            val dx = sx - camX; val dz = sz - camZ
+            if (dx * dx + dz * dz > alcanceSombra) continue
+            quad(sx, sz, sombrasFijas[k * 3 + 2], SOMBRA, SOMBRA, SOMBRA, 0.42f)
+        }
+        // Y las de lo que se mueve. Un bicho sin sombra se ve patinando sobre
+        // el piso en vez de caminando.
+        for (e in s.enemies) {
+            if (!e.vivo) continue
+            val dx = e.x - camX; val dz = e.z - camZ
+            if (dx * dx + dz * dz > 400f) continue
+            // El que vuela proyecta una sombra mas grande y mas suave, que es
+            // lo que hace que se lea a que altura esta: un murcielago alto deja
+            // una mancha ancha y palida, y al bajar a morderte se le achica y
+            // se le oscurece. Es la unica pista de altura que hay.
+            val subida = (e.altura / 1.6f).coerceIn(0f, 1f)
+            quad(e.x, e.z, e.kind.radio * 3.4f * (1f + subida * 0.8f),
+                SOMBRA, SOMBRA, SOMBRA, 0.46f * (1f - subida * 0.55f))
+        }
+        s.red?.match?.otros()?.forEach { o ->
+            if (o.sinPose) return@forEach
+            val dx = o.dibX - camX; val dz = o.dibZ - camZ
+            if (dx * dx + dz * dz > 400f) return@forEach
+            quad(o.dibX, o.dibZ, 1.15f, SOMBRA, SOMBRA, SOMBRA, 0.44f)
+        }
+
         for (tp in s.trail) {
-            val dx = tp.x - px; val dz = tp.z - pz
+            val dx = tp.x - camX; val dz = tp.z - camZ
             if (dx * dx + dz * dz > 900f) continue
             val alpha = if (threadOn) 0.55f else (tp.life / s.stats.trailSeconds).coerceIn(0f, 1f) * 0.32f
             if (threadOn) quad(tp.x, tp.z, 1.05f, 0.45f, 0.95f, 0.75f, alpha)

@@ -270,6 +270,56 @@ object WorldMesh {
         return fy + roca(x, fy, z) * (-BULTO_PISO) * mascaraCampo(x, z, bordes, n)
     }
 
+    /**
+     * Donde cae DE VERDAD la cara de roca de una pared, a una altura dada.
+     *
+     * El plano nominal de una pared es el borde de la casilla, pero eso no es
+     * lo que se ve: la cara esta desplazada por el ruido ([BULTO_PARED], hasta
+     * 30 cm para cualquiera de los dos lados) y por la panza del tunel
+     * ([ENSANCHE_PARED], 22 cm mas hacia afuera), las dos apagandose contra el
+     * piso y contra el techo. A media altura, que es justo donde se cuelgan
+     * las cosas, la roca puede estar hasta medio metro mas lejos del centro de
+     * la casilla que el plano nominal.
+     *
+     * Esto es lo que hacia que las antorchas quedaran flotando: se colgaban a
+     * un corrimiento fijo desde el centro, que daba justo contra el plano
+     * teorico, y la roca estaba mucho mas atras.
+     *
+     * Es el hermano de [realFloorHeight] para las paredes, y tiene la misma
+     * obligacion: repetir EXACTAMENTE la cuenta que hace [cara], porque si se
+     * desincronizan las cosas se vuelven a despegar.
+     *
+     * @param sx,sy de que lado de la casilla esta la roca (-1/0/1).
+     * @param y altura del mundo donde se quiere medir.
+     * @param alLargo coordenada a lo largo de la pared (z si la pared es de X,
+     *   x si es de Z).
+     * @return la coordenada del eje PERPENDICULAR a la pared donde esta la
+     *   roca: x si [sx] != 0, z si no.
+     */
+    fun realWallFace(
+        maze: Maze, gx: Int, gy: Int, sx: Int, sy: Int, y: Float, alLargo: Float
+    ): Float {
+        val enX = sx != 0
+        // El plano nominal de la cara, y la normal que mira hacia adentro de
+        // la casilla (la misma que se le pasa a `cara`).
+        val plano = if (enX) (if (sx < 0) gx * CELL else (gx + 1) * CELL)
+        else (if (sy < 0) gy * CELL else (gy + 1) * CELL)
+        val haciaAdentro = -(sx + sy).toFloat()
+
+        val px = if (enX) plano else alLargo
+        val pz = if (enX) alLargo else plano
+
+        val fy = maze.floorY(gx, gy)
+        val cy = maze.ceilY(gx, gy)
+        val t = ((y - fy) / kotlin.math.max(1e-4f, cy - fy)).coerceIn(0f, 1f)
+
+        val bordes = FloatArray(MAX_BORDES * 2)
+        val n = bordesDePared(maze, gx, gy, sx, sy, bordes)
+        val apaga = mascaraCampo(px, pz, bordes, n) * sin(PI * t.toDouble()).toFloat()
+        val d = (roca(px, y, pz) * BULTO_PARED - ENSANCHE_PARED) * apaga
+        return plano + haciaAdentro * d
+    }
+
     /** Altura del techo en el centro de una casilla. */
     fun ceilHeight(maze: Maze, gx: Int, gy: Int): Float = maze.ceilY(gx, gy)
 

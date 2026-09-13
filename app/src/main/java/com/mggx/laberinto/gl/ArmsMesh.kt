@@ -272,7 +272,22 @@ object ArmsMesh {
      * en BrazoAnim) la baja de arriba hacia adelante, que es un hachazo de
      * verdad y no un empujon.
      */
-    private val CABECEO_ARMA = Math.toRadians(55.0).toFloat()
+    private val CABECEO_ARMA = Math.toRadians(50.0).toFloat()
+
+    /**
+     * Cuanto se LADEA el arma, en radianes, alrededor del eje del antebrazo.
+     *
+     * Sin esto el arma quedaba parada como un mastil en medio de la pantalla, y
+     * bajar el cabeceo no arreglaba nada: el palo apunta casi de frente a la
+     * camara, asi que el escorzo se come el angulo y en pantalla se sigue
+     * viendo vertical por mucho que se lo incline. Lo que si cambia lo que se
+     * ve es ladearlo: el arma se acuesta hacia afuera, cruza el cuadro en
+     * diagonal, deja el centro libre y la cabeza entra entera.
+     *
+     * Negativo tumba la cabeza hacia la DERECHA, que es hacia afuera para la
+     * mano derecha.
+     */
+    private val LADEO_ARMA = Math.toRadians(30.0).toFloat()
 
     /**
      * Punto del mango (en Z del arma sin girar) que tiene que caer dentro del
@@ -290,30 +305,61 @@ object ArmsMesh {
     private const val PUNO_Z = -0.11f
 
     /**
-     * Vuelca [src] dentro de [dst] girandolo alrededor de X y moviendolo.
+     * Vuelca [src] dentro de [dst] girandolo (cabeceo en X, despues ladeo en Z)
+     * y moviendolo.
      *
-     * El giro alrededor de X tiene determinante +1, asi que no da vuelta
-     * ninguna cara: el orden de los indices se copia tal cual y sigue valiendo
-     * (lo verifica MeshWindingTest).
+     * Los dos giros tienen determinante +1, asi que no dan vuelta ninguna cara:
+     * el orden de los indices se copia tal cual y sigue valiendo (lo verifica
+     * MeshWindingTest).
      */
-    private fun agregarGirandoEnX(dst: Builder, src: Builder, pitch: Float, dy: Float, dz: Float) {
+    private fun agregarGirado(
+        dst: Builder, src: Builder, pitch: Float, roll: Float,
+        dx: Float, dy: Float, dz: Float
+    ) {
         val cp = cos(pitch.toDouble()).toFloat()
         val sp = sin(pitch.toDouble()).toFloat()
+        val cr = cos(roll.toDouble()).toFloat()
+        val sr = sin(roll.toDouble()).toFloat()
         val offset = dst.n
+
+        fun girar(x: Float, y: Float, z: Float, out: FloatArray) {
+            val y1 = y * cp - z * sp
+            val z1 = y * sp + z * cp
+            out[0] = x * cr - y1 * sr
+            out[1] = x * sr + y1 * cr
+            out[2] = z1
+        }
+
+        val p = FloatArray(3)
+        val n = FloatArray(3)
         val v = src.v.data
         var i = 0
         while (i < src.v.size) {
-            val y = v[i + 1]; val z = v[i + 2]
-            val ny = v[i + 4]; val nz = v[i + 5]
-            dst.vertex(
-                v[i], y * cp - z * sp + dy, y * sp + z * cp + dz,
-                v[i + 3], ny * cp - nz * sp, ny * sp + nz * cp,
-                v[i + 6]
-            )
+            girar(v[i], v[i + 1], v[i + 2], p)
+            girar(v[i + 3], v[i + 4], v[i + 5], n)
+            dst.vertex(p[0] + dx, p[1] + dy, p[2] + dz, n[0], n[1], n[2], v[i + 6])
             i += STRIDE_FLOATS
         }
         val ix = src.idx.data
         for (k in 0 until src.idx.size) dst.idx.add(offset + ix[k])
+    }
+
+    /**
+     * Donde hay que mover una pieza ya girada para que su punto de agarre
+     * ([agarreZ], sobre el eje -Z del modelo) caiga justo en el puno.
+     */
+    private fun corrimientoAlPuno(pitch: Float, roll: Float, agarreZ: Float): FloatArray {
+        val cp = cos(pitch.toDouble()).toFloat()
+        val sp = sin(pitch.toDouble()).toFloat()
+        val cr = cos(roll.toDouble()).toFloat()
+        val sr = sin(roll.toDouble()).toFloat()
+        // El agarre es (0, 0, agarreZ). Cabeceo: (0, -agarreZ*sp, agarreZ*cp).
+        // Ladeo sobre eso: (agarreZ*sp*sr, -agarreZ*sp*cr, agarreZ*cp).
+        return floatArrayOf(
+            0f - agarreZ * sp * sr,
+            PUNO_Y + agarreZ * sp * cr,
+            PUNO_Z - agarreZ * cp
+        )
     }
 
     /**
@@ -503,6 +549,13 @@ object ArmsMesh {
      */
     private val CABECEO_OBJETO = Math.toRadians(38.0).toFloat()
 
+    /**
+     * Lo mismo para el objeto de la mano izquierda, pero mucho menos: un frasco
+     * o un pan se llevan mas derechos, y ladeados para el otro lado (la mano
+     * izquierda se abre hacia la izquierda).
+     */
+    private val LADEO_OBJETO = Math.toRadians(-22.0).toFloat()
+
     /** Punto del objeto que cae dentro del puno izquierdo. */
     private const val AGARRE_OBJETO_Z = -0.06f
 
@@ -643,26 +696,14 @@ object ArmsMesh {
         if (arma != null) {
             val a = Builder()
             buildArma(a, arma)
-            // Donde cae el punto de agarre despues de levantar el arma, para
-            // poder correrla justo hasta el puno.
-            val sp = sin(CABECEO_ARMA.toDouble()).toFloat()
-            val cp = cos(CABECEO_ARMA.toDouble()).toFloat()
-            agregarGirandoEnX(
-                b, a, CABECEO_ARMA,
-                PUNO_Y + AGARRE_Z * sp,
-                PUNO_Z - AGARRE_Z * cp
-            )
+            val d = corrimientoAlPuno(CABECEO_ARMA, LADEO_ARMA, AGARRE_Z)
+            agregarGirado(b, a, CABECEO_ARMA, LADEO_ARMA, d[0], d[1], d[2])
         }
         if (objeto != null) {
             val o = Builder()
             buildObjeto(o, objeto)
-            val sp = sin(CABECEO_OBJETO.toDouble()).toFloat()
-            val cp = cos(CABECEO_OBJETO.toDouble()).toFloat()
-            agregarGirandoEnX(
-                b, o, CABECEO_OBJETO,
-                PUNO_Y + AGARRE_OBJETO_Z * sp,
-                PUNO_Z - AGARRE_OBJETO_Z * cp
-            )
+            val d = corrimientoAlPuno(CABECEO_OBJETO, LADEO_OBJETO, AGARRE_OBJETO_Z)
+            agregarGirado(b, o, CABECEO_OBJETO, LADEO_OBJETO, d[0], d[1], d[2])
         }
         return Mesh(b.v.toArray(), b.idx.toArray())
     }

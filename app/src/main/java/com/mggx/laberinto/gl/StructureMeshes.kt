@@ -91,6 +91,14 @@ object StructureMeshes {
     /** Cuanto sale el brazo hacia la pared, en unidades del modelo. */
     const val LARGO_BRAZO = 0.26f
 
+    /**
+     * Altura del centro de la placa de anclaje, en unidades del modelo.
+     *
+     * Es la pieza que tiene que tocar la roca, asi que es a ESTA altura donde
+     * hay que medir donde cae la pared de verdad (ver `WorldMesh.realWallFace`).
+     */
+    const val ALTURA_DE_LA_PLACA = 0.15f
+
     /** Altura a la que se apoya la llama, en unidades del modelo. */
     const val ALTURA_DEL_FUEGO = 0.86f
 

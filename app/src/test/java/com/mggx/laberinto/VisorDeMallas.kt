@@ -193,6 +193,78 @@ object VisorDeMallas {
         }
     }
 
+    /**
+     * La foto que importa para todo lo que va en la mano: lo que ve el
+     * jugador.
+     *
+     * Las demas vistas de este visor orbitan alrededor del modelo y lo encuadran
+     * solas, que sirve para juzgar la FORMA de una pieza. Pero un arma o un
+     * objeto de mano no se juzga por su forma suelta: se juzga por donde cae en
+     * la pantalla, con la camara en el ojo, la misma apertura del juego (62
+     * grados) y la misma proporcion de pantalla. Un pico impecable puede estar
+     * tapando media vista, o quedar fuera de cuadro, y ninguna de las otras
+     * fotos lo muestra.
+     *
+     * La camara esta en el origen mirando hacia -Z, que es el espacio en el que
+     * ya vienen los brazos.
+     */
+    fun primeraPersona(
+        g: PropMeshes.Geometry,
+        nombre: String,
+        ancho: Int = 480,
+        alto: Int = 280,
+        fovGrados: Float = 62f
+    ): File {
+        val l = Lienzo(ancho, alto)
+        // Media pantalla de alto en el plano z = -1.
+        val k = alto * 0.5f / kotlin.math.tan(Math.toRadians(fovGrados * 0.5)).toFloat()
+
+        fun proyectar(vx: Float, vy: Float, vz: Float): FloatArray {
+            val prof = -vz                       // positiva adelante
+            if (prof < 1e-3f) return floatArrayOf(0f, 0f, -1f)
+            return floatArrayOf(
+                ancho * 0.5f + vx * k / prof,
+                alto * 0.5f - vy * k / prof,
+                prof
+            )
+        }
+
+        val lx = -0.45f; val ly = 0.62f; val lz = 0.64f
+        val ll = sqrt(lx * lx + ly * ly + lz * lz)
+
+        // La cruz de la mira, para tener referencia de donde esta el centro.
+        for (x in ancho / 2 - 9..ancho / 2 + 9) l.pixel(x, alto / 2, 1e9f, 0.30f, 0.30f, 0.34f)
+        for (y in alto / 2 - 9..alto / 2 + 9) l.pixel(ancho / 2, y, 1e9f, 0.30f, 0.30f, 0.34f)
+
+        var t = 0
+        while (t + 2 < g.indices.size) {
+            val i0 = g.indices[t] * 6
+            val i1 = g.indices[t + 1] * 6
+            val i2 = g.indices[t + 2] * 6
+            t += 3
+            val p0 = proyectar(g.vertices[i0], g.vertices[i0 + 1], g.vertices[i0 + 2])
+            val p1 = proyectar(g.vertices[i1], g.vertices[i1 + 1], g.vertices[i1 + 2])
+            val p2 = proyectar(g.vertices[i2], g.vertices[i2 + 1], g.vertices[i2 + 2])
+            if (p0[2] < 0f || p1[2] < 0f || p2[2] < 0f) continue
+
+            val nx = (g.vertices[i0 + 3] + g.vertices[i1 + 3] + g.vertices[i2 + 3]) / 3f
+            val ny = (g.vertices[i0 + 4] + g.vertices[i1 + 4] + g.vertices[i2 + 4]) / 3f
+            val nz = (g.vertices[i0 + 5] + g.vertices[i1 + 5] + g.vertices[i2 + 5]) / 3f
+            val nl = sqrt(nx * nx + ny * ny + nz * nz).coerceAtLeast(1e-6f)
+            val cnz = nz / nl
+            if (cnz <= 0.02f) continue          // cara de atras
+            val difusa = max(0f, (nx / nl * lx + ny / nl * ly + cnz * lz) / ll)
+            val borde = Math.pow((1f - cnz).toDouble(), 2.2).toFloat() * 0.55f
+            val luz = (0.16f + difusa * 0.78f + borde).coerceIn(0f, 1.35f)
+            rellenarTriangulo(l, p0, p1, p2, luz)
+        }
+
+        CARPETA.mkdirs()
+        val f = File(CARPETA, "$nombre.png")
+        f.writeBytes(png(l.rgb, l.ancho, l.alto))
+        return f
+    }
+
     private fun rellenarTriangulo(
         l: Lienzo, a: FloatArray, b: FloatArray, c: FloatArray, luz: Float
     ) {

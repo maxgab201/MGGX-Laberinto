@@ -1,7 +1,7 @@
 name: Publicar todas las releases
 
 # Manual nomas, con un campo de confirmacion como seguro: sin el "SI" no
-# publica nada. Recorre las 19 versiones documentadas (cada una vive en su
+# publica nada. Recorre las 20 versiones documentadas (cada una vive en su
 # propia rama, con RELEASE.md y su APK ya listos) y publica la que falte.
 # La que ya tenga release publicada se saltea sola, asi que correr esto de
 # nuevo no duplica ni rompe nada.
@@ -63,6 +63,8 @@ jobs:
             tag: v1.9.1
           - version: 1.9.2
             tag: v1.9.2
+          - version: 1.9.3
+            tag: v1.9.3
     steps:
       # Cada version vive en su propia rama, con su propio RELEASE.md y su
       # propio apks/*.apk: por eso el checkout apunta a esa rama y no a la
