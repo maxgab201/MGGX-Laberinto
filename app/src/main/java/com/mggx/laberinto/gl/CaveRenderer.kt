@@ -428,6 +428,7 @@ class CaveRenderer(
     private var shapeGuardianTorso: InstancedShape? = null
     private var shapeGuardianCabeza: InstancedShape? = null
     private var shapeGuardianBrazo: InstancedShape? = null
+    private var shapeGuardianPierna: InstancedShape? = null
     private var shapeTopo: InstancedShape? = null
     private var shapeTopoPala: InstancedShape? = null
     private var shapeArana: InstancedShape? = null
@@ -512,6 +513,9 @@ class CaveRenderer(
     fun dispatch(s: GameSession, action: () -> Unit) { actions.add(s to action) }
 
     fun setSession(s: GameSession) {
+        // La sesion que se va suelta al renderer: su lambda de altura apunta
+        // a la tabla de ESTE nivel, que ya no es el suyo.
+        session?.alturaDeApoyo = null
         ready = false
         soundOut.clear()
         actions.clear()
@@ -603,8 +607,16 @@ class CaveRenderer(
         }
         if (s.geometryDirty) {
             s.geometryDirty = false
+            // La roca cambio: se rompio una pared. La altura de apoyo de las
+            // casillas de al lado depende de que vecinas estan abiertas (la
+            // mascara de continuidad), asi que la tabla y las sombras se
+            // quedaron viejas. Sin esto, despues de picar una pared los
+            // objetos —y ahora tambien los bichos, que leen la misma tabla—
+            // siguen apoyados en la altura de antes.
             uploadWorld(WorldMesh.build(s.maze, save.settings.quality))
             uploadWater(WaterMesh.build(s.maze))
+            armarAlturasDePiso(s)
+            armarSombras(s)
         }
 
         // ------------------------------------------------------- tiempo
@@ -855,6 +867,10 @@ class CaveRenderer(
 
     private fun prepareLevel(s: GameSession) {
         armarAlturasDePiso(s)
+        // Los bichos caminan sobre la MISMA tabla con la que se apoya todo lo
+        // demas y con la que se dibuja su sombra. Antes usaban el piso teorico
+        // del mapa y quedaban despegados de su propia sombra.
+        s.alturaDeApoyo = { gx, gy -> pisoDe(gx, gy) }
         armarSombras(s)
         armarFaroles(s)
         if (texturedTheme != s.theme || albedoTex == 0 || preparedQuality != save.settings.quality) {
@@ -1066,19 +1082,20 @@ class CaveRenderer(
         shapeCylinder = InstancedShape(PropMeshes.cylinder(7, 1f, 0.1f), 900)
         shapeArrow = InstancedShape(PropMeshes.arrow(), 4)
         shapeSlab = InstancedShape(DetailMeshes.roundedBox(1f, 0.13f, 0.13f, 0.018f), 400)
-        shapeWing = InstancedShape(EnemyMeshes.murcielagoAla(), 200)
+        shapeWing = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.ALA), 200)
         shapeBoulder = InstancedShape(DetailMeshes.boulder(), 900)
         shapePost = InstancedShape(PropMeshes.cylinder(6, 1f, 0.042f), 160)
         // Los bichos: pocos a la vez, asi que alcanza con cupos chicos.
-        shapeMurcielago = InstancedShape(EnemyMeshes.murcielagoCuerpo(), 80)
-        shapeRastreroCuerpo = InstancedShape(EnemyMeshes.rastreroSegmento(), 240)
-        shapeRastreroPata = InstancedShape(EnemyMeshes.rastreroPata(), 320)
-        shapeGuardianTorso = InstancedShape(EnemyMeshes.guardianTorso(), 80)
-        shapeGuardianCabeza = InstancedShape(EnemyMeshes.guardianCabeza(), 80)
-        shapeGuardianBrazo = InstancedShape(EnemyMeshes.guardianBrazo(), 160)
-        shapeTopo = InstancedShape(EnemyMeshes.topoCuerpo(), 80)
-        shapeTopoPala = InstancedShape(EnemyMeshes.topoPala(), 160)
-        shapeArana = InstancedShape(EnemyMeshes.aranaCuerpo(), 80)
+        shapeMurcielago = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.MURCIELAGO_CUERPO), 80)
+        shapeRastreroCuerpo = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.RASTRERO_SEGMENTO), 240)
+        shapeRastreroPata = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.PATA), 320)
+        shapeGuardianTorso = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.GUARDIAN_TORSO), 80)
+        shapeGuardianCabeza = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.GUARDIAN_CABEZA), 80)
+        shapeGuardianBrazo = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.GUARDIAN_BRAZO), 160)
+        shapeGuardianPierna = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.GUARDIAN_PIERNA), 160)
+        shapeTopo = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.TOPO_CUERPO), 80)
+        shapeTopoPala = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.PALA), 160)
+        shapeArana = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.ARANA_CUERPO), 80)
         shapeAntorcha = InstancedShape(StructureMeshes.antorcha(), 160)
         shapeLlama = InstancedShape(StructureMeshes.llama(), 160)
         shapeCristal = InstancedShape(StructureMeshes.cristal(), 900)
@@ -1272,6 +1289,7 @@ class CaveRenderer(
         val torso = shapeGuardianTorso ?: return
         val cabeza = shapeGuardianCabeza ?: return
         val brazo = shapeGuardianBrazo ?: return
+        val pierna = shapeGuardianPierna ?: return
         val topo = shapeTopo ?: return
         val pala = shapeTopoPala ?: return
         val arana = shapeArana ?: return
@@ -1299,7 +1317,7 @@ class CaveRenderer(
         slab.begin(); ala.begin(); boulder.begin(); post.begin()
         stalactite.begin()
         murcielago.begin(); rastrero.begin(); pata.begin()
-        torso.begin(); cabeza.begin(); brazo.begin()
+        torso.begin(); cabeza.begin(); brazo.begin(); pierna.begin()
         topo.begin(); pala.begin(); arana.begin()
         antorcha.begin(); llama.begin(); cristal.begin(); cofre.begin()
         hongo.begin(); pincho.begin(); estacion.begin(); obelisco.begin()
@@ -1529,15 +1547,20 @@ class CaveRenderer(
         }
 
         // --- bichos
+        //
+        // El armado (que pieza va donde) vive en [ArmadoDeBichos], afuera de
+        // aca: es lo unico que permite fotografiar y medir un bicho ENTERO en
+        // un test. Ver el comentario largo de ese archivo. Lo que SI queda
+        // aca es el color, que es lo unico de un bicho que depende del bioma
+        // y del destello del golpe.
+        val enMundo = FloatArray(4)
+        val tintaBicho = FloatArray(4)
+        val bolsa = bolsaDeBicho
         for (e in s.enemies) {
             // Al que volteaste ya no se lo dibuja: si quedara en pantalla, el
             // jugador seguiria esquivando un cadaver.
             if (!e.vivo) continue
             if (!near(e.x, e.z)) continue
-            val ex2 = e.x; val ez2 = e.z; val ey = e.altura
-            val r = e.rumbo
-            val fwdX = sin(r.toDouble()).toFloat(); val fwdZ = cos(r.toDouble()).toFloat()
-            val rgtX = cos(r.toDouble()).toFloat(); val rgtZ = -sin(r.toDouble()).toFloat()
             // Los ojos se prenden cuando te vieron.
             val ojo = if (e.alerta) 1.45f else 0.30f
             // Destello rojo del golpe recibido: es lo que hace que se sienta
@@ -1545,128 +1568,19 @@ class CaveRenderer(
             val golpe = (e.destello / 0.28f).coerceIn(0f, 1f)
             val herido = 1f - (e.vida / e.kind.vida).coerceIn(0f, 1f)
             val flash = golpe * 1.9f + herido * 0.22f
-            when (e.kind) {
-                com.mggx.laberinto.maze.MazeGenerator.EnemyKind.MURCIELAGO -> {
-                    // Cuerpo de una sola pieza (con hocico y orejas) mirando al
-                    // frente, y las dos alas colgadas de los hombros. La del
-                    // lado izquierdo es la misma malla girada media vuelta, con
-                    // el aleteo desfasado para que no batan como un solo panel.
-                    murcielago.add(ex2, ey, ez2, 0.40f,
-                        0.21f + golpe * 0.7f, 0.16f, 0.19f, flash, r, e.fase, 0f, 1f)
-                    ala.add(ex2 + rgtX * 0.07f, ey + 0.05f, ez2 + rgtZ * 0.07f, 0.44f,
-                        0.28f + golpe * 0.6f, 0.20f, 0.23f, flash, r, e.fase, 2f, 1f)
-                    ala.add(ex2 - rgtX * 0.07f, ey + 0.05f, ez2 - rgtZ * 0.07f, 0.44f,
-                        0.28f + golpe * 0.6f, 0.20f, 0.23f, flash,
-                        r + Math.PI.toFloat(), e.fase + 3.14f, 2f, 1f)
-                    gem.add(ex2 + fwdX * 0.15f - rgtX * 0.05f, ey + 0.06f, ez2 + fwdZ * 0.15f - rgtZ * 0.05f,
-                        0.030f, 1f, 0.42f, 0.30f, ojo, 0f, 0f, 0f, 1f)
-                    gem.add(ex2 + fwdX * 0.15f + rgtX * 0.05f, ey + 0.06f, ez2 + fwdZ * 0.15f + rgtZ * 0.05f,
-                        0.030f, 1f, 0.42f, 0.30f, ojo, 0f, 0f, 0f, 1f)
-                }
-                com.mggx.laberinto.maze.MazeGenerator.EnemyKind.TOPO -> {
-                    // Va pegado al piso, cabeceando como el que viene cavando,
-                    // con las dos palas moviendose alternadas.
-                    val cabeceo = sin((e.paso * 5.5f + e.fase).toDouble()).toFloat()
-                    topo.add(
-                        ex2, ey + 0.20f + cabeceo * 0.03f, ez2, 0.62f,
-                        0.30f + golpe * 0.7f, 0.24f, 0.21f, flash,
-                        r, e.fase, 0f, 1f
-                    )
-                    for (lado in 0 until 2) {
-                        val s = if (lado == 0) 1f else -1f
-                        val bat = sin((e.paso * 5.5f + e.fase + lado * 3.14f).toDouble()).toFloat()
-                        pala.add(
-                            ex2 + rgtX * 0.17f * s + fwdX * 0.16f,
-                            ey + 0.13f + bat * 0.05f,
-                            ez2 + rgtZ * 0.17f * s + fwdZ * 0.16f,
-                            0.34f,
-                            0.42f + golpe * 0.6f, 0.35f, 0.30f, flash,
-                            if (lado == 0) r else r + Math.PI.toFloat(), e.fase, 0f, 1f
-                        )
-                    }
-                    // No tiene ojos utiles: lo que se le ve es la nariz humeda.
-                    gem.add(
-                        ex2 + fwdX * 0.30f, ey + 0.21f, ez2 + fwdZ * 0.30f,
-                        0.035f, 1f, 0.62f, 0.58f, ojo * 0.5f, 0f, 0f, 0f, 1f
-                    )
-                }
-                com.mggx.laberinto.maze.MazeGenerator.EnemyKind.ARANA -> {
-                    // Cuelga a media altura. Ocho patas quebradas repartidas
-                    // alrededor del cefalotorax, las de cada lado giradas media
-                    // vuelta para que la rodilla apunte siempre para afuera.
-                    arana.add(
-                        ex2, ey, ez2, 0.70f,
-                        0.26f + golpe * 0.7f, 0.22f, 0.28f, flash, r, e.fase, 0f, 1f
-                    )
-                    for (k in 0 until 8) {
-                        val lado = if (k % 2 == 0) -1f else 1f
-                        val a = 0.26f - (k / 2) * 0.19f
-                        val mueve = sin((e.paso * 4.2f + e.fase + k * 0.9f).toDouble()).toFloat()
-                        pata.add(
-                            ex2 + fwdX * a + rgtX * 0.18f * lado,
-                            ey - 0.16f + mueve * 0.04f,
-                            ez2 + fwdZ * a + rgtZ * 0.18f * lado,
-                            0.40f, 0.30f, 0.26f, 0.32f, flash,
-                            r + (if (lado > 0f) 0f else Math.PI.toFloat()), e.fase + k * 0.5f, 0f, 1f
-                        )
-                    }
-                    // Los ojos en fila: es lo unico que se le ve de lejos.
-                    for (k in 0 until 3) {
-                        val off = (k - 1) * 0.07f
-                        gem.add(
-                            ex2 + fwdX * 0.26f + rgtX * off, ey + 0.06f,
-                            ez2 + fwdZ * 0.26f + rgtZ * off,
-                            0.028f, 1f, 0.86f, 0.42f, ojo, 0f, 0f, 0f, 1f
-                        )
-                    }
-                }
-                com.mggx.laberinto.maze.MazeGenerator.EnemyKind.RASTRERO -> {
-                    // Cuerpo largo de tres placas de caparazon que ondulan al
-                    // avanzar, cada vez mas chicas hacia la cola.
-                    for (k in 0 until 3) {
-                        val off = 0.30f - k * 0.30f
-                        rastrero.add(
-                            ex2 + fwdX * off, ey + 0.20f - k * 0.03f, ez2 + fwdZ * off,
-                            0.46f - k * 0.09f,
-                            0.74f + golpe * 0.26f, 0.71f - golpe * 0.3f, 0.62f - golpe * 0.3f,
-                            flash, r, e.fase + k * 0.8f, 3f, 1f
-                        )
-                    }
-                    // Cuatro patas quebradas. Las de un lado van giradas media
-                    // vuelta para que la rodilla apunte para afuera en los dos.
-                    for (k in 0 until 4) {
-                        val a = if (k < 2) 0.22f else -0.16f
-                        val lado = if (k % 2 == 0) -1f else 1f
-                        pata.add(
-                            ex2 + fwdX * a + rgtX * 0.13f * lado, ey,
-                            ez2 + fwdZ * a + rgtZ * 0.13f * lado,
-                            0.34f, 0.60f, 0.58f, 0.50f, 0f,
-                            r + (if (lado > 0f) 0f else Math.PI.toFloat()), e.fase, 0f, 1f
-                        )
-                    }
-                    // Es ciego: en vez de ojos tiene dos antenas que tantean.
-                    gem.add(ex2 + fwdX * 0.44f - rgtX * 0.08f, ey + 0.30f, ez2 + fwdZ * 0.44f - rgtZ * 0.08f,
-                        0.05f, 0.95f, 0.86f, 0.52f, ojo * 0.6f, 0f, 0f, 0f, 1f)
-                    gem.add(ex2 + fwdX * 0.44f + rgtX * 0.08f, ey + 0.30f, ez2 + fwdZ * 0.44f + rgtZ * 0.08f,
-                        0.05f, 0.95f, 0.86f, 0.52f, ojo * 0.6f, 0f, 0f, 0f, 1f)
-                }
-                com.mggx.laberinto.maze.MazeGenerator.EnemyKind.GUARDIAN -> {
-                    // Torso tallado, cabeza hundida entre los hombros y dos
-                    // brazos de roca colgando: se lee como un cuerpo y no como
-                    // tres piedras apiladas.
-                    torso.add(ex2, ey + 0.62f, ez2, 1.05f,
-                        th.rockR * 0.8f + golpe * 0.5f, th.rockG * 0.8f, th.rockB * 0.82f, flash, r, 0f, 0f, 1f)
-                    cabeza.add(ex2, ey + 1.18f, ez2, 0.50f,
-                        th.rockR * 0.88f + golpe * 0.5f, th.rockG * 0.88f, th.rockB * 0.90f, flash, r, 0f, 0f, 1f)
-                    brazo.add(ex2 - rgtX * 0.44f, ey + 0.66f, ez2 - rgtZ * 0.44f, 0.72f,
-                        th.rockR * 0.75f + golpe * 0.4f, th.rockG * 0.75f, th.rockB * 0.78f, flash, r, 0f, 0f, 1f)
-                    brazo.add(ex2 + rgtX * 0.44f, ey + 0.66f, ez2 + rgtZ * 0.44f, 0.72f,
-                        th.rockR * 0.75f + golpe * 0.4f, th.rockG * 0.75f, th.rockB * 0.78f, flash, r, 0f, 0f, 1f)
-                    gem.add(ex2 + fwdX * 0.22f - rgtX * 0.10f, ey + 1.20f, ez2 + fwdZ * 0.22f - rgtZ * 0.10f,
-                        0.055f, 1f, 0.62f, 0.22f, ojo, 0f, 0f, 0f, 1f)
-                    gem.add(ex2 + fwdX * 0.22f + rgtX * 0.10f, ey + 1.20f, ez2 + fwdZ * 0.22f + rgtZ * 0.10f,
-                        0.055f, 1f, 0.62f, 0.22f, ojo, 0f, 0f, 0f, 1f)
-                }
+
+            ArmadoDeBichos.armarEn(e.kind, e.paso, e.fase, bolsa)
+            for (i in 0 until bolsa.cuantas) {
+                val pz = bolsa[i]
+                ArmadoDeBichos.aMundo(pz, e.x, e.altura, e.z, e.rumbo, enMundo)
+                val forma = shapeDeBicho(pz.malla) ?: continue
+                colorDePieza(e.kind, pz.malla, th, golpe, ojo, tintaBicho)
+                forma.add(
+                    enMundo[0], enMundo[1], enMundo[2], pz.escala,
+                    tintaBicho[0], tintaBicho[1], tintaBicho[2],
+                    if (ArmadoDeBichos.esOjo(pz.malla)) tintaBicho[3] else tintaBicho[3] * flash,
+                    enMundo[3], pz.fase, pz.tipo, 1f
+                )
             }
         }
 
@@ -1809,7 +1723,8 @@ class CaveRenderer(
         GLES30.glUniform1i(u(p, "uQuality"), save.settings.quality)
         val material = u(p, "uMaterial")
         GLES30.glUniform1i(material, 0)
-        cone.draw(); stalactite.draw(); boulder.draw(); torso.draw(); cabeza.draw(); brazo.draw()
+        cone.draw(); stalactite.draw(); boulder.draw(); torso.draw(); cabeza.draw()
+        brazo.draw(); pierna.draw()
         GLES30.glUniform1i(material, 1)
         boxS.draw(); slab.draw(); post.draw(); cofre.draw()
         GLES30.glUniform1i(material, 2)
@@ -1867,17 +1782,89 @@ class CaveRenderer(
      */
     private val SOMBRA = 0f
 
+    /** La forma instanciada que le corresponde a cada malla de bicho. */
+    /** Se reusa cuadro a cuadro: ver ArmadoDeBichos.Bolsa. */
+    private val bolsaDeBicho = ArmadoDeBichos.Bolsa()
+
+    private fun shapeDeBicho(m: ArmadoDeBichos.Malla): InstancedShape? = when (m) {
+        ArmadoDeBichos.Malla.MURCIELAGO_CUERPO -> shapeMurcielago
+        ArmadoDeBichos.Malla.ALA -> shapeWing
+        ArmadoDeBichos.Malla.TOPO_CUERPO -> shapeTopo
+        ArmadoDeBichos.Malla.PALA -> shapeTopoPala
+        ArmadoDeBichos.Malla.ARANA_CUERPO -> shapeArana
+        ArmadoDeBichos.Malla.PATA -> shapeRastreroPata
+        ArmadoDeBichos.Malla.RASTRERO_SEGMENTO -> shapeRastreroCuerpo
+        ArmadoDeBichos.Malla.GUARDIAN_TORSO -> shapeGuardianTorso
+        ArmadoDeBichos.Malla.GUARDIAN_CABEZA -> shapeGuardianCabeza
+        ArmadoDeBichos.Malla.GUARDIAN_BRAZO -> shapeGuardianBrazo
+        ArmadoDeBichos.Malla.GUARDIAN_PIERNA -> shapeGuardianPierna
+        ArmadoDeBichos.Malla.GEMA -> shapeGem
+    }
+
+    /**
+     * El color de una pieza de bicho, y cuanto la enciende el destello.
+     *
+     * Vive aca y no en [ArmadoDeBichos] porque es lo unico de un bicho que
+     * depende del bioma (el guardian esta hecho de la roca del nivel) y del
+     * golpe recibido. `out` recibe (r, g, b, brillo).
+     */
+    private fun colorDePieza(
+        kind: MazeGenerator.EnemyKind, m: ArmadoDeBichos.Malla, th: CaveTheme,
+        golpe: Float, ojo: Float, out: FloatArray
+    ) {
+        out[3] = 1f
+        if (m == ArmadoDeBichos.Malla.GEMA) {
+            when (kind) {
+                MazeGenerator.EnemyKind.MURCIELAGO -> { out[0] = 1f; out[1] = 0.42f; out[2] = 0.30f; out[3] = ojo }
+                // El topo es casi ciego: lo que se le ve es la nariz humeda.
+                MazeGenerator.EnemyKind.TOPO -> { out[0] = 1f; out[1] = 0.62f; out[2] = 0.58f; out[3] = ojo * 0.5f }
+                MazeGenerator.EnemyKind.ARANA -> { out[0] = 1f; out[1] = 0.86f; out[2] = 0.42f; out[3] = ojo }
+                // El rastrero es ciego: son antenas, no ojos.
+                MazeGenerator.EnemyKind.RASTRERO -> { out[0] = 0.95f; out[1] = 0.86f; out[2] = 0.52f; out[3] = ojo * 0.6f }
+                MazeGenerator.EnemyKind.GUARDIAN -> { out[0] = 1f; out[1] = 0.62f; out[2] = 0.22f; out[3] = ojo }
+            }
+            return
+        }
+        when (kind) {
+            MazeGenerator.EnemyKind.MURCIELAGO ->
+                if (m == ArmadoDeBichos.Malla.ALA) set(out, 0.28f + golpe * 0.6f, 0.20f, 0.23f)
+                else set(out, 0.21f + golpe * 0.7f, 0.16f, 0.19f)
+            MazeGenerator.EnemyKind.TOPO ->
+                if (m == ArmadoDeBichos.Malla.PALA) set(out, 0.42f + golpe * 0.6f, 0.35f, 0.30f)
+                else set(out, 0.30f + golpe * 0.7f, 0.24f, 0.21f)
+            MazeGenerator.EnemyKind.ARANA ->
+                if (m == ArmadoDeBichos.Malla.PATA) set(out, 0.30f, 0.26f, 0.32f)
+                else set(out, 0.26f + golpe * 0.7f, 0.22f, 0.28f)
+            MazeGenerator.EnemyKind.RASTRERO ->
+                if (m == ArmadoDeBichos.Malla.PATA) { set(out, 0.60f, 0.58f, 0.50f); out[3] = 0f }
+                // El caparazon se pone rojo AL REVES que el resto: sube el
+                // rojo y bajan los otros dos, porque de base ya es claro.
+                else set(out, 0.74f + golpe * 0.26f, 0.71f - golpe * 0.3f, 0.62f - golpe * 0.3f)
+            MazeGenerator.EnemyKind.GUARDIAN -> when (m) {
+                ArmadoDeBichos.Malla.GUARDIAN_CABEZA ->
+                    set(out, th.rockR * 0.88f + golpe * 0.5f, th.rockG * 0.88f, th.rockB * 0.90f)
+                ArmadoDeBichos.Malla.GUARDIAN_BRAZO, ArmadoDeBichos.Malla.GUARDIAN_PIERNA ->
+                    set(out, th.rockR * 0.75f + golpe * 0.4f, th.rockG * 0.75f, th.rockB * 0.78f)
+                else ->
+                    set(out, th.rockR * 0.8f + golpe * 0.5f, th.rockG * 0.8f, th.rockB * 0.82f)
+            }
+        }
+    }
+
+    private fun set(out: FloatArray, r: Float, g: Float, b: Float) {
+        out[0] = r; out[1] = g; out[2] = b
+    }
+
     private fun drawDecals(s: GameSession, fogDensity: Float, brightness: Float) {
         decalData.clear()
         var quads = 0
         val threadOn = s.effects.isActive(com.mggx.laberinto.game.EffectType.HILO_ARIADNA)
 
-        fun quad(x: Float, z: Float, size: Float, r: Float, g: Float, b: Float, a: Float) {
+        fun quadEn(
+            x: Float, y: Float, z: Float, size: Float,
+            r: Float, g: Float, b: Float, a: Float
+        ) {
             if (quads >= decalCapacity) return
-            // Apoyado en la altura REAL del piso (con su abolladura de
-            // ruido), no en el plano teorico: si no, en buena parte de cada
-            // casilla la marca queda tapada por la roca (hasta 13cm de bulto).
-            val y = WorldMesh.realFloorHeight(s.maze, x, z) + 0.02f
             val h = size * 0.5f
             val v = floatArrayOf(
                 x - h, y, z - h, 0f, 0f,
@@ -1892,6 +1879,12 @@ class CaveRenderer(
             put(0); put(2); put(3)
             quads++
         }
+
+        // Apoyado en la altura REAL del piso (con su abolladura de ruido), no
+        // en el plano teorico: si no, en buena parte de cada casilla la marca
+        // queda tapada por la roca (hasta 13 cm de bulto).
+        fun quad(x: Float, z: Float, size: Float, r: Float, g: Float, b: Float, a: Float) =
+            quadEn(x, WorldMesh.realFloorHeight(s.maze, x, z) + 0.02f, z, size, r, g, b, a)
 
         // --- sombras de contacto
         //
@@ -1929,8 +1922,16 @@ class CaveRenderer(
             // lo que hace que se lea a que altura esta: un murcielago alto deja
             // una mancha ancha y palida, y al bajar a morderte se le achica y
             // se le oscurece. Es la unica pista de altura que hay.
-            val subida = (e.altura / 1.6f).coerceIn(0f, 1f)
-            quad(e.x, e.z, e.kind.radio * 3.4f * (1f + subida * 0.8f),
+            val gx = (e.x / GameSession.CELL).toInt().coerceIn(0, s.maze.gw - 1)
+            val gy = (e.z / GameSession.CELL).toInt().coerceIn(0, s.maze.gh - 1)
+            val piso = pisoDe(gx, gy)
+            val subida = ((e.altura - piso) / 1.6f).coerceIn(0f, 1f)
+            // La sombra va a la altura de la MISMA tabla con la que camina el
+            // bicho, no a la del punto exacto: dentro de una casilla la roca se
+            // mueve hasta 17 cm, y si cada uno leyera su propio numero el bicho
+            // y su sombra quedarian despegados — que es justo el bug que esta
+            // version viene a cerrar.
+            quadEn(e.x, piso + 0.02f, e.z, e.kind.radio * 3.4f * (1f + subida * 0.8f),
                 SOMBRA, SOMBRA, SOMBRA, 0.46f * (1f - subida * 0.55f))
         }
         s.red?.match?.otros()?.forEach { o ->

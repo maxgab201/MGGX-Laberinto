@@ -293,6 +293,24 @@ class GameSession(
     var caido: Boolean = false
         private set
 
+    /**
+     * Altura de apoyo de cada casilla, si alguien la sabe mejor que el mapa.
+     *
+     * `maze.floorY` da la altura TEORICA y plana de una casilla, pero la roca
+     * que se dibuja se abolla hasta 13 cm, con el maximo justo en el centro de
+     * la casilla. Los bichos caminaban sobre ese plano teorico, o sea sobre
+     * algo que no existe: flotaban o se hundian un palmo.
+     *
+     * Se noto recien cuando se les puso sombra de contacto (1.9.3): la sombra
+     * SI va sobre la roca real, asi que el bicho y su sombra quedaban separados
+     * en vertical. El renderer, que ya arma esa tabla para apoyar todo lo
+     * demas, la enchufa aca — asi los dos leen el mismo numero y no pueden
+     * discrepar.
+     *
+     * Queda null en un test sin renderer, y entonces se usa el mapa plano.
+     */
+    var alturaDeApoyo: ((Int, Int) -> Float)? = null
+
     /** Indice de casilla, que es como viajan los hechos del mundo por la red. */
     private fun indiceDe(gx: Int, gy: Int): Int = gy * maze.gw + gx
 
@@ -1249,7 +1267,7 @@ class GameSession(
             detectable = !invisible && phaseWindow <= 0f,
             ruidoso = ruidoso,
             cell = CELL,
-            pisoDe = { gx, gy -> maze.floorY(gx, gy) },
+            pisoDe = alturaDeApoyo ?: { gx, gy -> maze.floorY(gx, gy) },
             muerde = { e -> mordidaDe(e) },
             yoId = r?.yo ?: "yo",
             companieros = companierosComoPresa(r),

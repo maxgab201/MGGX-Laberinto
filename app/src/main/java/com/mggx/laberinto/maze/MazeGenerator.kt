@@ -112,7 +112,11 @@ object MazeGenerator {
          * gateras, asi que meterse en un tramo bajo ya no es un refugio
          * seguro: te saca al guardian de encima, pero no al topo.
          */
-        TOPO("Topo de veta", 8f, 4.6f, 12f, 1.2f, 0.40f, 0.62f, 0f, false, false, 30f, 11),
+        // El alto bajo de 0.62 a 0.50 al medir el bicho dibujado: un topo es
+        // bajo y largo, y forzarlo a 62 cm lo convertia en una pelota. No
+        // cambia por donde entra: la gatera mas baja que genera el relieve
+        // mide 0,88 m, asi que entraba y sigue entrando en todas.
+        TOPO("Topo de veta", 8f, 4.6f, 12f, 1.2f, 0.40f, 0.50f, 0f, false, false, 30f, 11),
 
         /**
          * Cuelga a media altura, donde no llega un golpe dado de parado sin

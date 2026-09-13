@@ -121,7 +121,11 @@ object EnemyMeshes {
                 ),
                 segmentos = 18
             ),
-            1f, 0.62f, 1.15f    // achatado de arriba y estirado hacia adelante
+            // Antes decia (1, 0.62, 1.15): un plato estirado. Con eso el bicho
+            // entero se dibujaba de 38 cm cuando el juego lo trata como de 75,
+            // y para llegar a su alto real habia que agrandarlo tanto que se
+            // convertia en un colectivo. Ahora el caparazon es un domo.
+            1f, 0.95f, 0.80f
         )
         // Cresta: una quilla finita a lo largo del lomo.
         val cresta = escalar(
@@ -161,14 +165,14 @@ object EnemyMeshes {
             lathe(
                 arrayOf(
                     floatArrayOf(0.00f, -0.50f),   // cola
-                    floatArrayOf(0.09f, -0.42f),
-                    floatArrayOf(0.19f, -0.24f),
-                    floatArrayOf(0.26f, -0.02f),   // el lomo, lo mas ancho
-                    floatArrayOf(0.25f, 0.14f),
-                    floatArrayOf(0.19f, 0.28f),    // cuello
-                    floatArrayOf(0.21f, 0.34f),    // cabeza
-                    floatArrayOf(0.15f, 0.42f),
-                    floatArrayOf(0.07f, 0.47f),    // hocico
+                    floatArrayOf(0.146f, -0.42f),
+                    floatArrayOf(0.309f, -0.24f),
+                    floatArrayOf(0.423f, -0.02f),  // el lomo, lo mas ancho
+                    floatArrayOf(0.407f, 0.14f),
+                    floatArrayOf(0.309f, 0.28f),   // cuello
+                    floatArrayOf(0.342f, 0.34f),   // cabeza
+                    floatArrayOf(0.244f, 0.42f),
+                    floatArrayOf(0.114f, 0.47f),   // hocico
                     floatArrayOf(0.00f, 0.50f)
                 ),
                 segmentos = 16
@@ -176,9 +180,9 @@ object EnemyMeshes {
             90f
         )
         // Achatado de arriba y un poco mas ancho de lado.
-        val achatado = escalar(cuerpo, 1.12f, 0.82f, 1f)
+        val achatado = escalar(cuerpo, 1.05f, 0.66f, 1f)
         // Nariz: una bolita clara adelante de todo.
-        val nariz = trasladar(escalar(PropMeshes.octahedron(1f), 0.09f, 0.08f, 0.09f), 0f, 0.02f, 0.50f)
+        val nariz = trasladar(escalar(PropMeshes.octahedron(1f), 0.11f, 0.10f, 0.11f), 0f, 0.02f, 0.50f)
         return combinar(achatado, nariz)
     }
 
@@ -201,7 +205,20 @@ object EnemyMeshes {
             floatArrayOf(0.32f, -0.18f),
             floatArrayOf(0.06f, -0.14f)
         )
-        return PropMeshes.extruir(contorno, 0.075f)
+        // Rastrillada hacia abajo y hacia afuera, que es como cava un topo.
+        //
+        // El angulo va HORNEADO en la malla y no en el armado porque el
+        // pipeline de instancias solo sabe girar en Y: no hay forma de
+        // inclinar una pieza desde afuera.
+        //
+        // `rotarZ` inclina en el plano X-Y, o sea que baja la punta de la pala
+        // hacia el lado de las unas. La pala del otro lado es esta misma malla
+        // girada media vuelta en Y, lo que ESPEJA la inclinacion: la izquierda
+        // baja hacia la izquierda y la derecha hacia la derecha. Eso es lo que
+        // se quiere (las dos raspan hacia afuera), pero ojo al tocarlo: no es
+        // que el giro en Y "no afecte" a la inclinacion, es que la da vuelta y
+        // resulta simetrica.
+        return rotarZ(PropMeshes.extruir(contorno, 0.075f), -34f)
     }
 
     // ----------------------------------------------------------------- arana
@@ -293,6 +310,31 @@ object EnemyMeshes {
         val ceja = escalar(DetailMeshes.roundedBox(), 0.62f, 0.14f, 0.26f)
         return combinar(craneo, trasladar(rotarX(ceja, 12f), 0f, 0.14f, 0.34f))
     }
+
+    /**
+     * Pierna del guardian: una columna de roca, ancha en el pie y afinada
+     * hacia la cadera.
+     *
+     * Existe porque no habia. El guardian era un TORSO, una cabeza y dos
+     * brazos, y nada abajo de la cintura: un busto flotando a diez centimetros
+     * del piso. Se veia como una estatua serruchada. Nadie lo habia notado
+     * porque el armado del bicho vivia adentro del renderer y no habia forma
+     * de mirarlo (ver ArmadoDeBichos).
+     */
+    fun guardianPierna(): Geometry = escalar(
+        lathe(
+            arrayOf(
+                floatArrayOf(0.00f, -0.50f),
+                floatArrayOf(0.30f, -0.47f),   // el pie, apoyado y ancho
+                floatArrayOf(0.26f, -0.34f),
+                floatArrayOf(0.20f, -0.05f),   // la canilla
+                floatArrayOf(0.24f, 0.28f),    // el muslo
+                floatArrayOf(0.00f, 0.50f)
+            ),
+            segmentos = 6
+        ),
+        1f, 1f, 0.90f
+    )
 
     /**
      * Brazo del guardian: un bloque de roca colgando, mas grueso abajo, que es
