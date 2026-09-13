@@ -39,6 +39,20 @@ class CaveAudio(private val save: SaveData) {
 
     private var audio: AudioTrack? = null
     private var thread: Thread? = null
+
+    /**
+     * Una corrida del motor de audio: su AudioTrack y su propia bandera de
+     * "segui andando".
+     *
+     * Existe para que cada hilo tenga la SUYA. Con una bandera compartida, un
+     * hilo viejo que todavia no murio revive en cuanto alguien vuelve a
+     * arrancar el audio (ver [stop]).
+     */
+    private class Sesion(val at: AudioTrack) {
+        @Volatile var viva = true
+    }
+
+    private var sesion: Sesion? = null
     private val running = AtomicBoolean(false)
     private val sfxQueue = ConcurrentLinkedQueue<GameSession.Sfx>()
     private val rnd = Random(0xC0FFEE)
@@ -92,7 +106,9 @@ class CaveAudio(private val save: SaveData) {
     // ------------------------------------------------------------ control
 
     fun start() {
-        if (running.get()) return
+        // Se mira la sesion y no solo `running`: si quedo una corrida viva, dos
+        // motores escribiendo en paralelo suenan a ruido.
+        if (running.get() || sesion != null) return
         val minBuf = AudioTrack.getMinBufferSize(
             RATE, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT
         )
@@ -117,18 +133,44 @@ class CaveAudio(private val save: SaveData) {
         audio = at
         at.play()
         running.set(true)
-        thread = Thread({ loop(at) }, "MggxAudio").apply {
+        val s = Sesion(at)
+        sesion = s
+        thread = Thread({ loop(s) }, "MggxAudio").apply {
             priority = Thread.NORM_PRIORITY + 1
             start()
         }
     }
 
+    /**
+     * Corta el audio.
+     *
+     * Dos cosas que parecen detalles y no lo son:
+     *
+     * 1. **El hilo mira SU PROPIA bandera, no la compartida.** Antes miraba
+     *    `running`, que es una sola para toda la clase. Si `join` vencia
+     *    (escribir en un AudioTrack BLOQUEA hasta que haya lugar en el buffer,
+     *    asi que medio segundo no siempre alcanza) el hilo viejo quedaba vivo;
+     *    y en cuanto alguien llamaba a `start()` —volver de una pausa, nada
+     *    mas— `running` volvia a true y **el hilo zombi revivia**. Cada
+     *    pausa/reanudacion podia dejar uno colgado, todos escribiendo audio a
+     *    la vez.
+     *
+     * 2. **El AudioTrack lo suelta el hilo que lo usa, no el que corta.** Antes
+     *    `stop()` lo liberaba apenas vencia el `join`, con el hilo todavia
+     *    escribiendo adentro: uso despues de liberar. Ahora el que escribe es
+     *    el que cierra, en su `finally`, asi que no hay forma de que se
+     *    escriba en uno ya soltado, venza el `join` o no.
+     */
     fun stop() {
         running.set(false)
+        val s = sesion
+        sesion = null
+        audio = null
+        // Esto es lo que de verdad para el hilo, incluso si despues alguien
+        // llama a start() y prende `running` de nuevo.
+        s?.viva = false
         thread?.join(500)
         thread = null
-        try { audio?.pause(); audio?.flush(); audio?.release() } catch (_: Throwable) {}
-        audio = null
     }
 
     fun setTrack(newTrack: Track, theme: CaveTheme? = null) {
@@ -145,15 +187,20 @@ class CaveAudio(private val save: SaveData) {
 
     // ------------------------------------------------------------ motor
 
-    private fun loop(at: AudioTrack) {
-        while (running.get()) {
-            try {
-                render()
-                at.write(out, 0, out.size)
-            } catch (e: Throwable) {
-                // Nunca tirar la app por un problema de audio.
-                try { Thread.sleep(20) } catch (_: InterruptedException) { break }
+    private fun loop(s: Sesion) {
+        try {
+            while (s.viva) {
+                try {
+                    render()
+                    s.at.write(out, 0, out.size)
+                } catch (e: Throwable) {
+                    // Nunca tirar la app por un problema de audio.
+                    try { Thread.sleep(20) } catch (_: InterruptedException) { break }
+                }
             }
+        } finally {
+            // Lo suelta el que lo usa. Ver el comentario largo en [stop].
+            try { s.at.pause(); s.at.flush(); s.at.release() } catch (_: Throwable) {}
         }
     }
 

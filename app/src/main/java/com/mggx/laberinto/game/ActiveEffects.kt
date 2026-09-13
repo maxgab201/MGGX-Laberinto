@@ -11,14 +11,41 @@ class ActiveEffects {
         val type: EffectType,
         var magnitude: Float,
         var remaining: Float,
-        val total: Float,
-        val sourceId: String
+        /**
+         * Duracion completa de la aplicacion que manda ahora mismo. Es el
+         * denominador de la barrita del HUD, asi que tiene que corresponderse
+         * con [remaining] o la barra se pasa de largo.
+         */
+        var total: Float,
+        /** De que objeto viene el efecto que manda ahora. Da el icono del HUD. */
+        var sourceId: String
     )
 
     private val map = LinkedHashMap<EffectType, Active>()
 
-    val visible: List<Active> get() = map.values.filter { it.total > 0f }.toList()
+    /**
+     * Los efectos que se muestran en el HUD.
+     *
+     * `filter` ya devuelve una lista nueva: el `.toList()` que habia detras
+     * hacia una SEGUNDA copia de la misma cosa. Esto se lee en cada
+     * recomposicion del HUD, o sea unas treinta veces por segundo.
+     */
+    val visible: List<Active> get() = map.values.filter { it.total > 0f }
 
+    /**
+     * Prende un efecto, o refresca el que ya estaba.
+     *
+     * Al refrescar se queda con lo MEJOR de los dos (la magnitud mas alta y el
+     * tiempo mas largo), que es lo que evita que usar dos pociones seguidas
+     * apile efectos al infinito.
+     *
+     * Y si el que gana es el nuevo, se queda tambien con SU objeto y SU
+     * duracion total. Antes no: usabas una pocion corta y despues una larga, y
+     * el HUD te seguia mostrando el icono de la corta —el efecto era el de la
+     * larga, pero el cartel mentia— y la barrita de tiempo se iba por arriba
+     * del 100%, porque dividia el tiempo nuevo (mas largo) por el total viejo
+     * (mas corto).
+     */
     fun apply(type: EffectType, magnitude: Float, duration: Float, sourceId: String) {
         if (duration <= 0f) return
         val cur = map[type]
@@ -26,7 +53,11 @@ class ActiveEffects {
             map[type] = Active(type, magnitude, duration, duration, sourceId)
         } else {
             cur.magnitude = maxOf(cur.magnitude, magnitude)
-            cur.remaining = maxOf(cur.remaining, duration)
+            if (duration > cur.remaining) {
+                cur.remaining = duration
+                cur.total = duration
+                cur.sourceId = sourceId
+            }
         }
     }
 

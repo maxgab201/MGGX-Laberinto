@@ -97,17 +97,17 @@ class MatchLink(
     }
 
     fun avisarTomado(indiceCasilla: Int) {
-        match.objetosTomados.add(indiceCasilla)
+        match.marcarTomado(indiceCasilla)
         enviar(NetProtocol.tomar(yo, indiceCasilla))
     }
 
     fun avisarRoto(indiceCasilla: Int) {
-        match.paredesRotas.add(indiceCasilla)
+        match.marcarRota(indiceCasilla)
         enviar(NetProtocol.romper(yo, indiceCasilla))
     }
 
     fun avisarTrampa(indiceCasilla: Int) {
-        match.trampasSaltadas.add(indiceCasilla)
+        match.marcarTrampa(indiceCasilla)
         enviar(NetProtocol.trampa(yo, indiceCasilla))
     }
 

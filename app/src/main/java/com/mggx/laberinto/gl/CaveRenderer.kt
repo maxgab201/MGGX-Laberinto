@@ -64,6 +64,11 @@ class CaveRenderer(
          */
         const val AMBIENTE = 0.52f
 
+        /** Color de la madera del entibado de la mina. */
+        const val MADERA_R = 0.34f
+        const val MADERA_G = 0.24f
+        const val MADERA_B = 0.15f
+
         // Radio en metros de cada pickup (el octaedro base de shapeGem mide
         // radio 1.0, asi que esto ES el radio real del objeto). Antes eran
         // 0.155/0.255/0.34 - el Vetagris llegaba a medir lo mismo que el
@@ -205,6 +210,18 @@ class CaveRenderer(
     private val worldVbo = IntArray(1)
     private val worldEbo = IntArray(1)
     private var worldIndexCount = 0
+
+    /**
+     * Buffers directos que se reusan para lo que se sube cuadro a cuadro.
+     *
+     * Antes cada uno de estos sitios llamaba a `GLUtil.floatBuffer()`, que
+     * pide memoria DIRECTA nueva cada vez. Esa memoria vive fuera del monton
+     * de Java y se libera tarde: una asignacion por cuadro son 60 por segundo
+     * que nadie devuelve hasta que el sistema aprieta. Con el polvo en calidad
+     * ultra eran 5 KB por cuadro, o sea 300 KB por segundo de memoria nativa.
+     */
+    private val bufferMotas = BufferDirecto(260 * 5)
+    private val bufferDecals = BufferDirecto(4096)
 
     /** Polvo en el aire: instancias que se rearman cada cuadro. */
     private var motaProg = 0
@@ -927,7 +944,7 @@ class CaveRenderer(
         GLES30.glBindVertexArray(motaVao[0])
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, motaVbo[0])
         GLES30.glBufferSubData(
-            GLES30.GL_ARRAY_BUFFER, 0, n * 5 * 4, GLUtil.floatBuffer(motaDatos)
+            GLES30.GL_ARRAY_BUFFER, 0, n * 5 * 4, bufferMotas.cargar(motaDatos, n * 5)
         )
         GLES30.glEnable(GLES30.GL_BLEND)
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE)
@@ -1042,13 +1059,22 @@ class CaveRenderer(
     }
 
     /** De que esta hecha cada arma, para pintarla en la mano. */
+    // Los colores son CONSTANTES: creados una vez y no un array nuevo por
+    // cuadro. Son chicos, pero estan en la ruta de dibujo y ahi todo cuenta.
+    private val colorGarrote = floatArrayOf(0.42f, 0.28f, 0.17f)   // roble
+    private val colorPico = floatArrayOf(0.52f, 0.54f, 0.58f)      // hierro
+    private val colorAguijon = floatArrayOf(0.55f, 0.86f, 0.95f)   // cristal
+    private val colorMaza = floatArrayOf(0.30f, 0.30f, 0.33f)      // basalto
+    private val colorHacha = floatArrayOf(0.72f, 0.80f, 0.88f)     // vetagris
+    private val sinColor = floatArrayOf(0f, 0f, 0f)
+
     private fun colorDeArma(arma: String): FloatArray = when (ArmsMesh.Arma.por(arma)) {
-        ArmsMesh.Arma.GARROTE -> floatArrayOf(0.42f, 0.28f, 0.17f)   // roble
-        ArmsMesh.Arma.PICO -> floatArrayOf(0.52f, 0.54f, 0.58f)      // hierro
-        ArmsMesh.Arma.AGUIJON -> floatArrayOf(0.55f, 0.86f, 0.95f)   // cristal
-        ArmsMesh.Arma.MAZA -> floatArrayOf(0.30f, 0.30f, 0.33f)      // basalto
-        ArmsMesh.Arma.HACHA -> floatArrayOf(0.72f, 0.80f, 0.88f)     // vetagris
-        null -> floatArrayOf(0f, 0f, 0f)
+        ArmsMesh.Arma.GARROTE -> colorGarrote
+        ArmsMesh.Arma.PICO -> colorPico
+        ArmsMesh.Arma.AGUIJON -> colorAguijon
+        ArmsMesh.Arma.MAZA -> colorMaza
+        ArmsMesh.Arma.HACHA -> colorHacha
+        null -> sinColor
     }
 
     /**
@@ -1058,17 +1084,19 @@ class CaveRenderer(
      * frascos distintos comparten forma pero no color, y de reojo se distingue
      * si llevas la pocion verde o el vial de sombra.
      */
-    private fun colorDeObjeto(objeto: ArmsMesh.Objeto?): FloatArray = when (objeto) {
-        ArmsMesh.Objeto.FRASCO -> floatArrayOf(0.36f, 0.78f, 0.42f)        // pocion
-        ArmsMesh.Objeto.ANTORCHA -> floatArrayOf(0.40f, 0.26f, 0.15f)      // madera
-        ArmsMesh.Objeto.MAPA -> floatArrayOf(0.82f, 0.73f, 0.55f)          // papel
-        ArmsMesh.Objeto.PAN -> floatArrayOf(0.72f, 0.51f, 0.28f)           // corteza
-        ArmsMesh.Objeto.OVILLO -> floatArrayOf(0.86f, 0.84f, 0.74f)        // lino
-        ArmsMesh.Objeto.INSTRUMENTO -> floatArrayOf(0.58f, 0.56f, 0.48f)   // laton
-        ArmsMesh.Objeto.PIEDRA -> floatArrayOf(0.62f, 0.72f, 0.86f)        // mineral
-        ArmsMesh.Objeto.VENDA -> floatArrayOf(0.52f, 0.64f, 0.44f)         // musgo
-        null -> floatArrayOf(0f, 0f, 0f)
-    }
+    private val coloresDeObjeto = mapOf(
+        ArmsMesh.Objeto.FRASCO to floatArrayOf(0.36f, 0.78f, 0.42f),        // pocion
+        ArmsMesh.Objeto.ANTORCHA to floatArrayOf(0.40f, 0.26f, 0.15f),      // madera
+        ArmsMesh.Objeto.MAPA to floatArrayOf(0.82f, 0.73f, 0.55f),          // papel
+        ArmsMesh.Objeto.PAN to floatArrayOf(0.72f, 0.51f, 0.28f),           // corteza
+        ArmsMesh.Objeto.OVILLO to floatArrayOf(0.86f, 0.84f, 0.74f),        // lino
+        ArmsMesh.Objeto.INSTRUMENTO to floatArrayOf(0.58f, 0.56f, 0.48f),   // laton
+        ArmsMesh.Objeto.PIEDRA to floatArrayOf(0.62f, 0.72f, 0.86f),        // mineral
+        ArmsMesh.Objeto.VENDA to floatArrayOf(0.52f, 0.64f, 0.44f)          // musgo
+    )
+
+    private fun colorDeObjeto(objeto: ArmsMesh.Objeto?): FloatArray =
+        coloresDeObjeto[objeto] ?: sinColor
 
     private fun buildDecalBuffer(quads: Int) {
         decalCapacity = quads
@@ -1358,10 +1386,11 @@ class CaveRenderer(
             val ang = if (horizontal) 1.5708f else 0f
             val dx = if (horizontal) 0f else C * 0.34f
             val dz = if (horizontal) C * 0.34f else 0f
-            val madera = floatArrayOf(0.34f, 0.24f, 0.15f)
-            post.add(x - dx, fy, z - dz, alto, madera[0], madera[1], madera[2], 0.02f, 0f, 0f, 0f, 1f)
-            post.add(x + dx, fy, z + dz, alto, madera[0], madera[1], madera[2], 0.02f, 0f, 0f, 0f, 1f)
-            slab.add(x, fy + alto - 0.06f, z, C * 0.78f, madera[0] * 1.1f, madera[1] * 1.1f, madera[2] * 1.1f,
+            // El color va suelto y no en un array: esto corre una vez POR VIGA
+            // y por cuadro, y un nivel de la mina tiene decenas.
+            post.add(x - dx, fy, z - dz, alto, MADERA_R, MADERA_G, MADERA_B, 0.02f, 0f, 0f, 0f, 1f)
+            post.add(x + dx, fy, z + dz, alto, MADERA_R, MADERA_G, MADERA_B, 0.02f, 0f, 0f, 0f, 1f)
+            slab.add(x, fy + alto - 0.06f, z, C * 0.78f, MADERA_R * 1.1f, MADERA_G * 1.1f, MADERA_B * 1.1f,
                 0.02f, ang, 0f, 0f, 1f)
         }
 
@@ -1738,7 +1767,21 @@ class CaveRenderer(
      * puesto tambien el de al lado. Si la skin no existe (un cliente mas
      * nuevo, un mensaje raro), se cae al traje del minero de turno.
      */
-    private fun tinteDeSkin(skin: String): FloatArray {
+    /**
+     * Tintes de skin ya convertidos, por id.
+     *
+     * La conversion a espacio lineal tiene tres `Math.pow` adentro, y se hacia
+     * por companiero y por cuadro para un resultado que no cambia nunca: la
+     * skin de alguien es la misma toda la partida. Las skins son un punado,
+     * asi que el mapa no crece.
+     */
+    private val tintesDeSkin = HashMap<String, FloatArray>()
+
+    private fun tinteDeSkin(skin: String): FloatArray = tintesDeSkin.getOrPut(skin) {
+        calcularTinteDeSkin(skin)
+    }
+
+    private fun calcularTinteDeSkin(skin: String): FloatArray {
         val color = com.mggx.laberinto.game.ItemCatalog.get(skin)?.effect?.color2 ?: 0xFF60422AL
         // Pasa por sRgbLineal como todos los colores del juego. Sin esa
         // conversion el mismo traje se veia como tres veces mas claro en el
@@ -1794,8 +1837,12 @@ class CaveRenderer(
         GLES30.glDepthMask(false)
         GLES30.glBindVertexArray(decalVao[0])
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, decalVbo[0])
-        val arr = decalData.toArray()
-        GLES30.glBufferSubData(GLES30.GL_ARRAY_BUFFER, 0, arr.size * 4, GLUtil.floatBuffer(arr))
+        // `decalData.data` es el array interno, sin copiar: `toArray()` hacia
+        // una copia entera del rastro por cuadro, ademas del buffer directo.
+        GLES30.glBufferSubData(
+            GLES30.GL_ARRAY_BUFFER, 0, decalData.size * 4,
+            bufferDecals.cargar(decalData.data, decalData.size)
+        )
         GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, quads * 6)
         GLES30.glBindVertexArray(0)
         GLES30.glDepthMask(true)

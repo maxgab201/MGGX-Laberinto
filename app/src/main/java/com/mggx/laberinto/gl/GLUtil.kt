@@ -137,3 +137,50 @@ class UniformCache {
         consultasReales = 0
     }
 }
+
+/**
+ * Un buffer directo que se reusa, para subir datos a OpenGL cuadro a cuadro.
+ *
+ * El problema que resuelve: `GLUtil.floatBuffer()` hace un
+ * `ByteBuffer.allocateDirect`, y eso NO es una asignacion comun. La memoria
+ * directa vive fuera del monton de Java y el recolector la libera tarde, con
+ * su propio mecanismo: pedir una por cuadro es acumular memoria nativa que
+ * nadie mira hasta que el sistema empieza a apretar. Y ademas obliga a copiar
+ * el array entero cada vez.
+ *
+ * Sirve para lo que cambia todos los cuadros (el polvo, las calcomanias del
+ * piso). Para lo que se sube una sola vez —una malla de nivel— `floatBuffer`
+ * esta perfecto y no hace falta esto.
+ *
+ * [InstancedShape] ya hacia exactamente esto con un buffer propio; esta clase
+ * es lo mismo pero prestable, para no repetirlo en cada sitio que lo necesite.
+ */
+class BufferDirecto(capacidadInicial: Int = 4096) {
+
+    private var buffer = crear(capacidadInicial)
+    private var capacidad = capacidadInicial
+
+    private fun crear(n: Int): java.nio.FloatBuffer =
+        ByteBuffer.allocateDirect(n * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+
+    /**
+     * Deja en el buffer los primeros [cuantos] valores de [datos] y lo devuelve
+     * listo para pasarselo a OpenGL.
+     *
+     * Si no entran, crece al doble y se queda con el tamano nuevo: al cabo de
+     * unos cuadros deja de crecer y no vuelve a asignar nunca mas.
+     */
+    fun cargar(datos: FloatArray, cuantos: Int = datos.size): java.nio.FloatBuffer {
+        if (cuantos > capacidad) {
+            capacidad = maxOf(cuantos, capacidad * 2)
+            buffer = crear(capacidad)
+        }
+        buffer.clear()
+        buffer.put(datos, 0, cuantos)
+        buffer.flip()
+        return buffer
+    }
+
+    /** Cuantos floats entran ahora mismo sin volver a asignar. Lo mira el test. */
+    val capacidadActual: Int get() = capacidad
+}

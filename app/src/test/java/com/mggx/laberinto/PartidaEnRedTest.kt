@@ -734,5 +734,67 @@ class PartidaEnRedTest {
         assertEquals(GameSession.Phase.PERDIDO, s.phase)
         assertFalse(s.caido)
     }
+    @Test
+    fun elQueEntraTardeNoVeLasMonedasQueElOtroYaSeLlevo() {
+        // Bug real. Entre que el anfitrion reparte el ARRANQUE y que al
+        // companiero le termina de generar la cueva y armarse la malla pasan
+        // varios segundos, y en el medio el anfitrion ya esta jugando. Los
+        // TOMAR y los ROMPER de ese rato llegaban cuando todavia no habia
+        // ningun nivel donde aplicarlos, y se perdian: el que entraba despues
+        // veia monedas que el otro ya se habia llevado (y en cooperativo se
+        // pagaban dos veces) y paredes enteras donde el companiero caminaba.
+        val t1 = TransporteLocal()
+        val t2 = t1.companero()
+        val nivel = 6
+        val semilla = 777L
+
+        val anfitrion = GameSession(perfil(), nivel, semilla)
+        val redUno = MatchLink(t1, "uno", "Maxi", "skin_minero", anfitrion = true)
+        anfitrion.red = redUno
+        redUno.arrancar(NetProtocol.Modo.COOPERATIVO, nivel, semilla)
+
+        // El anfitrion levanta una moneda y rompe una pared mientras el otro
+        // todavia esta cargando el nivel.
+        val moneda = anfitrion.pickups.first { !it.taken }
+        val casillaMoneda = moneda.gy * anfitrion.maze.gw + moneda.gx
+        redUno.avisarTomado(casillaMoneda)
+        moneda.taken = true
+
+        var casillaPared = -1
+        for (gy in 1 until anfitrion.maze.gh - 1) {
+            for (gx in 1 until anfitrion.maze.gw - 1) {
+                if (anfitrion.maze.isSolid(gx, gy)) { casillaPared = gy * anfitrion.maze.gw + gx; break }
+            }
+            if (casillaPared >= 0) break
+        }
+        assertTrue("el nivel no tiene ni una pared interior", casillaPared >= 0)
+        redUno.avisarRoto(casillaPared)
+
+        // Recien AHORA el companiero termina de cargar y se engancha. Su
+        // MatchLink ya venia bombeando desde la pantalla de sala.
+        val redDos = MatchLink(t2, "dos", "Colo", "skin_minero", anfitrion = false)
+        redDos.latir(0.05f)   // aca recibe (y descarta) el ARRANQUE y los hechos
+        val invitado = GameSession(perfil(), nivel, semilla)
+        invitado.red = redDos
+
+        val suya = invitado.pickups.first { it.gx == moneda.gx && it.gy == moneda.gy }
+        assertTrue("veia una moneda que el otro ya se habia llevado", suya.taken)
+        assertFalse(
+            "veia solida una pared que el otro habia roto",
+            invitado.maze.isSolid(casillaPared % invitado.maze.gw, casillaPared / invitado.maze.gw)
+        )
+    }
+
+    @Test
+    fun ponerseAlDiaNoRompeUnaPartidaQueArrancaLimpia() {
+        // El caso normal: los dos bajan juntos y no paso nada antes. Nada
+        // tiene que aparecer levantado ni roto de entrada.
+        val mesa = Mesa(NetProtocol.Modo.CARRERA)
+        assertTrue(
+            "arranco con monedas ya levantadas",
+            mesa.dos.pickups.none { it.taken }
+        )
+    }
+
 }
 

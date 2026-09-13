@@ -124,6 +124,21 @@ fun MggxApp(
         onDispose { }
     }
 
+    // Si la app se va, la sala se cierra.
+    //
+    // `cerrar()` se llamaba en cada camino de navegacion que sale del
+    // multijugador, pero no habia ninguno para el caso mas comun de todos: que
+    // el jugador cierre la app, o que Android se lleve la actividad puesta.
+    // Ahi el MatchLink quedaba vivo con su escucha de Firebase enganchada, y
+    // los demas te veian de fantasma en la sala hasta que vencia el tiempo
+    // muerto. Avisar que te vas es mucho mejor que quedar colgado.
+    DisposableEffect(Unit) {
+        onDispose {
+            salaEnCurso?.cerrar()
+            salaEnCurso = null
+        }
+    }
+
     // La pantalla se fuerza prendida SOLO donde hace falta.
     //
     // Antes la bandera se prendia una vez al arrancar la app y no se apagaba

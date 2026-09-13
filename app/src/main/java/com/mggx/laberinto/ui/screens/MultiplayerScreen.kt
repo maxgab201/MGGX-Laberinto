@@ -90,7 +90,13 @@ fun MultiplayerScreen(
     var codigoEscrito by remember { mutableStateOf("") }
     var sala by remember { mutableStateOf(salaExistente?.first) }
     var link by remember { mutableStateOf(salaExistente?.second) }
-    var modo by remember { mutableStateOf(NetProtocol.Modo.CARRERA) }
+    // Al volver con una sala ya armada se arranca con el modo que se venia
+    // jugando, no con el de fabrica. Antes se reiniciaba a CARRERA: jugabas un
+    // nivel en Cooperativo, volvias a la sala para bajar al siguiente y el
+    // anfitrion lo repartia como carrera sin que nadie tocara nada.
+    var modo by remember {
+        mutableStateOf(salaExistente?.second?.match?.modo ?: NetProtocol.Modo.CARRERA)
+    }
     var error by remember { mutableStateOf<String?>(null) }
     // Sube en cada latido de red para que la lista de la sala se repinte.
     var latido by remember { mutableIntStateOf(0) }

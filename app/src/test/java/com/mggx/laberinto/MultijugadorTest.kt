@@ -153,8 +153,8 @@ class MultijugadorTest {
         m.aplicar(NetProtocol.tomar("dos", 412).codificar())
         m.aplicar(NetProtocol.tomar("dos", 412).codificar())
         m.aplicar(NetProtocol.tomar("tres", 413).codificar())
-        assertEquals(2, m.objetosTomados.size)
-        assertTrue(m.objetosTomados.contains(412))
+        assertEquals(2, m.objetosTomados().size)
+        assertTrue(m.objetosTomados().contains(412))
     }
 
     @Test
@@ -234,9 +234,9 @@ class MultijugadorTest {
         m.aplicar(NetProtocol.llegada("dos", 5L).codificar())
 
         m.aplicar(NetProtocol.arranque("uno", NetProtocol.Modo.CARRERA, 4, 99L).codificar())
-        assertTrue(m.objetosTomados.isEmpty())
-        assertTrue(m.paredesRotas.isEmpty())
-        assertTrue(m.trampasSaltadas.isEmpty())
+        assertTrue(m.objetosTomados().isEmpty())
+        assertTrue(m.paredesRotas().isEmpty())
+        assertTrue(m.trampasSaltadas().isEmpty())
         assertFalse(m.jugador("dos")!!.caido)
         assertEquals(0L, m.jugador("dos")!!.tiempoFinal)
     }

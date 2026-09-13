@@ -137,7 +137,6 @@ class GameSession(
     )
 
 
-    class TrailPoint(val x: Float, val z: Float, var life: Float)
 
     // ------------------------------------------------------------- mundo
     val blueprint = MazeGenerator.generate(level, seed)
@@ -176,13 +175,44 @@ class GameSession(
 
     var health: Float = stats.maxHealth
     var stamina: Float = stats.maxStamina
+
+    /**
+     * Si en ESTE cuadro estas corriendo de verdad.
+     *
+     * No es lo mismo que tener apretado el boton de correr: sin aguante, o
+     * arrastrandote por una gatera, el boton no hace nada. Los bichos escuchan
+     * esto y no el boton (ver [updateEnemies]).
+     */
+    var corriendo: Boolean = false; private set
+
+    /**
+     * Te quedaste sin aguante y todavia no recuperaste lo suficiente para
+     * volver a correr. Ver el comentario largo en [moveStep].
+     */
+    private var agotado = false
     var livesLeft: Int = stats.extraLives
 
     var phase: Phase = Phase.JUGANDO
         private set
 
     // ------------------------------------------------------- progreso
+    /**
+     * El reloj de la partida, en milisegundos.
+     *
+     * Se lleva la cuenta en segundos de verdad (ver [relojSegundos]) y recien
+     * aca se pasa a milisegundos. Sumar `(dt * 1000f).toLong()` cuadro a cuadro
+     * parecia lo mismo y no lo era: a 60 cuadros por segundo cada dt vale
+     * 16,666 ms, `toLong()` se queda con 16, y el reloj corria al 96% — perdia
+     * casi dos segundos y medio por minuto. A 90 cuadros el redondeo se come el
+     * 10%. O sea que el mismo recorrido daba un tiempo distinto segun a cuantos
+     * cuadros iba el telefono: el record personal y el bonus por tiempo
+     * dependian del brillo de la pantalla, y en una carrera los dos telefonos
+     * cronometraban distinto.
+     */
     var elapsedMs: Long = 0L; private set
+
+    /** La cuenta fina del reloj, en segundos. Ver [elapsedMs]. */
+    private var relojSegundos: Double = 0.0
     var ecosCollected: Int = 0; private set
     var vetagrisCollected: Int = 0; private set
     var steps: Int = 0; private set
@@ -195,7 +225,9 @@ class GameSession(
 
     val pickups = ArrayList<Pickup>()
     val traps = ArrayList<TrapInstance>()
-    val trail = ArrayList<TrailPoint>()
+    private val rastro = Rastro()
+    /** El rastro de pisadas que se dibuja en el piso. Ver [Rastro]. */
+    val trail: List<Rastro.Punto> get() = rastro.puntos
     val torches: List<Int> = blueprint.torches
     val stalagmites: List<Int> = blueprint.stalagmites
     val carbideStations: List<Int> = blueprint.carbide
@@ -210,6 +242,49 @@ class GameSession(
      * solitaria queda en null y nada de lo que sigue se ejecuta.
      */
     var red: MatchLink? = null
+        set(value) {
+            field = value
+            if (value != null) ponerseAlDia(value)
+        }
+
+    /**
+     * Aplicar de una lo que ya paso en la sala antes de que existiera esta
+     * cueva.
+     *
+     * Entre que el anfitrion reparte el ARRANQUE y que al companiero le
+     * termina de generar el nivel y armarse la malla pasan varios segundos, y
+     * en el medio el anfitrion ya bajo y esta jugando. Las monedas que levanto,
+     * las paredes que rompio y las trampas que piso viajan igual, pero llegan
+     * cuando todavia no hay ningun nivel donde aplicarlas: quedan anotadas en
+     * [MatchState] y se pierden.
+     *
+     * El sintoma era ese: el que entraba despues veia monedas que el otro ya
+     * se habia llevado (y en cooperativo se pagaban dos veces), y veia
+     * paredes enteras donde el companiero pasaba caminando.
+     */
+    private fun ponerseAlDia(r: MatchLink) {
+        val m = r.match
+        for (i in m.objetosTomados()) {
+            for (p in pickups) {
+                if (!p.taken && indiceDe(p.gx, p.gy) == i) { p.taken = true; break }
+            }
+        }
+        var seRompioAlgo = false
+        for (i in m.paredesRotas()) {
+            val gx = i % maze.gw
+            val gy = i / maze.gw
+            if (maze.inBounds(gx, gy) && maze.isSolid(gx, gy)) {
+                maze.setSolid(gx, gy, false)
+                if (!maze.isSolid(gx, gy)) seRompioAlgo = true
+            }
+        }
+        if (seRompioAlgo) { geometryDirty = true; maze.refreshSolution() }
+        for (i in m.trampasSaltadas()) {
+            for (t in traps) {
+                if (indiceDe(t.gx, t.gy) == i) { t.revealed = true; t.cooldown = 2.5f; break }
+            }
+        }
+    }
 
     /**
      * Cooperativo: estas caido esperando que un companiero te levante. No te
@@ -291,7 +366,6 @@ class GameSession(
     /** Recarga del sonar gratis (reliquia Diapason). */
     var freeSonarTimer = 0f; private set
 
-    private var timerFrozen = 0f
     private var sinceDamage = 0f
     private var bobPhase = 0f
     private var stepAccum = 0f
@@ -458,8 +532,16 @@ class GameSession(
         sinceDamage += dt
 
         // --- cronometro (se puede congelar)
-        if (effects.isActive(EffectType.CONGELAR_RELOJ)) timerFrozen = effects.remaining(EffectType.CONGELAR_RELOJ)
-        if (timerFrozen > 0f) timerFrozen -= dt else elapsedMs += (dt * 1000f).toLong()
+        // El reloj se para mientras el efecto esta puesto, y arranca en cuanto
+        // se apaga. Antes habia una copia del tiempo restante aca adentro que
+        // se descontaba sola, y eso lo hacia mentir en dos lados: si el efecto
+        // se cortaba de golpe (al terminar el nivel, o al limpiarlo) el reloj
+        // seguia congelado los segundos que le quedaban a la copia, mientras el
+        // HUD — que mira el efecto, no la copia — ya lo mostraba corriendo.
+        if (!effects.isActive(EffectType.CONGELAR_RELOJ)) {
+            relojSegundos += dt.toDouble()
+            elapsedMs = (relojSegundos * 1000.0).toLong()
+        }
 
         // --- camara
         val lookMul = effects.multiplier(EffectType.GIRO_RAPIDO)
@@ -470,7 +552,7 @@ class GameSession(
 
         // --- movimiento. Caido se sigue mirando alrededor, pero no se camina:
         // por eso la camara de arriba si se movio y esto no.
-        if (!caido) moveStep(dt, input)
+        if (!caido) moveStep(dt, input) else corriendo = false
 
         // --- la sala, si esta partida es de a varios
         pasoDeRed(dt)
@@ -548,10 +630,33 @@ class GameSession(
         // castigo (ver AguaDeLaCueva.frenoPorAgua).
         speed *= AguaDeLaCueva.frenoPorAgua(honduraDelAgua())
 
-        val wantsRun = (input.running || save.settings.autoRun) && stamina > 1f && postura.puedeCorrer
-        val moving = abs(input.moveX) > 0.02f || abs(input.moveY) > 0.02f
+        // El aguante se vacia y se recupera con un escalon en el medio, no con
+        // una sola linea.
+        //
+        // Antes la condicion era `stamina > 1f` a secas, y en el fondo de la
+        // barra eso se convertia en un interruptor a 60 Hz: un cuadro corrias
+        // (gastando 22 por segundo) y al siguiente no (recuperando 16), asi
+        // que volvias a pasar el umbral y otra vez. Dos cosas salian mal. Se
+        // veia y se escuchaba el tironeo — la velocidad y el cabeceo cambiaban
+        // cuadro por medio. Y peor: la barra no llegaba nunca al cero, porque
+        // el equilibrio se para justo arriba del umbral. Con casi la mitad de
+        // los cuadros corriendo, se cruzaba la cueva entera a paso de trote sin
+        // una gota de aguante y sin ningun costo.
+        //
+        // Con el escalon, cuando se acaba se acaba: hay que dejar de correr
+        // hasta recuperar un cuarto de la barra.
+        // El escalon de vuelta es alto a proposito (casi media barra): asi la
+        // partida queda con un ritmo de "corro un tramo, recupero el aire",
+        // que se lee y se juega. Con un escalon chiquito volvias a correr
+        // enseguida y el ritmo se picaba en tironcitos de un segundo.
+        if (stamina <= 0.5f) agotado = true
+        else if (agotado && stamina >= stats.maxStamina * 0.45f) agotado = false
 
-        if (wantsRun && moving) {
+        val wantsRun = (input.running || save.settings.autoRun) && !agotado && postura.puedeCorrer
+        val moving = abs(input.moveX) > 0.02f || abs(input.moveY) > 0.02f
+        corriendo = wantsRun && moving
+
+        if (corriendo) {
             speed *= stats.runMultiplier
             stamina = max(0f, stamina - stats.staminaDrain * dt)
         } else {
@@ -885,17 +990,7 @@ class GameSession(
     }
 
     private fun updateTrail(dt: Float) {
-        val threadOn = effects.isActive(EffectType.HILO_ARIADNA)
-        val life = if (threadOn) 999f else stats.trailSeconds
-        if (trail.isEmpty() || hypot(trail.last().x - posX, trail.last().z - posZ) > 0.75f) {
-            if (trail.size < 900) trail.add(TrailPoint(posX, posZ, life))
-        }
-        if (!threadOn) {
-            for (i in trail.indices.reversed()) {
-                trail[i].life -= dt
-                if (trail[i].life <= 0f) trail.removeAt(i)
-            }
-        }
+        rastro.update(dt, posX, posZ, effects.isActive(EffectType.HILO_ARIADNA), stats.trailSeconds)
     }
 
     private fun updatePickups(dt: Float) {
@@ -1130,8 +1225,11 @@ class GameSession(
         // juego al agua y no solo de decorado: un tramo inundado es un tramo
         // donde el sigilo no te sirve, y eso cambia por donde elegis ir.
         val chapoteando = AguaDeLaCueva.haceRuido(honduraDelAgua(), moviendose)
-        val ruidoso = chapoteando ||
-            ((input.running || save.settings.autoRun) && moviendose && postura.puedeCorrer)
+        // Se mira si estas corriendo DE VERDAD, no si tenes el boton apretado.
+        // Con "correr siempre" prendido en los ajustes, el boton esta apretado
+        // toda la partida: sin aguante caminabas, pero los bichos te seguian
+        // escuchando como si vinieras a los pedos.
+        val ruidoso = chapoteando || corriendo
         val r = red
         // En una sala los bichos los mueve el anfitrion y los demas copian.
         // Jugando solo no hay a quien copiarle, asi que los mueve uno.

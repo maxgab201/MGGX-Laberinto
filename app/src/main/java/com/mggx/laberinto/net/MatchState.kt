@@ -203,12 +203,35 @@ class MatchState(val yo: String) {
         synchronized(candado) { for (b in bichos.values) b.suavizar(k) }
     }
 
+    /**
+     * Lo que ya paso en el mundo desde que arranco esta partida.
+     *
+     * No es un registro de adorno: es lo que le permite a una partida que
+     * arranca tarde ponerse al dia. Entre que el anfitrion manda el ARRANQUE y
+     * que al companiero le termina de cargar la cueva pasan varios segundos, y
+     * en el medio el anfitrion ya esta jugando: levanta monedas, rompe paredes,
+     * pisa trampas. Esos mensajes llegan cuando todavia no hay ningun nivel al
+     * que aplicarlos, asi que quedan anotados aca hasta que lo haya (ver
+     * `GameSession.ponerseAlDia`).
+     *
+     * Van con candado por lo mismo que [jugadores]: se escriben desde el hilo
+     * de la partida y desde el de la interfaz (la pantalla de sala tambien
+     * bombea la red mientras espera).
+     */
+    private val tomados = HashSet<Int>()
+    private val rotas = HashSet<Int>()
+    private val saltadas = HashSet<Int>()
+
     /** Casillas cuyo objeto ya agarro alguien. */
-    val objetosTomados = HashSet<Int>()
+    fun objetosTomados(): Set<Int> = synchronized(candado) { HashSet(tomados) }
     /** Paredes que alguien rompio con el pico. */
-    val paredesRotas = HashSet<Int>()
+    fun paredesRotas(): Set<Int> = synchronized(candado) { HashSet(rotas) }
     /** Trampas que alguien ya salto. */
-    val trampasSaltadas = HashSet<Int>()
+    fun trampasSaltadas(): Set<Int> = synchronized(candado) { HashSet(saltadas) }
+
+    fun marcarTomado(casilla: Int) { synchronized(candado) { tomados.add(casilla) } }
+    fun marcarRota(casilla: Int) { synchronized(candado) { rotas.add(casilla) } }
+    fun marcarTrampa(casilla: Int) { synchronized(candado) { saltadas.add(casilla) } }
 
     // Todo lo que recorre la lista devuelve una COPIA: asi el que la recibe
     // la puede recorrer tranquilo aunque mientras tanto entre o salga alguien.
@@ -270,9 +293,7 @@ class MatchState(val yo: String) {
                 arrancada = true
                 // Una partida nueva empieza con el mundo limpio: si quedaran
                 // las monedas de la anterior, aparecerian ya levantadas.
-                objetosTomados.clear()
-                paredesRotas.clear()
-                trampasSaltadas.clear()
+                synchronized(candado) { tomados.clear(); rotas.clear(); saltadas.clear() }
                 // Los bichos de la cueva anterior no tienen nada que ver con
                 // los de esta: dejarlos poblaria el nivel nuevo de fantasmas
                 // parados donde estaban los del anterior.
@@ -288,9 +309,9 @@ class MatchState(val yo: String) {
                         .poner(b.x, b.z, b.alerta, b.vivo)
                 }
             }
-            NetProtocol.Tipo.TOMAR -> objetosTomados.add(m.entero(0))
-            NetProtocol.Tipo.ROMPER -> paredesRotas.add(m.entero(0))
-            NetProtocol.Tipo.TRAMPA -> trampasSaltadas.add(m.entero(0))
+            NetProtocol.Tipo.TOMAR -> marcarTomado(m.entero(0))
+            NetProtocol.Tipo.ROMPER -> marcarRota(m.entero(0))
+            NetProtocol.Tipo.TRAMPA -> marcarTrampa(m.entero(0))
             NetProtocol.Tipo.LLEGADA -> if (p.tiempoFinal == 0L) p.tiempoFinal = m.largo(0)
             NetProtocol.Tipo.CAIDO -> p.caido = true
             NetProtocol.Tipo.REVIVIR -> {
