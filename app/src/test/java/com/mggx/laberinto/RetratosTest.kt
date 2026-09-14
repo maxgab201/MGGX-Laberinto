@@ -131,7 +131,14 @@ class RetratosTest {
                 "hongo" to StructureMeshes.hongo(),
                 "pincho" to StructureMeshes.pincho(),
                 "estacion" to StructureMeshes.estacionCarburo(),
-                "obelisco" to StructureMeshes.obeliscoSalida()
+                "obelisco" to StructureMeshes.obeliscoSalida(),
+                "via de mina" to StructureMeshes.viaDeMina(),
+                "fuste roto" to StructureMeshes.fusteRoto(),
+                "losa rajada" to StructureMeshes.losaRajada(),
+                "boca de pozo" to StructureMeshes.bocaDePozo(),
+                "brocal" to StructureMeshes.brocalDePozo(),
+                "costra de fisura" to StructureMeshes.costraDeFisura(),
+                "nube de vapor" to StructureMeshes.nubeDeVapor()
             ),
             "estructuras",
             lado = 220

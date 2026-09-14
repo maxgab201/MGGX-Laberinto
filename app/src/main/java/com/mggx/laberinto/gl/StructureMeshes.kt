@@ -357,12 +357,12 @@ object StructureMeshes {
         // la costra se leia como un nido redondo: lo que dice "grieta" es que
         // sea mucho mas larga que ancha.
         for (lado in intArrayOf(-1, 1)) {
-            for (k in 0 until 7) {
-                val x = -0.60f + k * 0.20f
-                val z = lado * (0.26f + (k % 2) * 0.025f)
+            for (k in 0 until 8) {
+                val x = -0.66f + k * 0.19f
+                val z = lado * (0.21f + (k % 2) * 0.020f)
                 val c = escalar(
                     DetailMeshes.boulder(),
-                    0.28f + (k % 3) * 0.05f, 0.11f + (k % 2) * 0.03f, 0.155f
+                    0.26f + (k % 3) * 0.045f, 0.105f + (k % 2) * 0.025f, 0.125f
                 )
                 piezas.add(trasladar(rotarY(c, k * 23f * lado), x, 0f, z))
             }
@@ -370,7 +370,7 @@ object StructureMeshes {
         // Los dos remates de las puntas, que cierran la raja.
         for (sg in intArrayOf(-1, 1)) {
             piezas.add(
-                trasladar(escalar(DetailMeshes.boulder(), 0.17f, 0.10f, 0.26f), sg * 0.72f, 0f, 0f)
+                trasladar(escalar(DetailMeshes.boulder(), 0.14f, 0.095f, 0.21f), sg * 0.765f, 0f, 0f)
             )
         }
         return combinar(piezas[0], *piezas.drop(1).toTypedArray())
@@ -419,6 +419,94 @@ object StructureMeshes {
             bollo(0.50f),
             trasladar(bollo(0.34f), 0.34f, 0.20f, 0.12f),
             trasladar(bollo(0.28f), -0.30f, 0.14f, -0.16f)
+        )
+    }
+
+    /**
+     * Un tramo de via de vagoneta: los durmientes y los dos rieles.
+     *
+     * Antes la via eran dos [DetailMeshes.roundedBox] largos puestos en cruz,
+     * uno mas largo que el otro. En una foto eso se lee como un durmiente
+     * suelto, no como una via: lo que hace que el ojo diga "por aca pasaba una
+     * vagoneta" son los DOS rieles paralelos, y eso con dos piezas cruzadas no
+     * se puede decir.
+     *
+     * Se apoya en y=0, corre a lo largo de X y mide 1 de largo, asi que el
+     * `scale` que le pase el renderer es directamente su largo en metros.
+     */
+    fun viaDeMina(): Geometry {
+        val piezas = ArrayList<Geometry>()
+        // Cinco durmientes cruzados, ninguno perfectamente derecho: la via
+        // esta abandonada.
+        for (k in 0 until 5) {
+            val x = -0.40f + k * 0.20f
+            val d = escalar(DetailMeshes.roundedBox(1f, 0.10f, 0.10f, 0.014f), 0.62f, 0.62f, 0.62f)
+            piezas.add(trasladar(rotarY(d, 90f + (k % 3 - 1) * 4f), x, 0.031f, 0f))
+        }
+        // Los dos rieles, finitos y de otro material.
+        for (sg in intArrayOf(-1, 1)) {
+            val r = escalar(DetailMeshes.roundedBox(1f, 0.05f, 0.05f, 0.008f), 1f, 1f, 1f)
+            piezas.add(trasladar(r, 0f, 0.083f, sg * 0.125f))
+        }
+        return combinar(piezas[0], *piezas.drop(1).toTypedArray())
+    }
+
+    /**
+     * El fuste de una columna partida, con su basa.
+     *
+     * Antes era una caja de 0,72 con un cilindro encima, y el cilindro se
+     * escalaba a `alto * 2.6`: hasta 4,76 m. En una galeria de 3,40 la columna
+     * salia por el techo, y eso paso desapercibido todo este tiempo porque el
+     * armado vivia suelto adentro del renderer.
+     *
+     * Ahora es un modelo solo, normalizado: se apoya en y=0 y llega a y=1, asi
+     * que el `scale` es su altura en metros y el renderer puede recortarla
+     * contra el alto libre de la casilla sin hacer cuentas.
+     */
+    fun fusteRoto(): Geometry {
+        // Basa escalonada.
+        val basa = combinar(
+            escalar(DetailMeshes.roundedBox(), 0.46f, 0.07f, 0.46f),
+            trasladar(escalar(DetailMeshes.roundedBox(), 0.38f, 0.05f, 0.38f), 0f, 0.055f, 0f)
+        )
+        // Fuste apenas conico, como cualquier columna de verdad.
+        val fuste = lathe(
+            arrayOf(
+                floatArrayOf(0.170f, 0.000f),
+                floatArrayOf(0.163f, 0.180f),
+                floatArrayOf(0.152f, 0.520f),
+                floatArrayOf(0.146f, 0.820f),
+                floatArrayOf(0.150f, 0.880f)
+            ),
+            segmentos = 12
+        )
+        // Estrias: ocho medias canas pegadas al fuste. Son lo que separa una
+        // columna tallada de un cano.
+        val estrias = ArrayList<Geometry>()
+        for (k in 0 until 8) {
+            val e = escalar(
+                PropMeshes.cylinder(5, 1f, 0.1f), 0.26f, 0.83f, 0.26f
+            )
+            estrias.add(rotarY(trasladar(e, 0.152f, 0.03f, 0f), k * 45f))
+        }
+        // El quiebre de arriba: la columna esta PARTIDA, no cortada a escuadra.
+        //
+        // Va en un arco de medio giro y no en un anillo entero, y siempre por
+        // DENTRO del radio del fuste: con las piedras repartidas en toda la
+        // vuelta y asomando por el borde, la rotura se leia como un capitel,
+        // que es lo contrario de lo que tiene que decir.
+        val quiebre = ArrayList<Geometry>()
+        val alturas = floatArrayOf(0.905f, 0.870f, 0.845f, 0.882f, 0.838f)
+        val radios = floatArrayOf(0.035f, 0.085f, 0.110f, 0.062f, 0.100f)
+        for (k in 0 until 5) {
+            val t = escalar(DetailMeshes.boulder(), 0.115f, 0.075f, 0.100f)
+            quiebre.add(rotarY(trasladar(t, radios[k], alturas[k], 0f), 24f + k * 47f))
+        }
+        return combinar(
+            trasladar(basa, 0f, 0.035f, 0f),
+            trasladar(fuste, 0f, 0.085f, 0f),
+            *estrias.toTypedArray(),
+            *quiebre.toTypedArray()
         )
     }
 

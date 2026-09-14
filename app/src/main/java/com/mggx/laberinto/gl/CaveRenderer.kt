@@ -454,6 +454,9 @@ class CaveRenderer(
     /** El embudo negro del pozo y las piedras de su borde. */
     private var shapeBocaPozo: InstancedShape? = null
     private var shapeBrocal: InstancedShape? = null
+    /** La via de vagoneta de la mina y el fuste partido de las ruinas. */
+    private var shapeVia: InstancedShape? = null
+    private var shapeFuste: InstancedShape? = null
     /** La costra mineral de la fisura y la raja oscura del medio. */
     private var shapeCostra: InstancedShape? = null
     private var shapeBocaFisura: InstancedShape? = null
@@ -1166,6 +1169,8 @@ class CaveRenderer(
         shapeLosa = InstancedShape(StructureMeshes.losaRajada(), 60)
         shapeBocaPozo = InstancedShape(StructureMeshes.bocaDePozo(), 60)
         shapeBrocal = InstancedShape(StructureMeshes.brocalDePozo(), 60)
+        shapeVia = InstancedShape(StructureMeshes.viaDeMina(), 300)
+        shapeFuste = InstancedShape(StructureMeshes.fusteRoto(), 300)
         shapeCostra = InstancedShape(StructureMeshes.costraDeFisura(), 60)
         shapeBocaFisura = InstancedShape(StructureMeshes.bocaDeFisura(), 60)
         shapeVapor = InstancedShape(StructureMeshes.nubeDeVapor(), 240)
@@ -1367,6 +1372,8 @@ class CaveRenderer(
         val losa = shapeLosa ?: return
         val bocaPozo = shapeBocaPozo ?: return
         val brocal = shapeBrocal ?: return
+        val via = shapeVia ?: return
+        val fuste = shapeFuste ?: return
         val costra = shapeCostra ?: return
         val bocaFisura = shapeBocaFisura ?: return
         val vapor = shapeVapor ?: return
@@ -1393,7 +1400,7 @@ class CaveRenderer(
         antorcha.begin(); llama.begin(); cristal.begin(); cofre.begin()
         hongo.begin(); pincho.begin(); estacion.begin(); obelisco.begin()
         losa.begin(); bocaPozo.begin(); brocal.begin(); vapor.begin()
-        costra.begin(); bocaFisura.begin()
+        costra.begin(); bocaFisura.begin(); via.begin(); fuste.begin()
         minero.begin(); casco.begin(); cabezaMinero.begin()
         val C = GameSession.CELL
         val m = s.maze
@@ -1429,20 +1436,38 @@ class CaveRenderer(
             val giro = ((gx * 31 + gy * 17) % 20) * 0.31f
             when (t.biome) {
                 com.mggx.laberinto.maze.Biome.MINA -> {
-                    // Durmientes y riel de la vagoneta.
-                    shapeSlab?.add(x, fy + 0.05f, z, C * 0.55f, 0.30f, 0.22f, 0.15f, 0.01f,
-                        if ((gx + gy) % 2 == 0) 0f else 1.5708f, 0f, 0f, 1f)
-                    shapeSlab?.add(x, fy + 0.12f, z, C * 0.30f, 0.36f, 0.30f, 0.26f, 0.02f,
-                        if ((gx + gy) % 2 == 0) 1.5708f else 0f, 0f, 0f, 1f)
+                    // La via de la vagoneta, puesta A LO LARGO del pasillo.
+                    //
+                    // Antes eran dos tablones cruzados en equis y el giro salia
+                    // de la paridad de la casilla, asi que la mitad de las
+                    // veces la via cruzaba el corredor de lado a lado. La
+                    // malla ya trae los durmientes y los dos rieles: lo unico
+                    // que hace falta es apuntarla bien.
+                    val aLoLargoDeX = m.isSolid(gx, gy - 1) || m.isSolid(gx, gy + 1)
+                    via.add(
+                        x, fy + 0.02f, z, C,
+                        0.32f, 0.24f, 0.17f, 0.01f,
+                        if (aLoLargoDeX) 0f else 1.5708f, 0f, 0f, 1f
+                    )
                 }
                 com.mggx.laberinto.maze.Biome.RUINAS,
                 com.mggx.laberinto.maze.Biome.TEMPLO -> {
-                    // Fuste de columna partido, con su basa cuadrada.
-                    val alto = 0.55f + ((gx * 5 + gy * 3) % 5) * 0.32f
-                    boxS.add(x, fy + 0.07f, z, 0.72f, t.rockR * 1.1f, t.rockG * 1.1f, t.rockB * 1.1f, 0f, giro, 0f, 0f, 1f)
-                    cyl.add(x, fy + 0.12f, z, alto * 2.6f, t.rockR * 1.18f, t.rockG * 1.16f, t.rockB * 1.12f, 0f, giro, 0f, 0f, 1f)
+                    // Fuste de columna partido.
+                    //
+                    // El alto se recorta contra el techo REAL de la casilla.
+                    // Antes se escalaba un cilindro a `alto * 2.6` —hasta 4,76
+                    // m— en galerias de 3,40: la columna salia por el techo.
+                    val libre = m.ceilClearance[m.index(gx, gy)]
+                    val alto = (1.35f + ((gx * 5 + gy * 3) % 5) * 0.52f)
+                        .coerceAtMost(libre - 0.30f)
+                        .coerceAtLeast(0.70f)
+                    fuste.add(
+                        x, fy, z, alto,
+                        t.rockR * 1.16f, t.rockG * 1.14f, t.rockB * 1.10f, 0f,
+                        giro, 0f, 0f, 1f
+                    )
                     if (t.biome == com.mggx.laberinto.maze.Biome.TEMPLO) {
-                        gem.add(x, fy + 0.12f + alto * 2.6f, z, 0.13f, t.veinR, t.veinG, t.veinB, 0.75f, giro, 0f, 0f, 1f)
+                        gem.add(x, fy + alto * 0.98f, z, 0.13f, t.veinR, t.veinG, t.veinB, 0.75f, giro, 0f, 0f, 1f)
                     }
                 }
                 com.mggx.laberinto.maze.Biome.HONGOS -> {
@@ -1537,7 +1562,10 @@ class CaveRenderer(
             val x = (gx + 0.5f) * C; val z = (gy + 0.5f) * C
             if (!near(x, z)) continue
             val fy = pisoDe(gx, gy)
-            val alto = (m.ceilY(gx, gy) - fy).coerceIn(1.4f, 3.4f)
+            // Hasta el techo de VERDAD: el tope fijo de 3,40 era el alto que
+            // tenian todas las galerias antes de que el techo variara, y con
+            // un salon de 5,40 dejaba el marco flotando a media altura.
+            val alto = (m.ceilY(gx, gy) - fy).coerceIn(1.4f, 5.6f)
             // El marco cruza el pasillo, asi que se orienta segun por donde se pasa.
             val horizontal = m.isSolid(gx, gy - 1)
             val ang = if (horizontal) 1.5708f else 0f
@@ -1800,9 +1828,9 @@ class CaveRenderer(
         brazo.draw(); pierna.draw()
         // El pozo y su brocal son piedra de la cueva, igual que las rocas.
         losa.draw(); bocaPozo.draw(); brocal.draw()
-        costra.draw(); bocaFisura.draw()
+        costra.draw(); bocaFisura.draw(); fuste.draw()
         GLES30.glUniform1i(material, 1)
-        boxS.draw(); slab.draw(); post.draw(); cofre.draw()
+        boxS.draw(); slab.draw(); post.draw(); cofre.draw(); via.draw()
         GLES30.glUniform1i(material, 2)
         cyl.draw(); arrow.draw(); antorcha.draw(); pincho.draw(); estacion.draw(); casco.draw()
         topo.draw(); pala.draw(); arana.draw()
