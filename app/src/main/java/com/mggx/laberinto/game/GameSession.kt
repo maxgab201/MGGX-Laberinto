@@ -23,7 +23,7 @@ import kotlin.random.Random
 class GameSession(
     val save: SaveData,
     val level: Int,
-    seed: Long = seedForLevel(level)
+    val seed: Long = seedForLevel(level)
 ) {
     companion object {
         /**
@@ -235,6 +235,8 @@ class GameSession(
     val rocks: List<Int> = blueprint.rocks
     val mushrooms: List<Int> = blueprint.mushrooms
     val beams: List<Int> = blueprint.beams
+    /** Casillas del patio del nivel 999. Vacio en todos los demas. */
+    val patio: List<Int> = blueprint.patio
 
     // ---------------------------------------------------------- de a varios
     /**
@@ -310,6 +312,66 @@ class GameSession(
      * Queda null en un test sin renderer, y entonces se usa el mapa plano.
      */
     var alturaDeApoyo: ((Int, Int) -> Float)? = null
+
+    // ------------------------------------------------------- la luz de afuera
+
+    /**
+     * A cuantas casillas esta cada casilla de la boca del patio, o -1 si esta
+     * cueva no tiene salida al aire libre.
+     *
+     * Solo el nivel 999 la tiene (ver [com.mggx.laberinto.maze.ElAscenso]). Se
+     * calcula una vez al armar el nivel, con un BFS desde TODAS las casillas
+     * de cielo a la vez: asi el campo dice "cuanto falta para salir" sin
+     * importar por donde vengas.
+     */
+    private val distanciaAlCielo: IntArray? = run {
+        if (!maze.cielo.any { it }) null else {
+            val d = IntArray(maze.gw * maze.gh) { -1 }
+            val cola = IntArray(d.size)
+            var fin = 0
+            for (i in d.indices) if (maze.cielo[i] && !maze.solid[i]) { d[i] = 0; cola[fin++] = i }
+            var cab = 0
+            while (cab < fin) {
+                val a = cola[cab++]
+                val ax = a % maze.gw
+                val ay = a / maze.gw
+                for (k in 0 until 4) {
+                    val vx = ax + intArrayOf(0, 0, -1, 1)[k]
+                    val vy = ay + intArrayOf(-1, 1, 0, 0)[k]
+                    if (!maze.inBounds(vx, vy)) continue
+                    val j = maze.index(vx, vy)
+                    if (maze.solid[j] || d[j] >= 0) continue
+                    d[j] = d[a] + 1
+                    cola[fin++] = j
+                }
+            }
+            d
+        }
+    }
+
+    /** True si este nivel termina afuera, al aire libre. */
+    val terminaAfuera: Boolean get() = distanciaAlCielo != null
+
+    /**
+     * Cuanta luz de dia le llega al jugador: 0 adentro de la cueva, 1 en el
+     * patio.
+     *
+     * Es lo que hace que el ultimo tramo del juego se sienta como salir. La luz
+     * no se prende de golpe al cruzar una linea: crece a medida que te acercas
+     * a la boca, que es lo que hace de verdad la luz de una entrada de cueva.
+     * Subir los ultimos metros viendo como se va aclarando la roca es la mitad
+     * del final.
+     */
+    fun luzDeAfuera(): Float {
+        val d = distanciaAlCielo ?: return 0f
+        val i = maze.index(gridX(), gridY())
+        val casillas = d.getOrElse(i) { -1 }
+        if (casillas < 0) return 0f
+        // Cinco casillas de derrame: quince metros de galeria que se van
+        // aclarando.
+        val t = (1f - casillas / 5f).coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
+    }
 
     /** Indice de casilla, que es como viajan los hechos del mundo por la red. */
     private fun indiceDe(gx: Int, gy: Int): Int = gy * maze.gw + gx

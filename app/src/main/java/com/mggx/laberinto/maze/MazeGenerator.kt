@@ -40,7 +40,13 @@ object MazeGenerator {
         /** Marcos de madera de la mina vieja. */
         val beams: List<Int>,
         /** Bichos que viven en el nivel. */
-        val enemies: List<EnemySpawn>
+        val enemies: List<EnemySpawn>,
+        /**
+         * Casillas del patio del nivel 999, o vacio en todos los demas.
+         *
+         * Es la unica parte del juego que pasa al aire libre: ver [ElAscenso].
+         */
+        val patio: List<Int> = emptyList()
     )
 
     /**
@@ -127,6 +133,9 @@ object MazeGenerator {
 
     /** Dimensiones logicas del nivel. Crece de forma sostenida pero acotada. */
     fun cellsForLevel(level: Int): Pair<Int, Int> {
+        // El ultimo nivel no es un laberinto, es el tramo de salida: chico a
+        // proposito. Ver ElAscenso.
+        if (level == ElAscenso.NIVEL) return ElAscenso.celdas()
         val l = max(1, level)
         // Crecimiento suave: nivel 1 -> 7x7, nivel 20 -> ~19x17, nivel 60 -> ~35x31
         val base = 7.0 + (l - 1) * 0.48
@@ -144,6 +153,7 @@ object MazeGenerator {
 
     /** Largo objetivo aproximado del recorrido, para mostrar dificultad. */
     fun difficultyLabel(level: Int): String = when {
+        level == ElAscenso.NIVEL -> "La Salida"
         level <= 5 -> "Grieta"
         level <= 12 -> "Galeria"
         level <= 22 -> "Caverna"
@@ -156,6 +166,8 @@ object MazeGenerator {
         val (cols, rows) = cellsForLevel(level)
         val rnd = Random(seed)
         val theme = CaveTheme.forLevel(level)
+
+        if (level == ElAscenso.NIVEL) return ascenso(cols, rows, seed, rnd, theme)
 
         var maze = carve(cols, rows, rnd, level)
 
@@ -182,6 +194,43 @@ object MazeGenerator {
 
         val populated = populate(maze, level, rnd, theme)
         return populated.copy(seed = seed)
+    }
+
+    /**
+     * El nivel 999: un tramo corto que sube hasta el patio de tu casa.
+     *
+     * No pasa por `carve` ni por `ReliefGenerator`: los dos estan hechos para
+     * armar un laberinto con vueltas, y este nivel es lo contrario. Tampoco
+     * lleva bichos, ni trampas, ni monedas — es el final, no una prueba mas.
+     */
+    private fun ascenso(cols: Int, rows: Int, seed: Long, rnd: Random, theme: CaveTheme): Blueprint {
+        val maze = Maze(cols, rows)
+        ElAscenso.tallar(maze, rnd)
+        maze.refreshSolution()
+        ElAscenso.relieve(maze)
+
+        // Unas pocas antorchas en la subida, para que el corredor no este a
+        // oscuras y para que se note el contraste al salir al sol.
+        val torches = ArrayList<Int>()
+        for (gy in 0 until maze.gh) {
+            for (gx in 0 until maze.gw) {
+                val i = maze.index(gx, gy)
+                if (maze.solid[i] || maze.cielo[i]) continue
+                var vecinos = 0
+                for (d in 0..3) if (maze.isSolid(gx + DX[d], gy + DY[d])) vecinos++
+                if (vecinos in 1..3 && (gx + gy) % 3 == 0) torches.add(i)
+            }
+        }
+
+        return Blueprint(
+            maze = maze, level = ElAscenso.NIVEL, seed = seed, theme = theme,
+            coins = emptyList(), bigCoins = emptyList(), crystals = emptyList(),
+            traps = emptyList(), chests = emptyList(), torches = torches,
+            stalagmites = emptyList(), carbide = emptyList(),
+            crystalClusters = emptyList(), rocks = emptyList(),
+            mushrooms = emptyList(), beams = emptyList(), enemies = emptyList(),
+            patio = ElAscenso.casillasDelPatio(maze)
+        )
     }
 
     // ------------------------------------------------------------------ carve

@@ -53,10 +53,16 @@ class LucesTest {
         // El armado tiene que colgar de prepareLevel: si no, al cambiar de
         // nivel quedarian las luces del nivel anterior flotando en el aire.
         val src = fuente("gl/CaveRenderer.kt")
-        val bloque = src.substring(src.indexOf("private fun prepareLevel"))
+        // Se mira el CUERPO entero de prepareLevel, no sus primeros 400
+        // caracteres. Con el tope de caracteres, agregarle una linea al
+        // principio a prepareLevel hacia fallar este test sin que nada se
+        // hubiera roto — y eso no es un test, es una alarma que suena sola.
+        val desde = src.indexOf("private fun prepareLevel")
+        val siguiente = src.indexOf("\n    private fun ", desde + 10)
+        val cuerpo = src.substring(desde, if (siguiente > 0) siguiente else src.length)
         assertTrue(
             "prepareLevel no rearma las luces del nivel",
-            bloque.take(400).contains("armarFaroles(")
+            cuerpo.contains("armarFaroles(")
         )
     }
 

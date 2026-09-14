@@ -3,6 +3,7 @@ package com.mggx.laberinto.gl
 import com.mggx.laberinto.gl.PropMeshes.Geometry
 import com.mggx.laberinto.gl.PropMeshes.combinar
 import com.mggx.laberinto.gl.PropMeshes.escalar
+import com.mggx.laberinto.gl.PropMeshes.extruir
 import com.mggx.laberinto.gl.PropMeshes.lathe
 import com.mggx.laberinto.gl.PropMeshes.rotarX
 import com.mggx.laberinto.gl.PropMeshes.rotarY
@@ -252,6 +253,172 @@ object StructureMeshes {
             trasladar(rotarY(radio, 60f), 0f, 0.95f, 0f),
             trasladar(rotarY(radio, 120f), 0f, 0.95f, 0f),
             trasladar(escalar(barra(0.1f, 6), 0.6f, 0.10f, 0.6f), 0f, 0.95f, 0f)
+        )
+    }
+
+    /**
+     * La boca del pozo: un brocal de piedra rota y, adentro, la oscuridad.
+     *
+     * Antes el pozo era una CAJA negra puesta bajo el piso; como la caja mide
+     * lo mismo en los tres ejes, al escalarla para que tapara la casilla
+     * tambien crecia para arriba y quedaba medio metro de cubo negro apoyado
+     * en el suelo. Se veia un baul, no un agujero. No lo agarro nadie en
+     * meses: el armado de las trampas no se podia mirar (ver
+     * [ArmadoDeEstructuras]).
+     *
+     * Un agujero se lee por dos cosas: el BORDE, que tiene que ser irregular y
+     * estar a ras del piso, y el adentro, que tiene que perderse hacia abajo.
+     */
+    fun bocaDePozo(): Geometry = lathe(
+        // El perfil va de ARRIBA hacia ABAJO a proposito: escrito asi, lathe()
+        // deja las normales y el tejido mirando para ADENTRO, que es lo unico
+        // que sirve para un agujero. Escrito al reves se veria un cono macizo
+        // desde afuera y, con el descarte de caras de atras prendido, desde
+        // arriba no se veria nada.
+        //
+        // Y es un cuenco MUY chato, casi un disco, no un embudo hondo. El piso
+        // de la cueva es una malla maciza: no tiene agujero, asi que todo lo
+        // que se dibuje por debajo de el queda tapado por la roca y no se ve
+        // nunca. Un embudo de 1,30 m de hondo se veria exactamente igual que
+        // este disco — con la diferencia de que el disco no miente.
+        arrayOf(
+            floatArrayOf(0.50f, 0.000f),    // el borde
+            floatArrayOf(0.46f, -0.012f),
+            floatArrayOf(0.34f, -0.022f),
+            floatArrayOf(0.00f, -0.028f)    // el fondo, que no se ve
+        ),
+        segmentos = 13
+    )
+
+    /**
+     * El brocal: las piedras sueltas del borde del pozo.
+     *
+     * Va aparte del embudo por dos motivos. Lleva OTRO color — el agujero
+     * tiene que quedarse negro y la piedra del borde tiene que verse piedra —
+     * y ademas es lo que TAPA el escalon: la boca del pozo se levanta unos
+     * centimetros sobre la roca (ver [ArmadoDeEstructuras.LEVANTE_POZO]) y sin
+     * el brocal ese escalon se veria como un disco negro flotando.
+     */
+    fun brocalDePozo(): Geometry {
+        val piedras = ArrayList<Geometry>()
+        for (k in 0 until 11) {
+            val a = k * 32.7f + (k % 3) * 6f
+            val r = 0.495f + (k % 4) * 0.020f
+            val piedra = escalar(
+                DetailMeshes.boulder(),
+                0.11f + (k % 3) * 0.030f, 0.075f + (k % 2) * 0.022f, 0.15f
+            )
+            piedras.add(rotarY(trasladar(piedra, r, -0.020f, 0f), a))
+        }
+        return combinar(piedras[0], *piedras.drop(1).toTypedArray())
+    }
+
+    /**
+     * La losa rajada que tapa una trampa de pinches.
+     *
+     * Antes eran dos barras cruzadas, que se leian como un durmiente de vias.
+     * Una losa partida al medio dice "esto se hunde cuando lo pises".
+     */
+    fun losaRajada(): Geometry {
+        // La grieta va en ZIGZAG, no recta. Con el corte recto las dos mitades
+        // se leian como dos baldosas puestas una al lado de la otra; lo que
+        // dice "esto se partio" es que los dos bordes encastren.
+        fun mitad(signo: Float) = extruir(
+            arrayOf(
+                floatArrayOf(signo * 0.03f, -0.50f),
+                floatArrayOf(signo * 0.50f, -0.44f),
+                floatArrayOf(signo * 0.50f, 0.42f),
+                floatArrayOf(signo * 0.06f, 0.50f),
+                floatArrayOf(signo * 0.12f, 0.27f),
+                floatArrayOf(signo * 0.02f, 0.05f),
+                floatArrayOf(signo * 0.13f, -0.19f)
+            ),
+            0.075f
+        )
+        // Acostadas, y la de la izquierda hundida y ladeada: ya cedio de ese
+        // lado. Una tapa partida con las dos mitades a nivel se ve entera.
+        return combinar(
+            rotarX(mitad(1f), -90f),
+            trasladar(rotarZ(rotarX(mitad(-1f), -90f), 4.5f), 0f, -0.030f, 0f)
+        )
+    }
+
+    /**
+     * La costra mineral que rodea una fisura de vapor.
+     *
+     * Antes la fisura era un CILINDRO con una CAJA encima. En la foto se veia
+     * un cubo blanco de tres cuartos de metro apoyado en el piso — un
+     * lavarropas, no una grieta. El vapor sale de una RAJA en la roca, y una
+     * raja se lee por los dos labios de costra que le crecen a los costados.
+     */
+    fun costraDeFisura(): Geometry {
+        val piezas = ArrayList<Geometry>()
+        // Los dos labios, LARGOS y juntos. Con los labios cortos y separados
+        // la costra se leia como un nido redondo: lo que dice "grieta" es que
+        // sea mucho mas larga que ancha.
+        for (lado in intArrayOf(-1, 1)) {
+            for (k in 0 until 7) {
+                val x = -0.60f + k * 0.20f
+                val z = lado * (0.26f + (k % 2) * 0.025f)
+                val c = escalar(
+                    DetailMeshes.boulder(),
+                    0.28f + (k % 3) * 0.05f, 0.11f + (k % 2) * 0.03f, 0.155f
+                )
+                piezas.add(trasladar(rotarY(c, k * 23f * lado), x, 0f, z))
+            }
+        }
+        // Los dos remates de las puntas, que cierran la raja.
+        for (sg in intArrayOf(-1, 1)) {
+            piezas.add(
+                trasladar(escalar(DetailMeshes.boulder(), 0.17f, 0.10f, 0.26f), sg * 0.72f, 0f, 0f)
+            )
+        }
+        return combinar(piezas[0], *piezas.drop(1).toTypedArray())
+    }
+
+    /**
+     * La raja en si: la chapa oscura de donde sale el vapor.
+     *
+     * Va aparte de la costra por el mismo motivo que el pozo va aparte de su
+     * brocal: lleva otro color. Adentro de una grieta no hay nada que ver.
+     */
+    fun bocaDeFisura(): Geometry = rotarX(
+        extruir(
+            arrayOf(
+                floatArrayOf(-0.50f, 0.00f),
+                floatArrayOf(-0.28f, 0.10f),
+                floatArrayOf(0.08f, 0.14f),
+                floatArrayOf(0.46f, 0.07f),
+                floatArrayOf(0.50f, -0.03f),
+                floatArrayOf(0.10f, -0.13f),
+                floatArrayOf(-0.26f, -0.11f)
+            ),
+            0.022f
+        ),
+        -90f
+    )
+
+    /**
+     * Una bocanada de vapor: un bollo blando, no un cristal.
+     *
+     * El vapor se dibujaba con la misma malla que las gemas, que es un
+     * octaedro facetado. Se veia una torre de diamantes saliendo del piso.
+     */
+    fun nubeDeVapor(): Geometry {
+        fun bollo(r: Float) = lathe(
+            arrayOf(
+                floatArrayOf(0.00f, -r * 0.9f),
+                floatArrayOf(r * 0.70f, -r * 0.55f),
+                floatArrayOf(r * 1.00f, 0.00f),
+                floatArrayOf(r * 0.78f, r * 0.60f),
+                floatArrayOf(0.00f, r * 0.95f)
+            ),
+            segmentos = 8
+        )
+        return combinar(
+            bollo(0.50f),
+            trasladar(bollo(0.34f), 0.34f, 0.20f, 0.12f),
+            trasladar(bollo(0.28f), -0.30f, 0.14f, -0.16f)
         )
     }
 

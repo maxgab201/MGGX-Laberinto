@@ -36,6 +36,21 @@ class Maze(val cols: Int, val rows: Int) {
     val ladder = BooleanArray(gw * gh)
 
     /**
+     * Casillas que estan AL AIRE LIBRE: no tienen techo de roca, se ve el
+     * cielo.
+     *
+     * Es lo que hace posible el patio del nivel 999, que es la unica parte del
+     * juego que pasa afuera. Para la malla significa una sola cosa —no se
+     * emite la cara del techo— pero para lo que se ve significa todo: mirar
+     * para arriba y que no haya piedra es la diferencia entre estar adentro y
+     * estar afuera.
+     */
+    val cielo = BooleanArray(gw * gh)
+
+    /** Si esa casilla esta a cielo abierto. */
+    fun hayCielo(gx: Int, gy: Int): Boolean = inBounds(gx, gy) && cielo[index(gx, gy)]
+
+    /**
      * Altura del espejo de agua de la cueva, o [AguaDeLaCueva.SIN_AGUA] si
      * esta seca. Todo lo que tenga el piso por debajo de esta altura esta
      * inundado (ver [AguaDeLaCueva]).

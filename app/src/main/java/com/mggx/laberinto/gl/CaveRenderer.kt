@@ -429,6 +429,14 @@ class CaveRenderer(
     private var shapeGuardianCabeza: InstancedShape? = null
     private var shapeGuardianBrazo: InstancedShape? = null
     private var shapeGuardianPierna: InstancedShape? = null
+
+    /**
+     * Las formas del patio del nivel 999.
+     *
+     * Se arman siempre (son mallas chicas) pero solo se dibujan si el nivel
+     * tiene patio, que es uno de mil.
+     */
+    private val shapesPatio = HashMap<ArmadoDelPatio.Malla, InstancedShape>()
     private var shapeTopo: InstancedShape? = null
     private var shapeTopoPala: InstancedShape? = null
     private var shapeArana: InstancedShape? = null
@@ -441,6 +449,16 @@ class CaveRenderer(
     private var shapeCofre: InstancedShape? = null
     private var shapeHongo: InstancedShape? = null
     private var shapePincho: InstancedShape? = null
+    /** La losa rajada que tapa los pinches. */
+    private var shapeLosa: InstancedShape? = null
+    /** El embudo negro del pozo y las piedras de su borde. */
+    private var shapeBocaPozo: InstancedShape? = null
+    private var shapeBrocal: InstancedShape? = null
+    /** La costra mineral de la fisura y la raja oscura del medio. */
+    private var shapeCostra: InstancedShape? = null
+    private var shapeBocaFisura: InstancedShape? = null
+    /** La bocanada de vapor. */
+    private var shapeVapor: InstancedShape? = null
     private var shapeEstacion: InstancedShape? = null
     private var shapeObelisco: InstancedShape? = null
     /** Poste fino: los parantes de los marcos de la mina. */
@@ -719,17 +737,21 @@ class CaveRenderer(
         val brightness = save.settings.brightness
 
         elegirLuces(s.posX, s.posZ, save.settings.quality, flicker)
+        calcularClima(s, amb, fogDensity)
 
-        GLES30.glClearColor(theme.fogR * 0.55f, theme.fogG * 0.55f, theme.fogB * 0.55f, 1f)
+        // Afuera el fondo ES el cielo, no una niebla oscura: por eso el factor
+        // sube de 0.55 a 1 a medida que salis.
+        val fondo = 0.55f + 0.45f * s.luzDeAfuera()
+        GLES30.glClearColor(nieblaR * fondo, nieblaG * fondo, nieblaB * fondo, 1f)
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
 
-        drawWorld(s, lr, lg, lb, lightRadius, amb, fogDensity, brightness)
-        drawProps(s, lr, lg, lb, lightRadius, amb, fogDensity, brightness)
-        drawDecals(s, fogDensity, brightness)
+        drawWorld(s, lr, lg, lb, lightRadius, amb, nieblaDensidad, brightness)
+        drawProps(s, lr, lg, lb, lightRadius, amb, nieblaDensidad, brightness)
+        drawDecals(s, nieblaDensidad, brightness)
         // El agua va al final de lo del mundo: es transparente, asi que
         // necesita que ya este dibujado todo lo opaco que puede verse debajo.
-        drawWater(s, lr, lg, lb, lightRadius, amb, fogDensity, brightness)
-        drawMotas(s, lr, lg, lb, lightRadius, fogDensity, brightness)
+        drawWater(s, lr, lg, lb, lightRadius, amb, nieblaDensidad, brightness)
+        drawMotas(s, lr, lg, lb, lightRadius, nieblaDensidad, brightness)
         if (save.settings.showArms && !vitrina) drawArms(s, lr, lg, lb, amb, brightness, aspect, dt)
         if (!vitrina) drawOverlay(s, theme, brightness)
 
@@ -865,8 +887,44 @@ class CaveRenderer(
         cuantasSombrasFijas = lista.size / 3
     }
 
+    /** El patio ya armado de este nivel, o vacio. Ver [ArmadoDelPatio]. */
+    private var piezasDelPatio: List<ArmadoDelPatio.Pieza> = emptyList()
+    private var patioX = 0f
+    private var patioZ = 0f
+    private var patioY = 0f
+
+    /**
+     * Arma el patio del nivel 999, una sola vez.
+     *
+     * Son mas de cien piezas puestas a mano; rehacerlas por cuadro seria tirar
+     * trabajo. Y como no se mueve ninguna, no hace falta.
+     */
+    private fun armarPatio(s: GameSession) {
+        if (s.patio.isEmpty()) { piezasDelPatio = emptyList(); return }
+        val m = s.maze
+        val c = GameSession.CELL
+        var gxMin = Int.MAX_VALUE; var gyMin = Int.MAX_VALUE
+        var gxMax = Int.MIN_VALUE; var gyMax = Int.MIN_VALUE
+        for (i in s.patio) {
+            val gx = i % m.gw; val gy = i / m.gw
+            if (gx < gxMin) gxMin = gx; if (gx > gxMax) gxMax = gx
+            if (gy < gyMin) gyMin = gy; if (gy > gyMax) gyMax = gy
+        }
+        patioX = gxMin * c
+        patioZ = gyMin * c
+        patioY = m.floorY(gxMin, gyMin)
+        val lado = (gxMax - gxMin + 1) * c
+        // Por donde desemboca la galeria: la casilla abierta de abajo del todo.
+        var bocaX = lado * 0.5f
+        for (gx in gxMin..gxMax) {
+            if (!m.isSolid(gx, gyMax + 1)) { bocaX = (gx - gxMin + 0.5f) * c; break }
+        }
+        piezasDelPatio = ArmadoDelPatio.armar(lado, bocaX, s.seed)
+    }
+
     private fun prepareLevel(s: GameSession) {
         armarAlturasDePiso(s)
+        armarPatio(s)
         // Los bichos caminan sobre la MISMA tabla con la que se apoya todo lo
         // demas y con la que se dibuja su sombra. Antes usaban el piso teorico
         // del mapa y quedaban despegados de su propia sombra.
@@ -932,11 +990,9 @@ class CaveRenderer(
         val t = s.theme
         GLES30.glUniform3f(
             u(p, "uAmbient"),
-            (t.ambientR + ambBoost) * AMBIENTE,
-            (t.ambientG + ambBoost) * AMBIENTE,
-            (t.ambientB + ambBoost) * AMBIENTE
+            ambienteR, ambienteG, ambienteB
         )
-        GLES30.glUniform3f(u(p, "uFogColor"), t.fogR, t.fogG, t.fogB)
+        GLES30.glUniform3f(u(p, "uFogColor"), nieblaR, nieblaG, nieblaB)
         GLES30.glUniform1f(u(p, "uFogDensity"), fogDensity)
         // El agua toma el color de la veta del bioma, apagado: en la mina es
         // turbia y ocre, en el templo tira a turquesa. Que sea siempre azul la
@@ -1026,7 +1082,7 @@ class CaveRenderer(
         GLES30.glUniform3f(u(p, "uLightColor"), lr, lg, lb)
         GLES30.glUniform1f(u(p, "uLightRadius"), radius)
         val t = s.theme
-        GLES30.glUniform3f(u(p, "uFogColor"), t.fogR, t.fogG, t.fogB)
+        GLES30.glUniform3f(u(p, "uFogColor"), nieblaR, nieblaG, nieblaB)
         GLES30.glUniform1f(u(p, "uFogDensity"), fogDensity)
         GLES30.glUniform1f(u(p, "uBrightness"), brightness)
         subirLuces(p)
@@ -1093,6 +1149,11 @@ class CaveRenderer(
         shapeGuardianCabeza = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.GUARDIAN_CABEZA), 80)
         shapeGuardianBrazo = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.GUARDIAN_BRAZO), 160)
         shapeGuardianPierna = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.GUARDIAN_PIERNA), 160)
+        shapesPatio.clear()
+        for (m in ArmadoDelPatio.Malla.entries) {
+            val cupo = if (m == ArmadoDelPatio.Malla.PASTO) 900 else 200
+            shapesPatio[m] = InstancedShape(ArmadoDelPatio.geometria(m), cupo)
+        }
         shapeTopo = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.TOPO_CUERPO), 80)
         shapeTopoPala = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.PALA), 160)
         shapeArana = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.ARANA_CUERPO), 80)
@@ -1102,6 +1163,12 @@ class CaveRenderer(
         shapeCofre = InstancedShape(StructureMeshes.cofre(), 120)
         shapeHongo = InstancedShape(StructureMeshes.hongo(), 700)
         shapePincho = InstancedShape(StructureMeshes.pincho(), 300)
+        shapeLosa = InstancedShape(StructureMeshes.losaRajada(), 60)
+        shapeBocaPozo = InstancedShape(StructureMeshes.bocaDePozo(), 60)
+        shapeBrocal = InstancedShape(StructureMeshes.brocalDePozo(), 60)
+        shapeCostra = InstancedShape(StructureMeshes.costraDeFisura(), 60)
+        shapeBocaFisura = InstancedShape(StructureMeshes.bocaDeFisura(), 60)
+        shapeVapor = InstancedShape(StructureMeshes.nubeDeVapor(), 240)
         shapeEstacion = InstancedShape(StructureMeshes.estacionCarburo(), 60)
         shapeObelisco = InstancedShape(StructureMeshes.obeliscoSalida(), 4)
         // Companieros de sala: en una partida solitaria no se usan nunca, pero
@@ -1235,11 +1302,9 @@ class CaveRenderer(
         val t = s.theme
         GLES30.glUniform3f(
             u(p, "uAmbient"),
-            (t.ambientR + ambBoost) * AMBIENTE,
-            (t.ambientG + ambBoost) * AMBIENTE,
-            (t.ambientB + ambBoost) * AMBIENTE
+            ambienteR, ambienteG, ambienteB
         )
-        GLES30.glUniform3f(u(p, "uFogColor"), t.fogR, t.fogG, t.fogB)
+        GLES30.glUniform3f(u(p, "uFogColor"), nieblaR, nieblaG, nieblaB)
         GLES30.glUniform1f(u(p, "uFogDensity"), fogDensity)
         GLES30.glUniform3f(u(p, "uVeinColor"), t.veinR, t.veinG, t.veinB)
         GLES30.glUniform1f(u(p, "uVeinPulse"), 0.055f)
@@ -1299,6 +1364,12 @@ class CaveRenderer(
         val cofre = shapeCofre ?: return
         val hongo = shapeHongo ?: return
         val pincho = shapePincho ?: return
+        val losa = shapeLosa ?: return
+        val bocaPozo = shapeBocaPozo ?: return
+        val brocal = shapeBrocal ?: return
+        val costra = shapeCostra ?: return
+        val bocaFisura = shapeBocaFisura ?: return
+        val vapor = shapeVapor ?: return
         val estacion = shapeEstacion ?: return
         val obelisco = shapeObelisco ?: return
         val minero = shapeMinero ?: return
@@ -1321,6 +1392,8 @@ class CaveRenderer(
         topo.begin(); pala.begin(); arana.begin()
         antorcha.begin(); llama.begin(); cristal.begin(); cofre.begin()
         hongo.begin(); pincho.begin(); estacion.begin(); obelisco.begin()
+        losa.begin(); bocaPozo.begin(); brocal.begin(); vapor.begin()
+        costra.begin(); bocaFisura.begin()
         minero.begin(); casco.begin(); cabezaMinero.begin()
         val C = GameSession.CELL
         val m = s.maze
@@ -1495,6 +1568,8 @@ class CaveRenderer(
             )
         }
 
+        val tintaBicho = FloatArray(4)
+
         // --- trampas: cada una con su forma, no un cuadrado rojo
         //
         // Se dibujan siempre que esten cerca, no solo cuando estan
@@ -1508,41 +1583,20 @@ class CaveRenderer(
             val fy = pisoDe(tr.gx, tr.gy)
             val pulse = 0.55f + 0.45f * sin((time * 3.4f + tr.gx + tr.gy).toDouble()).toFloat()
             val aviso = if (tr.armed && tr.revealed) 0.22f * pulse else 0.02f
-            when (tr.kind) {
-                com.mggx.laberinto.maze.MazeGenerator.TrapKind.SPIKES -> {
-                    // Corona de pinches de hierro asomando del piso.
-                    for (k in 0 until 7) {
-                        val a = k * 0.8976f + tr.gx
-                        val rr = if (k == 0) 0f else 0.52f
-                        pincho.add(
-                            x + cos(a.toDouble()).toFloat() * rr, fy, z + sin(a.toDouble()).toFloat() * rr,
-                            0.40f + (k % 3) * 0.09f,
-                            0.62f, 0.58f, 0.55f, aviso, a, 0f, 0f, 1f
-                        )
-                    }
-                    slab.add(x, fy + 0.03f, z, 1.5f, 0.30f, 0.26f, 0.23f, aviso, 0f, 0f, 0f, 1f)
-                    slab.add(x, fy + 0.03f, z, 1.5f, 0.30f, 0.26f, 0.23f, aviso, 1.5708f, 0f, 0f, 1f)
-                }
-                com.mggx.laberinto.maze.MazeGenerator.TrapKind.PITFALL -> {
-                    // Boca de pozo con las tablas podridas partidas al medio.
-                    boxS.add(x, fy - 0.28f, z, 1.35f, 0.03f, 0.03f, 0.04f, 0f, 0f, 0f, 0f, 1f)
-                    slab.add(x - 0.42f, fy + 0.04f, z, 1.30f, 0.30f, 0.21f, 0.13f, aviso, 0.25f, 0f, 0f, 1f)
-                    slab.add(x + 0.46f, fy + 0.04f, z, 1.10f, 0.28f, 0.19f, 0.12f, aviso, -0.3f, 0f, 0f, 1f)
-                    slab.add(x, fy + 0.04f, z + 0.5f, 1.20f, 0.32f, 0.22f, 0.14f, aviso, 1.5708f, 0f, 0f, 1f)
-                }
-                com.mggx.laberinto.maze.MazeGenerator.TrapKind.STEAM -> {
-                    // Fisura con la valvula y el vapor saliendo a chorros.
-                    cyl.add(x, fy, z, 0.42f, 0.44f, 0.40f, 0.36f, 0.02f, 0f, 0f, 0f, 1f)
-                    boxS.add(x, fy + 0.05f, z, 0.72f, 0.26f, 0.24f, 0.22f, aviso, 0f, 0f, 0f, 1f)
-                    for (k in 0 until 4) {
-                        val t2 = ((time * 0.8f + k * 0.25f) % 1f)
-                        gem.add(
-                            x, fy + 0.42f + t2 * 1.5f, z, 0.10f + t2 * 0.26f,
-                            0.86f, 0.90f, 0.94f, (1f - t2) * 0.55f,
-                            t2 * 5f, k.toFloat(), 0f, (1f - t2) * 0.7f
-                        )
-                    }
-                }
+            // El armado (cuantos pinchos, en que corona, a que altura) vive en
+            // [ArmadoDeEstructuras], afuera de aca: es lo unico que permite
+            // fotografiar y medir una trampa entera en un test.
+            for (pz in ArmadoDeEstructuras.trampa(tr.kind, tr.gx, tr.gy, time)) {
+                val forma = shapeDeEstructura(pz.malla) ?: continue
+                colorDeTrampa(tr.kind, pz.malla, tintaBicho)
+                // brillo == -1 marca la pieza que NO lleva aviso: el fondo
+                // negro del pozo tiene que quedarse negro.
+                val emis = if (pz.brillo < -0.5f) 0f else aviso + pz.brillo
+                forma.add(
+                    x + pz.x, fy + pz.y, z + pz.z, pz.escala,
+                    tintaBicho[0], tintaBicho[1], tintaBicho[2], emis,
+                    pz.giro, pz.fase, 0f, pz.alfa
+                )
             }
         }
 
@@ -1554,7 +1608,6 @@ class CaveRenderer(
         // aca es el color, que es lo unico de un bicho que depende del bioma
         // y del destello del golpe.
         val enMundo = FloatArray(4)
-        val tintaBicho = FloatArray(4)
         val bolsa = bolsaDeBicho
         for (e in s.enemies) {
             // Al que volteaste ya no se lo dibuja: si quedara en pantalla, el
@@ -1584,24 +1637,45 @@ class CaveRenderer(
             }
         }
 
+        // --- el patio del nivel 999
+        //
+        // Es lo unico del juego que pasa afuera, y hay uno solo. Ver
+        // [ArmadoDelPatio], que es donde esta puesto pieza por pieza.
+        if (piezasDelPatio.isNotEmpty()) {
+            for (m in ArmadoDelPatio.Malla.entries) shapesPatio[m]?.begin()
+            for (pz in piezasDelPatio) {
+                val wx = patioX + pz.x
+                val wz = patioZ + pz.z
+                if (!near(wx, wz)) continue
+                val forma = shapesPatio[pz.malla] ?: continue
+                colorDelPatio(pz.malla, tintaBicho)
+                forma.add(
+                    wx, patioY + pz.y, wz, pz.escala,
+                    tintaBicho[0], tintaBicho[1], tintaBicho[2], tintaBicho[3],
+                    pz.giro, 0f, 0f, 1f
+                )
+            }
+        }
+
         // --- salida: columna de cristal que se ve de lejos
         run {
             val ex = s.exitWorldX; val ez = s.exitWorldZ
             val fy = pisoDe(s.maze.exitGx, s.maze.exitGy)
-            val d = hypot(ex - px, ez - pz)
-            val visible = d < cull * 1.9f
-            if (visible) {
+            if (hypot(ex - px, ez - pz) < cull * 1.9f) {
                 val ping = if (s.exitPingFlash > 0f) 0.6f else 0f
-                obelisco.add(ex, fy, ez, 2.55f, 0.55f, 0.92f, 0.78f, 0.85f + ping, 0f, 0f, 0f, 1f)
-                for (i in 0 until 5) {
-                    val a = time * 0.55f + i * (2f * Math.PI.toFloat() / 5f)
-                    val rr = 0.85f
-                    gem.add(
-                        ex + cos(a.toDouble()).toFloat() * rr,
-                        fy + 0.85f + sin((time * 1.4f + i).toDouble()).toFloat() * 0.16f,
-                        ez + sin(a.toDouble()).toFloat() * rr,
-                        0.24f, 0.62f, 1.0f, 0.86f, 1.15f + ping, a, i.toFloat(), 1f, 1f
-                    )
+                for (pz2 in ArmadoDeEstructuras.salida(time)) {
+                    val forma = shapeDeEstructura(pz2.malla) ?: continue
+                    if (pz2.malla == ArmadoDeEstructuras.Malla.OBELISCO) {
+                        forma.add(
+                            ex + pz2.x, fy + pz2.y, ez + pz2.z, pz2.escala,
+                            0.55f, 0.92f, 0.78f, pz2.brillo + ping, pz2.giro, pz2.fase, 0f, 1f
+                        )
+                    } else {
+                        forma.add(
+                            ex + pz2.x, fy + pz2.y, ez + pz2.z, pz2.escala,
+                            0.62f, 1.0f, 0.86f, pz2.brillo + ping, pz2.giro, pz2.fase, 1f, 1f
+                        )
+                    }
                 }
             }
         }
@@ -1704,11 +1778,9 @@ class CaveRenderer(
         val t = s.theme
         GLES30.glUniform3f(
             u(p, "uAmbient"),
-            (t.ambientR + ambBoost) * AMBIENTE,
-            (t.ambientG + ambBoost) * AMBIENTE,
-            (t.ambientB + ambBoost) * AMBIENTE
+            ambienteR, ambienteG, ambienteB
         )
-        GLES30.glUniform3f(u(p, "uFogColor"), t.fogR, t.fogG, t.fogB)
+        GLES30.glUniform3f(u(p, "uFogColor"), nieblaR, nieblaG, nieblaB)
         GLES30.glUniform1f(u(p, "uFogDensity"), fogDensity)
         GLES30.glUniform1f(u(p, "uBrightness"), brightness)
 
@@ -1723,8 +1795,12 @@ class CaveRenderer(
         GLES30.glUniform1i(u(p, "uQuality"), save.settings.quality)
         val material = u(p, "uMaterial")
         GLES30.glUniform1i(material, 0)
+        for (m in ArmadoDelPatio.Malla.entries) shapesPatio[m]?.draw()
         cone.draw(); stalactite.draw(); boulder.draw(); torso.draw(); cabeza.draw()
         brazo.draw(); pierna.draw()
+        // El pozo y su brocal son piedra de la cueva, igual que las rocas.
+        losa.draw(); bocaPozo.draw(); brocal.draw()
+        costra.draw(); bocaFisura.draw()
         GLES30.glUniform1i(material, 1)
         boxS.draw(); slab.draw(); post.draw(); cofre.draw()
         GLES30.glUniform1i(material, 2)
@@ -1737,7 +1813,7 @@ class CaveRenderer(
         GLES30.glUniform1i(material, 5)
         minero.draw(); cabezaMinero.draw()
         GLES30.glUniform1i(material, 6)
-        llama.draw()
+        llama.draw(); vapor.draw()
     }
 
     /**
@@ -1781,6 +1857,45 @@ class CaveRenderer(
      * sombra de verdad: oscurece lo que hay, sea lo que sea.
      */
     private val SOMBRA = 0f
+
+    // --------------------------------------------------- la luz del final
+    //
+    // El nivel 999 sale al aire libre, y es el UNICO. Mientras subis los
+    // ultimos metros, la luz de la cueva se va convirtiendo en luz de dia: la
+    // niebla se aclara y se abre, el ambiente sube, y el color del fondo pasa
+    // de negro de roca a celeste. Nada de esto se prende de golpe al cruzar
+    // una linea; crece con [GameSession.luzDeAfuera], que mide cuanto falta
+    // para la boca. Subir viendo como se aclara la piedra es la mitad del
+    // final.
+
+    /** Cielo de mediodia, en lineal. */
+    private val CIELO_R = 0.42f
+    private val CIELO_G = 0.62f
+    private val CIELO_B = 0.92f
+
+    /** Luz de dia que rebota en todo, en lineal. */
+    private val DIA_R = 0.62f
+    private val DIA_G = 0.66f
+    private val DIA_B = 0.74f
+
+    private var nieblaR = 0f; private var nieblaG = 0f; private var nieblaB = 0f
+    private var ambienteR = 0f; private var ambienteG = 0f; private var ambienteB = 0f
+    private var nieblaDensidad = 0f
+
+    /** Mezcla el clima de la cueva con el de afuera segun donde estes. */
+    private fun calcularClima(s: GameSession, ambBoost: Float, densidadBase: Float) {
+        val t = s.theme
+        val luz = s.luzDeAfuera()
+        fun lerp(a: Float, b: Float) = a + (b - a) * luz
+        nieblaR = lerp(t.fogR, CIELO_R)
+        nieblaG = lerp(t.fogG, CIELO_G)
+        nieblaB = lerp(t.fogB, CIELO_B)
+        ambienteR = lerp((t.ambientR + ambBoost) * AMBIENTE, DIA_R)
+        ambienteG = lerp((t.ambientG + ambBoost) * AMBIENTE, DIA_G)
+        ambienteB = lerp((t.ambientB + ambBoost) * AMBIENTE, DIA_B)
+        // Afuera se ve lejos: la niebla casi desaparece.
+        nieblaDensidad = lerp(densidadBase, densidadBase * 0.16f)
+    }
 
     /** La forma instanciada que le corresponde a cada malla de bicho. */
     /** Se reusa cuadro a cuadro: ver ArmadoDeBichos.Bolsa. */
@@ -1847,6 +1962,77 @@ class CaveRenderer(
                     set(out, th.rockR * 0.75f + golpe * 0.4f, th.rockG * 0.75f, th.rockB * 0.78f)
                 else ->
                     set(out, th.rockR * 0.8f + golpe * 0.5f, th.rockG * 0.8f, th.rockB * 0.82f)
+            }
+        }
+    }
+
+    /**
+     * El color de cada cosa del patio. `out` recibe (r, g, b, brillo).
+     *
+     * Son los unicos colores VIVOS del juego. Todo lo demas es roca, madera
+     * humeda y metal: una paleta de mina. Que el pasto sea verde de verdad y
+     * la puerta tenga color es la mitad de por que el patio se lee como otro
+     * mundo apenas asomas la cabeza.
+     */
+    private fun colorDelPatio(m: ArmadoDelPatio.Malla, out: FloatArray) {
+        out[3] = 0.02f
+        when (m) {
+            ArmadoDelPatio.Malla.PASTO -> set(out, 0.16f, 0.38f, 0.11f)
+            ArmadoDelPatio.Malla.LOSA -> set(out, 0.52f, 0.50f, 0.46f)
+            ArmadoDelPatio.Malla.PARED_CASA -> set(out, 0.74f, 0.69f, 0.58f)   // revoque claro
+            ArmadoDelPatio.Malla.PUERTA -> set(out, 0.36f, 0.17f, 0.10f)       // madera pintada
+            ArmadoDelPatio.Malla.VENTANA -> set(out, 0.70f, 0.78f, 0.82f)      // vidrio y marco
+            ArmadoDelPatio.Malla.ALERO -> set(out, 0.44f, 0.20f, 0.14f)        // teja
+            ArmadoDelPatio.Malla.CERCO_TABLA, ArmadoDelPatio.Malla.CERCO_TRAVESANO ->
+                set(out, 0.46f, 0.34f, 0.21f)
+            ArmadoDelPatio.Malla.BOCA_MINA -> set(out, 0.30f, 0.22f, 0.14f)
+            ArmadoDelPatio.Malla.TRONCO -> set(out, 0.27f, 0.20f, 0.13f)
+            ArmadoDelPatio.Malla.COPA -> set(out, 0.19f, 0.42f, 0.15f)
+            ArmadoDelPatio.Malla.BANCO, ArmadoDelPatio.Malla.MESA,
+            ArmadoDelPatio.Malla.SILLA -> set(out, 0.42f, 0.28f, 0.16f)
+            ArmadoDelPatio.Malla.MACETA -> set(out, 0.52f, 0.26f, 0.16f)       // barro cocido
+            // La ropa tendida es lo mas claro de todo el juego a proposito:
+            // despues de mil niveles de piedra, algo blanco al sol.
+            ArmadoDelPatio.Malla.ROPA -> set(out, 0.88f, 0.86f, 0.80f)
+            ArmadoDelPatio.Malla.BALDE -> set(out, 0.35f, 0.34f, 0.33f)
+        }
+    }
+
+    /** La forma instanciada de cada pieza de estructura. */
+    private fun shapeDeEstructura(m: ArmadoDeEstructuras.Malla): InstancedShape? = when (m) {
+        ArmadoDeEstructuras.Malla.PINCHO -> shapePincho
+        ArmadoDeEstructuras.Malla.LOSA -> shapeLosa
+        ArmadoDeEstructuras.Malla.TABLA -> shapeSlab
+        ArmadoDeEstructuras.Malla.BOCA_POZO -> shapeBocaPozo
+        ArmadoDeEstructuras.Malla.BROCAL -> shapeBrocal
+        ArmadoDeEstructuras.Malla.COSTRA -> shapeCostra
+        ArmadoDeEstructuras.Malla.BOCA_FISURA -> shapeBocaFisura
+        ArmadoDeEstructuras.Malla.VAPOR -> shapeVapor
+        ArmadoDeEstructuras.Malla.OBELISCO -> shapeObelisco
+        ArmadoDeEstructuras.Malla.GEMA -> shapeGem
+    }
+
+    /** El color de cada pieza de trampa. `out` recibe (r, g, b). */
+    private fun colorDeTrampa(
+        kind: MazeGenerator.TrapKind, m: ArmadoDeEstructuras.Malla, out: FloatArray
+    ) {
+        when (kind) {
+            MazeGenerator.TrapKind.SPIKES ->
+                if (m == ArmadoDeEstructuras.Malla.PINCHO) set(out, 0.62f, 0.58f, 0.55f)
+                else set(out, 0.30f, 0.26f, 0.23f)
+            MazeGenerator.TrapKind.PITFALL -> when (m) {
+                // Adentro del pozo no hay nada que ver, y eso es el pozo.
+                ArmadoDeEstructuras.Malla.BOCA_POZO -> set(out, 0.02f, 0.02f, 0.025f)
+                // El borde es piedra de la cueva, no madera.
+                ArmadoDeEstructuras.Malla.BROCAL -> set(out, 0.33f, 0.31f, 0.28f)
+                else -> set(out, 0.30f, 0.21f, 0.13f)
+            }
+            MazeGenerator.TrapKind.STEAM -> when (m) {
+                ArmadoDeEstructuras.Malla.VAPOR -> set(out, 0.86f, 0.90f, 0.94f)
+                // Adentro de la grieta no hay nada que ver.
+                ArmadoDeEstructuras.Malla.BOCA_FISURA -> set(out, 0.03f, 0.025f, 0.02f)
+                // Costra de azufre: es lo que dice de que grieta se trata.
+                else -> set(out, 0.46f, 0.40f, 0.24f)
             }
         }
     }
@@ -2046,9 +2232,7 @@ class CaveRenderer(
         val t = s.theme
         GLES30.glUniform3f(
             u(p, "uAmbient"),
-            (t.ambientR + ambBoost) * AMBIENTE,
-            (t.ambientG + ambBoost) * AMBIENTE,
-            (t.ambientB + ambBoost) * AMBIENTE
+            ambienteR, ambienteG, ambienteB
         )
         // El guante decide el DETALLE (malla, ceniza, gema...) y la skin decide
         // los colores de la piel y del traje. Son dos cosmeticos distintos y se
@@ -2080,7 +2264,7 @@ class CaveRenderer(
         val p = overlayProg
         GLES30.glUseProgram(p)
         GLES30.glUniform1f(u(p, "uStrength"), 0.62f)
-        GLES30.glUniform3f(u(p, "uTintColor"), theme.fogR, theme.fogG, theme.fogB)
+        GLES30.glUniform3f(u(p, "uTintColor"), nieblaR, nieblaG, nieblaB)
         GLES30.glUniform1f(u(p, "uTintAmount"), 0.30f)
         val lowHp = if (s.healthFraction() < 0.28f) (0.28f - s.healthFraction()) * 1.7f else 0f
         GLES30.glUniform1f(u(p, "uHurt"), max(hurtFlash * 0.55f, lowHp))

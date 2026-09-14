@@ -180,6 +180,10 @@ object WorldMesh {
      */
     internal fun techoSigue(maze: Maze, gx: Int, gy: Int, vx: Int, vy: Int): Boolean {
         if (!abierta(maze, vx, vy)) return false
+        // Contra el cielo abierto el techo se termina: la cara tiene que
+        // apagarse ahi como si hubiera roca, o queda un canto flotando en el
+        // aire justo en el borde del patio.
+        if (maze.cielo[maze.index(gx, gy)] != maze.cielo[maze.index(vx, vy)]) return false
         val i = maze.index(gx, gy)
         val j = maze.index(vx, vy)
         return abs(maze.ceilY(vx, vy) - maze.ceilY(gx, gy)) < 1e-4f &&
@@ -571,16 +575,19 @@ object WorldMesh {
                 // El arco va con signo negativo porque la normal del techo
                 // mira para abajo: asi el techo SUBE en el medio del tunel.
                 val arco = -kotlin.math.min(ARCO_TECHO, maze.ceilClearance[i] * FACTOR_ARCO)
-                val nTecho = bordesDeCara(maze, gx, gy, bordesTecho) { vx, vy ->
-                    techoSigue(maze, gx, gy, vx, vy)
+                // Al aire libre no hay techo que dibujar: se ve el cielo.
+                if (!maze.cielo[i]) {
+                    val nTecho = bordesDeCara(maze, gx, gy, bordesTecho) { vx, vy ->
+                        techoSigue(maze, gx, gy, vx, vy)
+                    }
+                    cara(
+                        b, n,
+                        pt(x0, cy, z0), pt(x0, cy, z1), pt(x1, cy, z1), pt(x1, cy, z0),
+                        0f, -1f, 0f, bultoTecho, arco, CAPA_TECHO,
+                        Modo.CAMPO, bordesTecho, nTecho,
+                        a00 * t, a01 * t, a11 * t, a10 * t
+                    )
                 }
-                cara(
-                    b, n,
-                    pt(x0, cy, z0), pt(x0, cy, z1), pt(x1, cy, z1), pt(x1, cy, z0),
-                    0f, -1f, 0f, bultoTecho, arco, CAPA_TECHO,
-                    Modo.CAMPO, bordesTecho, nTecho,
-                    a00 * t, a01 * t, a11 * t, a10 * t
-                )
 
                 // -------------------------------------------------- paredes
                 // En las cuatro, t va del piso al techo, asi que arriba y
