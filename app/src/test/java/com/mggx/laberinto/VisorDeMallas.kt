@@ -383,6 +383,20 @@ object VisorDeMallas {
         return f
     }
 
+    /**
+     * Guarda un lienzo cualquiera como PNG en [CARPETA].
+     *
+     * Existe para que otros visores (el mapa de relieve, por ejemplo) puedan
+     * usar el mismo escritor de PNG sin repetirlo: aca no hay ImageIO, el png
+     * se arma a mano.
+     */
+    fun guardar(lienzo: Lienzo, nombre: String): File {
+        CARPETA.mkdirs()
+        val f = File(CARPETA, "$nombre.png")
+        f.writeBytes(png(lienzo.rgb, lienzo.ancho, lienzo.alto))
+        return f
+    }
+
     // ------------------------------------------------------------------ png
 
     private fun png(rgb: ByteArray, ancho: Int, alto: Int): ByteArray {
