@@ -141,4 +141,51 @@ class PatioArmadoTest {
             kotlin.math.abs(eje - bocaX) < 1.0f
         )
     }
+
+    @Test
+    fun elPatioEntraEnElPresupuestoDeTriangulos() {
+        // El patio es el unico lugar del juego con cientos de instancias de
+        // mallas propias: matas de pasto, losas, cerros, arboles. Todo eso lo
+        // dibuja un telefono, y es facil pasarse sin darse cuenta porque cada
+        // pieza sola parece barata.
+        //
+        // Se cuenta lo que de verdad se manda a la GPU: por cada pieza, los
+        // triangulos de SU malla. Es la cuenta que hace el renderer.
+        val piezas = ArmadoDelPatio.armar(LADO, LADO * 0.5f, 7L)
+        val porMalla = HashMap<ArmadoDelPatio.Malla, Int>()
+        for (m in ArmadoDelPatio.Malla.entries) {
+            porMalla[m] = ArmadoDelPatio.geometria(m).indices.size / 3
+        }
+        var total = 0L
+        val resumen = HashMap<ArmadoDelPatio.Malla, Long>()
+        for (p in piezas) {
+            val t = porMalla[p.malla]!!.toLong()
+            total += t
+            resumen[p.malla] = (resumen[p.malla] ?: 0L) + t
+        }
+        println("TRIANGULOS DEL PATIO: $total")
+        for ((m, t) in resumen.entries.sortedByDescending { it.value }.take(6)) {
+            println("   $m: $t (${piezas.count { it.malla == m }} piezas)")
+        }
+        assertTrue("el patio dibuja $total triangulos: es demasiado para un telefono", total < 170_000)
+
+        // Y ninguna malla sola puede comerse el presupuesto: si una lo hace,
+        // es la que hay que simplificar y no las demas.
+        for ((m, t) in resumen) {
+            assertTrue("$m sola dibuja $t triangulos", t < 90_000)
+        }
+    }
+
+    @Test
+    fun ningunaMallaDelPatioSePasaDeSuCupo() {
+        // El renderer reserva un cupo de instancias por malla
+        // (CaveRenderer.buildShapes). Lo que pase del cupo NO se dibuja, en
+        // silencio: aparecerian claros en el pasto sin ningun error.
+        val piezas = ArmadoDelPatio.armar(LADO, LADO * 0.5f, 7L)
+        for (m in ArmadoDelPatio.Malla.entries) {
+            val n = piezas.count { it.malla == m }
+            val cupo = ArmadoDelPatio.cupo(m)
+            assertTrue("$m: $n piezas y el cupo es $cupo", n <= cupo)
+        }
+    }
 }

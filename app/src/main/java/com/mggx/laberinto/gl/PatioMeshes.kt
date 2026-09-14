@@ -527,9 +527,17 @@ object PatioMeshes {
         0.12f
     )
 
-    /** El travesano horizontal que ata las tablas del cerco. */
+    /**
+     * El travesano horizontal que ata las tablas del cerco.
+     *
+     * Es una caja PELADA, sin bisel. El travesano se dibuja en tramos cortos
+     * —uno cada ochenta centimetros a lo largo de todo el cerco— y un
+     * `roundedBox` con bisel fino cuesta 300 triangulos: el cerco solo se
+     * comia 84.000, casi la mitad del patio entero, para redondear unos cantos
+     * que a esa escala no se ven. Pelado cuesta 12.
+     */
     fun travesanoDeCerco(): Geometry =
-        escalar(DetailMeshes.roundedBox(1f, 1f, 1f, bevel = 0.06f), 1f, 0.10f, 0.09f)
+        escalar(PropMeshes.box(), 1f, 0.10f, 0.09f)
 
     /**
      * La boca de la mina: el marco de tablones por el que acabas de salir.

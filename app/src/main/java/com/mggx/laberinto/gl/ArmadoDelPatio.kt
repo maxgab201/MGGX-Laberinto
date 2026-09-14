@@ -92,6 +92,25 @@ object ArmadoDelPatio {
     fun esDelFondo(m: Malla): Boolean = m == Malla.CERRO || m == Malla.ARBOL_LEJOS
 
     /**
+     * Cuantas instancias reserva el renderer para cada malla.
+     *
+     * Vive aca y no en el renderer porque lo que pasa del cupo NO se dibuja, y
+     * no da ningun error: aparecerian claros en el pasto o tramos de cerco sin
+     * travesano, en silencio. Teniendo el numero al lado del armado, un test
+     * de JVM puede comprobar que el armado entre (ver PatioArmadoTest) — que
+     * es exactamente como se descubrio que ochenta travesanos no se estaban
+     * dibujando.
+     */
+    fun cupo(m: Malla): Int = when (m) {
+        Malla.PASTO -> 400
+        Malla.LOSA -> 300
+        Malla.CERCO_TABLA -> 320
+        Malla.CERCO_TRAVESANO -> 320
+        Malla.ARBOL_LEJOS -> 80
+        else -> 64
+    }
+
+    /**
      * Arma el patio entero.
      *
      * @param lado cuantos metros de lado tiene el patio.
@@ -267,7 +286,7 @@ object ArmadoDelPatio {
         val altoCerco = 1.05f
         fun cerco(x0: Float, z0: Float, x1: Float, z1: Float, giro: Float) {
             val largo = kotlin.math.hypot(x1 - x0, z1 - z0)
-            val n = (largo / 0.30f).toInt().coerceAtLeast(2)
+            val n = (largo / 0.34f).toInt().coerceAtLeast(2)
             for (k in 0..n) {
                 val f = k.toFloat() / n
                 out.add(
@@ -285,7 +304,7 @@ object ArmadoDelPatio {
             // de alto y de ancho. Quedaban dos losas negras gigantes tapando
             // las esquinas del patio — y no se veia en el codigo, se vio en la
             // primera foto del patio armado.
-            val tramo = 0.34f
+            val tramo = 0.80f
             val cuantos = (largo / tramo).toInt().coerceAtLeast(1)
             for (y in floatArrayOf(0.34f, 0.86f)) {
                 for (k in 0 until cuantos) {

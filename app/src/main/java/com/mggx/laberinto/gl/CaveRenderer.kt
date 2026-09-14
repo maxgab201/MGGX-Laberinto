@@ -1161,12 +1161,10 @@ class CaveRenderer(
         shapeGuardianPierna = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.GUARDIAN_PIERNA), 160)
         shapesPatio.clear()
         for (m in ArmadoDelPatio.Malla.entries) {
-            val cupo = when (m) {
-                ArmadoDelPatio.Malla.PASTO -> 900
-                ArmadoDelPatio.Malla.LOSA -> 300
-                else -> 200
-            }
-            shapesPatio[m] = InstancedShape(ArmadoDelPatio.geometria(m), cupo)
+            // El cupo sale de [ArmadoDelPatio.cupo], que es el mismo numero
+            // que comprueba el test: lo que se pase del cupo no se dibuja y no
+            // avisa.
+            shapesPatio[m] = InstancedShape(ArmadoDelPatio.geometria(m), ArmadoDelPatio.cupo(m))
         }
         shapeTopo = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.TOPO_CUERPO), 80)
         shapeTopoPala = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.PALA), 160)
