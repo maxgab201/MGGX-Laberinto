@@ -72,6 +72,18 @@ object WorldMesh {
     private const val CAPA_PISO = 1f
     private const val CAPA_TECHO = 2f
 
+    /**
+     * El piso del patio.
+     *
+     * Las casillas de cielo abierto son las unicas que se pisan al aire libre,
+     * y hasta ahora usaban la misma capa de roca de cueva que una galeria: el
+     * jugador salia a la superficie y el suelo seguia siendo el mismo canto
+     * rodado gris de trescientos metros mas abajo. Ver
+     * [ProcTextures.LAYER_PASTO], que solo se genera cuando el nivel tiene
+     * patio.
+     */
+    private const val CAPA_PASTO = 4f
+
     class Mesh(val vertices: FloatArray, val indices: IntArray, val triangleCount: Int)
 
     private fun hash(x: Int, y: Int, z: Int): Float {
@@ -558,10 +570,12 @@ object WorldMesh {
                 val nPiso = bordesDeCara(maze, gx, gy, bordes) { vx, vy ->
                     pisoSigue(maze, gx, gy, vx, vy)
                 }
+                // Bajo cielo abierto se pisa PASTO, no la roca de la galeria.
+                val capaDelPiso = if (maze.cielo[i]) CAPA_PASTO else CAPA_PISO
                 cara(
                     b, n,
                     pt(x0, fy, z0), pt(x1, fy, z0), pt(x1, fy, z1), pt(x0, fy, z1),
-                    0f, 1f, 0f, -BULTO_PISO, 0f, CAPA_PISO,
+                    0f, 1f, 0f, -BULTO_PISO, 0f, capaDelPiso,
                     Modo.CAMPO, bordes, nPiso,
                     a00, a10, a11, a01
                 )

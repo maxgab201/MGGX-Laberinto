@@ -203,6 +203,7 @@ class CaveRenderer(
     private var armsProg = 0
     private var decalProg = 0
     private var overlayProg = 0
+    private var cieloProg = 0
 
     // ------------------------------------------------------------ mundo
     private val worldVao = IntArray(1)
@@ -561,6 +562,7 @@ class CaveRenderer(
         armsProg = GLUtil.program(Shaders.ARMS_VS, Shaders.ARMS_FS)
         decalProg = GLUtil.program(Shaders.DECAL_VS, Shaders.DECAL_FS)
         overlayProg = GLUtil.program(Shaders.OVERLAY_VS, Shaders.OVERLAY_FS)
+        cieloProg = GLUtil.program(Shaders.CIELO_VS, Shaders.CIELO_FS)
         waterProg = GLUtil.program(Shaders.WATER_VS, Shaders.WATER_FS)
         motaProg = GLUtil.program(Shaders.MOTA_VS, Shaders.MOTA_FS)
 
@@ -745,6 +747,12 @@ class CaveRenderer(
         val fondo = 0.55f + 0.45f * s.luzDeAfuera()
         GLES30.glClearColor(nieblaR * fondo, nieblaG * fondo, nieblaB * fondo, 1f)
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
+
+        // El cielo va PRIMERO y sin escribir profundidad: todo lo demas se
+        // dibuja encima, asi que solo aparece donde de verdad hay agujero. Y
+        // solo en el nivel que sale afuera: en los otros 998 seria un barrido
+        // de pantalla entero para pintar algo que nunca se ve.
+        if (s.terminaAfuera) dibujarCielo(s, fx, fy, fz, fov, aspect, brightness)
 
         drawWorld(s, lr, lg, lb, lightRadius, amb, nieblaDensidad, brightness)
         drawProps(s, lr, lg, lb, lightRadius, amb, nieblaDensidad, brightness)
@@ -934,7 +942,10 @@ class CaveRenderer(
         armarFaroles(s)
         if (texturedTheme != s.theme || albedoTex == 0 || preparedQuality != save.settings.quality) {
             if (albedoTex != 0) GLES30.glDeleteTextures(2, intArrayOf(albedoTex, normalTex), 0)
-            val r = ProcTextures.build(s.theme, save.settings.quality)
+            // El pasto del patio es una capa mas del atlas, y solo se genera
+            // cuando el nivel de verdad sale afuera: en los otros 998 seria un
+            // 25% mas de tiempo de carga para una textura que nadie ve.
+            val r = ProcTextures.build(s.theme, save.settings.quality, s.terminaAfuera)
             albedoTex = r.albedoTex
             normalTex = r.normalTex
             texturedTheme = s.theme
@@ -1895,6 +1906,9 @@ class CaveRenderer(
     private val CIELO_G = 0.62f
     private val CIELO_B = 0.92f
 
+    // Los colores del domo viven en [PaletaDelCielo]: los comparte con el
+    // visor que permite MIRAR el cielo en un test (ver VisorDeCielo).
+
     /** Luz de dia que rebota en todo, en lineal. */
     private val DIA_R = 0.62f
     private val DIA_G = 0.66f
@@ -2280,6 +2294,64 @@ class CaveRenderer(
         GLES30.glBindVertexArray(armsVao[0])
         GLES30.glDrawElements(GLES30.GL_TRIANGLES, armsIndexCount, GLES30.GL_UNSIGNED_INT, 0)
         GLES30.glBindVertexArray(0)
+    }
+
+    /**
+     * El cielo del patio.
+     *
+     * Un triangulo que tapa la pantalla, con el rayo de cada pixel armado a
+     * partir de los tres ejes de la camara ya escalados por el campo de
+     * vision. No hace falta invertir ninguna matriz: `uFrente + uDerecha*x +
+     * uArriba*y` con (x,y) en coordenadas de pantalla da exactamente la
+     * direccion de ese pixel.
+     *
+     * Va con la profundidad apagada y sin escribirla, antes que el mundo.
+     */
+    private fun dibujarCielo(
+        s: GameSession, fx: Float, fy: Float, fz: Float,
+        fov: Float, aspect: Float, brightness: Float
+    ) {
+        val p = cieloProg
+        if (p == 0) return
+        GLES30.glUseProgram(p)
+
+        val tan = kotlin.math.tan(Math.toRadians(fov * 0.5).toFloat())
+        GLES30.glUniform3f(u(p, "uFrente"), fx, fy, fz)
+        GLES30.glUniform3f(
+            u(p, "uDerecha"),
+            camRightX * tan * aspect, camRightY * tan * aspect, camRightZ * tan * aspect
+        )
+        GLES30.glUniform3f(u(p, "uArriba"), camUpX * tan, camUpY * tan, camUpZ * tan)
+
+        GLES30.glUniform3f(u(p, "uCenit"), PaletaDelCielo.CENIT_R, PaletaDelCielo.CENIT_G, PaletaDelCielo.CENIT_B)
+        GLES30.glUniform3f(u(p, "uHorizonte"), PaletaDelCielo.HORIZONTE_R, PaletaDelCielo.HORIZONTE_G, PaletaDelCielo.HORIZONTE_B)
+        GLES30.glUniform3f(u(p, "uSuelo"), PaletaDelCielo.SUELO_R, PaletaDelCielo.SUELO_G, PaletaDelCielo.SUELO_B)
+        GLES30.glUniform3f(u(p, "uSolDir"), PaletaDelCielo.SOL_X, PaletaDelCielo.SOL_Y, PaletaDelCielo.SOL_Z)
+        GLES30.glUniform3f(u(p, "uSolColor"), PaletaDelCielo.SOL_R, PaletaDelCielo.SOL_G, PaletaDelCielo.SOL_B)
+        GLES30.glUniform3f(u(p, "uNiebla"), nieblaR, nieblaG, nieblaB)
+        GLES30.glUniform1f(u(p, "uAfuera"), s.luzDeAfuera())
+        GLES30.glUniform1f(u(p, "uTiempo"), time)
+        GLES30.glUniform1f(u(p, "uBrillo"), brightness)
+        GLES30.glUniform4f(
+            u(p, "uSolPar"), PaletaDelCielo.SOL_DISCO_POT, PaletaDelCielo.SOL_DISCO_FUERZA,
+            PaletaDelCielo.SOL_HALO_POT, PaletaDelCielo.SOL_HALO_FUERZA
+        )
+        GLES30.glUniform4f(
+            u(p, "uNubePar"), PaletaDelCielo.NUBE_PROYECCION, PaletaDelCielo.NUBE_ESCALA,
+            PaletaDelCielo.NUBE_DESDE, PaletaDelCielo.NUBE_HASTA
+        )
+        GLES30.glUniform3f(
+            u(p, "uCieloPar"), PaletaDelCielo.POTENCIA_ALTO, PaletaDelCielo.NUBE_FUERZA,
+            PaletaDelCielo.DERRAME_SOL
+        )
+
+        GLES30.glDisable(GLES30.GL_DEPTH_TEST)
+        GLES30.glDepthMask(false)
+        GLES30.glBindVertexArray(overlayVao[0])
+        GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 3)
+        GLES30.glBindVertexArray(0)
+        GLES30.glDepthMask(true)
+        GLES30.glEnable(GLES30.GL_DEPTH_TEST)
     }
 
     private fun drawOverlay(s: GameSession, theme: CaveTheme, brightness: Float) {

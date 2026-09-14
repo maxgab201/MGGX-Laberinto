@@ -23,7 +23,20 @@ object ProcTextures {
     const val LAYER_FLOOR = 1
     const val LAYER_CEIL = 2
     const val LAYER_VEIN = 3
-    const val LAYERS = 4
+
+    /**
+     * El pasto del patio. Es la quinta capa y NO se genera siempre.
+     *
+     * El patio existe en un solo nivel de los 999, asi que generar su textura
+     * en los otros 998 seria sumarle un 25% al tiempo de carga de cada nivel
+     * para algo que nadie va a ver. Se pide aparte ([build] con `conPasto`), y
+     * `WorldMesh` solo la referencia en las casillas de cielo abierto, que son
+     * exactamente las que existen cuando se pidio.
+     */
+    const val LAYER_PASTO = 4
+
+    const val CAPAS_CUEVA = 4
+    const val CAPAS_CON_PASTO = 5
 
     /** Capas de sedimento por baldosa. Entero: si no, la banda se corta. */
     private const val ESTRATOS_POR_BALDOSA = 4.0
@@ -307,6 +320,34 @@ object ProcTextures {
                 h -= crackMask(u, v, per, seed + 400) * 0.18f
                 contraste(h.coerceIn(0f, 1f), 1.20f)
             }
+            LAYER_PASTO -> {
+                // Pasto de patio: mechones chicos y apretados, con algun
+                // pelon de tierra.
+                //
+                // Se arma con Worley invertido y no con ruido a secas porque
+                // lo que hace que el pasto se lea como pasto —y no como una
+                // alfombra verde— es que tenga GRUMOS del tamano de una mata,
+                // cada uno con su borde. El ruido suelto da una manta lisa.
+                // TRES tamanos de grumo y ninguna banda regular.
+                //
+                // La primera version peinaba las hojas con una senoidal, y en
+                // la muestra se veia un cuadrille: un tejido, no un pasto.
+                // Cualquier patron REGULAR sobre una superficie organica se
+                // delata solo, por fino que sea, porque el ojo encuentra la
+                // repeticion antes que la forma.
+                val pMata = periodo(per, 2.6f)
+                val matas = 1f - worley(u * pMata, v * pMata, pMata, seed + 211)
+                val pMedio = periodo(per, 5.2f)
+                val medio = 1f - worley(u * pMedio, v * pMedio, pMedio, seed + 307)
+                val pFino = periodo(per, 9.5f)
+                val fino = 1f - worley(u * pFino, v * pFino, pFino, seed + 331)
+                // Pelones de tierra: manchones grandes donde el pasto se rala.
+                val pPelon = periodo(per, 0.8f)
+                val pelon = smoothstep(0.54f, 0.84f, fbm(u * pPelon, v * pPelon, 3, pPelon, seed + 509))
+                var h = matas * 0.44f + medio * 0.32f + fino * 0.24f
+                h -= pelon * 0.40f
+                contraste(h.coerceIn(0f, 1f), 1.18f)
+            }
             LAYER_CEIL -> {
                 val pBase = periodo(per, 0.8f)
                 val base = fbm(u * pBase, v * pBase, 5, pBase, seed + 11)
@@ -337,16 +378,18 @@ object ProcTextures {
     class Result(val albedoTex: Int, val normalTex: Int, val size: Int)
 
     /** Pixeles ya calculados, listos para subir. Sin nada de OpenGL adentro. */
-    class Pixels(val size: Int, val albedo: ByteArray, val normal: ByteArray)
+    class Pixels(val size: Int, val albedo: ByteArray, val normal: ByteArray, val capas: Int)
 
     /** Genera y sube las dos texturas array. Se llama en el hilo de GL. */
-    fun build(theme: CaveTheme, quality: Int): Result = upload(generate(theme, quality))
+    fun build(theme: CaveTheme, quality: Int, conPasto: Boolean = false): Result =
+        upload(generate(theme, quality, conPasto))
 
     /**
      * Calcula los pixeles de las dos texturas. Es CPU pura, sin OpenGL: se
      * puede correr fuera del hilo de GL y se puede mirar en un test.
      */
-    fun generate(theme: CaveTheme, quality: Int): Pixels {
+    fun generate(theme: CaveTheme, quality: Int, conPasto: Boolean = false): Pixels {
+        val capas = if (conPasto) CAPAS_CON_PASTO else CAPAS_CUEVA
         // Mas pixeles por baldosa en las calidades altas: el detalle chico (las
         // juntas entre placas, las grietas, la veta de la madera) es lo primero
         // que se pierde cuando la baldosa es corta, y es justo lo que hace que
@@ -372,8 +415,8 @@ object ProcTextures {
         }
         val seed = theme.textureSeed * 7919
 
-        val albedo = ByteArray(size * size * 4 * LAYERS)
-        val normal = ByteArray(size * size * 4 * LAYERS)
+        val albedo = ByteArray(size * size * 4 * capas)
+        val normal = ByteArray(size * size * 4 * capas)
 
         // Las cuatro capas se calculan EN PARALELO.
         //
@@ -387,8 +430,8 @@ object ProcTextures {
         // pedazo de los arrays y no lee el de las otras, asi que repartirlas no
         // necesita ningun candado y el resultado es byte por byte el mismo que
         // secuencial (lo verifica TexturasTest).
-        val hilos = ArrayList<Thread>(LAYERS)
-        for (layer in 0 until LAYERS) {
+        val hilos = ArrayList<Thread>(capas)
+        for (layer in 0 until capas) {
             hilos.add(
                 Thread {
                     capa(layer, size, per, seed, theme, albedo, normal)
@@ -397,7 +440,7 @@ object ProcTextures {
         }
         for (t in hilos) t.join()
 
-        return Pixels(size, albedo, normal)
+        return Pixels(size, albedo, normal, capas)
     }
 
     /**
@@ -459,6 +502,9 @@ object ProcTextures {
             LAYER_WALL -> Triple(theme.rockR, theme.rockG, theme.rockB)
             LAYER_FLOOR -> Triple(theme.floorR, theme.floorG, theme.floorB)
             LAYER_CEIL -> Triple(theme.rockR * 0.78f, theme.rockG * 0.78f, theme.rockB * 0.8f)
+            // El pasto NO se tine con el tema: afuera el pasto es verde
+            // aunque hayas salido de la sima de obsidiana.
+            LAYER_PASTO -> Triple(0.155f, 0.275f, 0.105f)
             else -> Triple(theme.veinR * 0.5f, theme.veinG * 0.5f, theme.veinB * 0.5f)
         }
         var ai = base
@@ -550,8 +596,8 @@ object ProcTextures {
     private fun upload(p: Pixels): Result {
         val ids = IntArray(2)
         GLES30.glGenTextures(2, ids, 0)
-        uploadArray(ids[0], p.size, directBuffer(p.albedo))
-        uploadArray(ids[1], p.size, directBuffer(p.normal))
+        uploadArray(ids[0], p.size, p.capas, directBuffer(p.albedo))
+        uploadArray(ids[1], p.size, p.capas, directBuffer(p.normal))
         return Result(ids[0], ids[1], p.size)
     }
 
@@ -560,13 +606,13 @@ object ProcTextures {
             put(data); position(0)
         }
 
-    private fun uploadArray(tex: Int, size: Int, data: ByteBuffer) {
+    private fun uploadArray(tex: Int, size: Int, capas: Int, data: ByteBuffer) {
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D_ARRAY, tex)
         val levels = max(1, (Math.log(size.toDouble()) / Math.log(2.0)).toInt() + 1)
-        GLES30.glTexStorage3D(GLES30.GL_TEXTURE_2D_ARRAY, levels, GLES30.GL_RGBA8, size, size, LAYERS)
+        GLES30.glTexStorage3D(GLES30.GL_TEXTURE_2D_ARRAY, levels, GLES30.GL_RGBA8, size, size, capas)
         GLES30.glTexSubImage3D(
             GLES30.GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0,
-            size, size, LAYERS, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, data
+            size, size, capas, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, data
         )
         GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D_ARRAY)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D_ARRAY, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR_MIPMAP_LINEAR)

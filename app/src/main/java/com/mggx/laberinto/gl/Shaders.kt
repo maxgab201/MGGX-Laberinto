@@ -981,6 +981,129 @@ void main() {
 }
 """
 
+    // --------------------------------------------------------------- cielo
+    //
+    // El nivel 999 sale al aire libre y es el UNICO del juego que lo hace.
+    // Hasta ahora, mirar para arriba en el patio mostraba el color de borrado:
+    // un gris plano de punta a punta. Adentro de una cueva eso no molesta
+    // —nunca se ve— pero afuera es lo primero que mira cualquiera.
+    //
+    // Es un triangulo que tapa la pantalla, dibujado ANTES del mundo y sin
+    // tocar el buffer de profundidad, asi que todo lo demas se dibuja encima y
+    // el cielo solo aparece donde de verdad hay agujero. Cuesta un barrido de
+    // pantalla, y por eso el renderer lo saltea en los 998 niveles que pasan
+    // bajo tierra.
+    const val CIELO_VS = """#version 300 es
+layout(location = 0) in vec2 aPos;
+
+// Los tres ejes de la camara, ya escalados por el campo de vision: con eso
+// alcanza para armar el rayo de cada pixel sin invertir ninguna matriz.
+uniform vec3 uFrente;
+uniform vec3 uDerecha;
+uniform vec3 uArriba;
+
+out vec3 vRayo;
+
+void main() {
+    vRayo = uFrente + uDerecha * aPos.x + uArriba * aPos.y;
+    gl_Position = vec4(aPos, 1.0, 1.0);
+}
+"""
+
+    const val CIELO_FS = """#version 300 es
+precision highp float;
+in vec3 vRayo;
+
+uniform vec3 uCenit;        // color arriba de todo
+uniform vec3 uHorizonte;    // color contra el horizonte
+uniform vec3 uSuelo;        // lo que se ve por debajo del horizonte
+uniform vec3 uSolDir;       // hacia donde esta el sol, normalizado
+uniform vec3 uSolColor;
+uniform vec3 uNiebla;       // color de niebla de la cueva
+uniform float uAfuera;      // 0 adentro, 1 en el patio
+uniform float uTiempo;
+uniform float uBrillo;
+// Los ajustes vienen de PaletaDelCielo, no escritos aca: son los numeros que
+// uno mueve mirando la foto, y con una copia adentro del shader habria que
+// acertarle dos veces a cada cambio.
+uniform vec4 uSolPar;       // disco: potencia, fuerza / halo: potencia, fuerza
+uniform vec4 uNubePar;      // proyeccion, escala, desde, hasta
+uniform vec3 uCieloPar;     // potencia del alto, fuerza de la nube, derrame del sol
+
+out vec4 fragColor;
+
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float ruido(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float nubes(vec2 p) {
+    float v = 0.0;
+    float amp = 0.5;
+    for (int i = 0; i < 4; i++) {
+        v += ruido(p) * amp;
+        p = p * 2.03 + vec2(1.7, -0.9);
+        amp *= 0.5;
+    }
+    return v;
+}
+
+void main() {
+    vec3 d = normalize(vRayo);
+
+    // Degrade de horizonte a cenit. La potencia alta es lo que hace que el
+    // azul se quede arriba y el horizonte se abra en un solo golpe, como pasa
+    // de verdad: un degrade lineal se ve a franjas.
+    float alto = clamp(d.y, 0.0, 1.0);
+    vec3 cielo = mix(uHorizonte, uCenit, pow(alto, uCieloPar.x));
+
+    // El sol y su resplandor.
+    float haciaElSol = max(dot(d, uSolDir), 0.0);
+    cielo += uSolColor * pow(haciaElSol, uSolPar.x) * uSolPar.y;   // el disco
+    cielo += uSolColor * pow(haciaElSol, uSolPar.z) * uSolPar.w;   // el halo
+    // Y el horizonte se aclara del lado del sol, no en toda la vuelta.
+    cielo = mix(cielo, cielo + uSolColor * uCieloPar.z, pow(haciaElSol, 2.0) * (1.0 - alto));
+
+    // ------------------------------------------------------------ nubes
+    //
+    // Se proyectan sobre un plano a altura fija: por eso se estiran y se
+    // juntan contra el horizonte, que es lo que las hace leer como un cielo y
+    // no como una textura pegada a una cupula.
+    if (d.y > 0.006) {
+        vec2 uv = d.xz / d.y * uNubePar.x + vec2(uTiempo * 0.0055, uTiempo * 0.0021);
+        float n = nubes(uv * uNubePar.y);
+        // Menos nubes contra el cenit y mas hacia el horizonte, con el borde
+        // blando: un recorte duro se ve como manchas de pintura.
+        float tapa = smoothstep(uNubePar.z, uNubePar.w, n) * smoothstep(0.0, 0.13, d.y);
+        vec3 luzNube = mix(vec3(0.86, 0.88, 0.94), uSolColor * 1.30, pow(haciaElSol, 3.0) * 0.6);
+        cielo = mix(cielo, luzNube, tapa * uCieloPar.y);
+    } else {
+        // Por debajo del horizonte no hay cielo: hay tierra lejana con bruma.
+        // La transicion es larga a proposito — con un corte corto el horizonte
+        // se veia como una banda gris pegada, no como el fondo del valle.
+        cielo = mix(cielo, uSuelo, smoothstep(0.006, -0.30, d.y));
+    }
+
+    // Adentro del tunel el fondo tiene que seguir siendo el de la cueva. El
+    // cielo aparece a medida que salis, con la MISMA cuenta que usa la niebla
+    // y el ambiente (GameSession.luzDeAfuera), asi que no hay ningun momento
+    // en que la imagen cambie de golpe.
+    vec3 c = mix(uNiebla * 0.55, cielo, uAfuera) * uBrillo;
+    c = c / (c + vec3(0.85));
+    fragColor = vec4(pow(c, vec3(1.0 / 2.2)), 1.0);
+}
+"""
+
     // ------------------------------------------------------------- vineta
     const val OVERLAY_VS = """#version 300 es
 layout(location = 0) in vec2 aPos;

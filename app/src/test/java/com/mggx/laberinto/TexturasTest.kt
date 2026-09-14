@@ -209,7 +209,7 @@ class TexturasTest {
         // negra lisa. Un array de ceros no da ningun error.
         val p = ProcTextures.generate(com.mggx.laberinto.maze.CaveTheme.forLevel(3), 1)
         val porCapa = p.size * p.size * 4
-        for (capa in 0 until ProcTextures.LAYERS) {
+        for (capa in 0 until p.capas) {
             var noCero = 0
             for (i in capa * porCapa until (capa + 1) * porCapa) {
                 if (p.albedo[i].toInt() != 0) noCero++
@@ -257,14 +257,19 @@ class TexturasTest {
     fun dejaUnaMuestraParaMirar() {
         val dir = File("build/texturas").apply { mkdirs() }
         for (theme in listOf(CaveTheme.ENTRADA, CaveTheme.CRISTAL, CaveTheme.MAGMA)) {
-            val p = ProcTextures.generate(theme, 2)
-            val ancho = p.size * 3
+            // Con pasto: es la unica forma de MIRAR la capa del patio.
+            val p = ProcTextures.generate(theme, 2, conPasto = true)
+            val ancho = p.size * 4
             val rgb = ByteArray(ancho * p.size * 3)
-            for (capa in 0 until 3) {
+            val capas = intArrayOf(
+                ProcTextures.LAYER_WALL, ProcTextures.LAYER_FLOOR,
+                ProcTextures.LAYER_CEIL, ProcTextures.LAYER_PASTO
+            )
+            for ((col, capa) in capas.withIndex()) {
                 val base = capa * p.size * p.size * 4
                 for (y in 0 until p.size) for (x in 0 until p.size) {
                     val o = base + (y * p.size + x) * 4
-                    val d = (y * ancho + capa * p.size + x) * 3
+                    val d = (y * ancho + col * p.size + x) * 3
                     rgb[d] = p.albedo[o]
                     rgb[d + 1] = p.albedo[o + 1]
                     rgb[d + 2] = p.albedo[o + 2]
