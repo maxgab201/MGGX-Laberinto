@@ -1161,7 +1161,11 @@ class CaveRenderer(
         shapeGuardianPierna = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.GUARDIAN_PIERNA), 160)
         shapesPatio.clear()
         for (m in ArmadoDelPatio.Malla.entries) {
-            val cupo = if (m == ArmadoDelPatio.Malla.PASTO) 900 else 200
+            val cupo = when (m) {
+                ArmadoDelPatio.Malla.PASTO -> 900
+                ArmadoDelPatio.Malla.LOSA -> 300
+                else -> 200
+            }
             shapesPatio[m] = InstancedShape(ArmadoDelPatio.geometria(m), cupo)
         }
         shapeTopo = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.TOPO_CUERPO), 80)
@@ -1679,7 +1683,9 @@ class CaveRenderer(
             for (pz in piezasDelPatio) {
                 val wx = patioX + pz.x
                 val wz = patioZ + pz.z
-                if (!near(wx, wz)) continue
+                // Lo del fondo NO se descarta por distancia: esta lejos por
+                // definicion, y el descarte lo borraria siempre.
+                if (!ArmadoDelPatio.esDelFondo(pz.malla) && !near(wx, wz)) continue
                 val forma = shapesPatio[pz.malla] ?: continue
                 colorDelPatio(pz.malla, tintaBicho)
                 forma.add(
@@ -2023,6 +2029,15 @@ class CaveRenderer(
             ArmadoDelPatio.Malla.CERCO_TABLA, ArmadoDelPatio.Malla.CERCO_TRAVESANO ->
                 set(out, 0.46f, 0.34f, 0.21f)
             ArmadoDelPatio.Malla.BOCA_MINA -> set(out, 0.30f, 0.22f, 0.14f)
+            // Perspectiva aerea: lo lejano se desatura y tira al azul del
+            // cielo. No es un gusto, es lo que hace que se LEA como lejano —
+            // pintados con su color propio, los cerros se ven como un telon
+            // de carton a tres metros del cerco.
+            // El farol: hierro apagado, pero con el brillo arriba. Es lo
+            // unico del patio que emite.
+            ArmadoDelPatio.Malla.FAROL -> { set(out, 1.00f, 0.82f, 0.48f); out[3] = 1.15f }
+            ArmadoDelPatio.Malla.CERRO -> set(out, 0.30f, 0.37f, 0.46f)
+            ArmadoDelPatio.Malla.ARBOL_LEJOS -> set(out, 0.24f, 0.34f, 0.35f)
             ArmadoDelPatio.Malla.TRONCO -> set(out, 0.27f, 0.20f, 0.13f)
             ArmadoDelPatio.Malla.COPA -> set(out, 0.19f, 0.42f, 0.15f)
             ArmadoDelPatio.Malla.BANCO, ArmadoDelPatio.Malla.MESA,

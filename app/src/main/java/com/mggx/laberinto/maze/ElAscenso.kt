@@ -29,8 +29,25 @@ object ElAscenso {
     /** El numero del nivel final. */
     const val NIVEL = 999
 
-    /** Cuantas casillas de lado tiene el patio. */
-    const val LADO_PATIO = 5
+    /**
+     * Cuantas casillas de lado tiene el patio.
+     *
+     * Siete casillas son veintiun metros. Con cinco (quince metros) el patio
+     * quedaba tan corto que al salir del tunel la casa te caia encima: no
+     * habia lugar para que el camino se leyera como un camino ni para que el
+     * arbol estuviera "lejos". Un patio se siente patio cuando podes pararte
+     * en el medio y tener aire en las cuatro direcciones.
+     */
+    const val LADO_PATIO = 7
+
+    /**
+     * Cuanto mide el borde de roca que rodea al patio.
+     *
+     * Apenas por encima de los ojos del jugador (1,72 m): alcanza para que no
+     * se vea el vacio del otro lado, y deja pasar por arriba las copas y los
+     * cerros lejanos.
+     */
+    const val ALTO_DEL_BORDE = 2.45f
 
     /**
      * Cuantos escalones sube el ascenso en total.
@@ -40,8 +57,15 @@ object ElAscenso {
      */
     const val ESCALONES = 16
 
-    /** Dimensiones logicas del nivel 999. Chico: es el ultimo tramo, no un laberinto. */
-    fun celdas(): Pair<Int, Int> = 7 to 7
+    /**
+     * Dimensiones logicas del nivel 999. Chico: es el ultimo tramo, no un
+     * laberinto.
+     *
+     * Nueve por nueve y no siete por siete porque el patio crecio a siete
+     * casillas: con la grilla de antes el patio se comia el nivel entero y no
+     * quedaba subida.
+     */
+    fun celdas(): Pair<Int, Int> = 9 to 9
 
     /**
      * Talla el nivel: un corredor que sube y un patio arriba.
@@ -135,9 +159,18 @@ object ElAscenso {
                 if (enPatio) {
                     maze.floorLevel[i] = altoPatio
                     maze.cielo[i] = true
-                    // Techo altisimo: no se dibuja igual (es cielo), pero la
-                    // camara y los bichos leen este numero.
-                    maze.ceilClearance[i] = Maze.ALTO_NORMAL * 2.2f
+                    // En las casillas de cielo no se dibuja techo, asi que
+                    // este numero es OTRA cosa: es la altura de la pared de
+                    // roca que rodea al patio, porque la pared se dibuja del
+                    // piso hasta el techo teorico.
+                    //
+                    // Estaba en 7,5 m —el doble y pico de una galeria— y eso
+                    // convertia el patio en una cantera: un pozo de roca de
+                    // veintiun metros con el cielo arriba. Con 2,45 el borde
+                    // queda apenas por encima de los ojos: se lee como un
+                    // patio cortado en la ladera, y por arriba asoma lo que
+                    // hay afuera (ver ArmadoDelPatio, los cerros lejanos).
+                    maze.ceilClearance[i] = ALTO_DEL_BORDE
                     continue
                 }
                 val t = ((filaBase - gy) / (filaBase - filaTope)).coerceIn(0f, 1f)

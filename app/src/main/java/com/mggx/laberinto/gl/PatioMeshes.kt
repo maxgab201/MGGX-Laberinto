@@ -9,6 +9,7 @@ import com.mggx.laberinto.gl.PropMeshes.rotarX
 import com.mggx.laberinto.gl.PropMeshes.rotarY
 import com.mggx.laberinto.gl.PropMeshes.rotarZ
 import com.mggx.laberinto.gl.PropMeshes.trasladar
+import kotlin.math.pow
 
 /**
  * El patio de tu casa: lo unico del juego que pasa afuera.
@@ -31,40 +32,62 @@ object PatioMeshes {
     // ------------------------------------------------------------- el suelo
 
     /**
-     * Una mata de pasto: unas hojas que salen del mismo punto y se abren.
+     * Una mata de pasto: hojas finas que salen juntas y se van acostando.
      *
-     * Es la pieza que mas trabaja de todo el patio. Una superficie verde y lisa
-     * se lee como una alfombra; lo que la convierte en pasto es que tenga
-     * PELO — cosas finitas y verticales que se repiten. Se planta mucha,
-     * chiquita y con giros distintos.
+     * ## Que hace que se lea como pasto
+     *
+     * La primera version tenia siete lenguetas ANCHAS —tres centimetros de
+     * ancho por veinte de alto— apenas inclinadas. En la foto del patio se
+     * veia un yuyal de puas: la proporcion estaba mal por un orden de
+     * magnitud (una hoja de pasto de verdad es 1 a 50, no 1 a 5) y la
+     * inclinacion rigida las dejaba a todas igual de tiesas.
+     *
+     * Lo que hace pasto es el ARCO: la hoja sale vertical, se afina y se
+     * acuesta cada vez mas rapido hasta caer de punta. Aca la linea media de
+     * cada hoja se recorre paso a paso con una parabola y el ancho se apaga
+     * con ella, asi que la hoja nace gruesa y termina en punta sin ningun
+     * corte.
      */
     fun mataDePasto(): Geometry {
         val hojas = ArrayList<Geometry>()
-        // Cada hoja es una lengueta ancha en la base que se afina y se DOBLA
-        // hacia afuera. El doblez es lo que la hace pasto: una hoja recta es
-        // una aguja, y una mata de agujas se lee como un erizo.
-        val angulos = floatArrayOf(0f, 51f, 103f, 148f, 199f, 252f, 304f)
-        val alturas = floatArrayOf(1.00f, 0.74f, 0.90f, 0.62f, 0.86f, 0.70f, 0.95f)
-        for (k in angulos.indices) {
-            val h = alturas[k]
-            // El contorno se va corriendo en x a medida que sube: eso es el
-            // doblez, y sale gratis porque ya se dibuja el perfil a mano.
-            val hoja = extruir(
-                arrayOf(
-                    floatArrayOf(-0.115f, 0f),
-                    floatArrayOf(0.115f, 0f),
-                    floatArrayOf(0.135f, h * 0.34f),
-                    floatArrayOf(0.125f, h * 0.68f),
-                    floatArrayOf(0.115f, h),           // la punta, caida
-                    floatArrayOf(0.045f, h * 0.99f),
-                    floatArrayOf(0.015f, h * 0.66f),
-                    floatArrayOf(-0.035f, h * 0.32f)
-                ),
-                0.030f
+        val alturas = floatArrayOf(1.00f, 0.72f, 0.88f, 0.58f, 0.94f, 0.66f, 0.82f, 0.50f, 0.76f)
+        val curvas = floatArrayOf(0.26f, 0.44f, 0.16f, 0.52f, 0.31f, 0.40f, 0.21f, 0.58f, 0.36f)
+        for (k in alturas.indices) {
+            hojas.add(
+                rotarY(
+                    hojaDePasto(alturas[k], curvas[k], 0.055f + (k % 3) * 0.012f),
+                    k * 41.3f + (k % 2) * 17f
+                )
             )
-            hojas.add(rotarY(rotarZ(hoja, -16f - (k % 3) * 9f), angulos[k]))
         }
-        return combinar(*hojas.toTypedArray())
+        return combinar(hojas[0], *hojas.drop(1).toTypedArray())
+    }
+
+    /**
+     * Una sola hoja: una cinta que sube por una parabola y se va afinando.
+     *
+     * @param alto cuanto llega a subir.
+     * @param curva cuanto se acuesta al llegar a la punta.
+     * @param ancho cuanto mide en la base.
+     */
+    private fun hojaDePasto(alto: Float, curva: Float, ancho: Float): Geometry {
+        val pasos = 5
+        val izq = ArrayList<FloatArray>()
+        val der = ArrayList<FloatArray>()
+        for (i in 0..pasos) {
+            val t = i.toFloat() / pasos
+            // La punta cae: por eso el alto no crece lineal sino frenando.
+            val y = alto * t * (1.12f - 0.12f * t) * (1f - 0.18f * t * t)
+            val x = curva * t * t
+            // El ancho se apaga hacia la punta, pero no de golpe.
+            val w = ancho * (1f - t).toDouble().pow(0.62).toFloat()
+            izq.add(floatArrayOf(x - w, y))
+            der.add(floatArrayOf(x + w, y))
+        }
+        val contorno = ArrayList<FloatArray>()
+        contorno.addAll(der)
+        for (i in pasos downTo 0) contorno.add(izq[i])
+        return extruir(contorno.toTypedArray(), 0.016f)
     }
 
     /**
@@ -74,12 +97,23 @@ object PatioMeshes {
      * decoracion: es lo que le dice al jugador, sin un solo cartel, para donde
      * tiene que ir.
      */
-    fun losaDePiedra(): Geometry = escalar(
-        DetailMeshes.roundedBox(1f, 1f, 1f, bevel = 0.22f),
-        1f, 0.10f, 1f
-    )
-
-    // -------------------------------------------------------------- la casa
+    fun losaDePiedra(): Geometry {
+        // Una lasca de piedra con SIETE lados desparejos, no un cuadrado
+        // redondeado. Un camino hecho de cuadrados iguales se lee como una
+        // vereda de baldosas de fabrica; lo que dice "esto lo puso alguien con
+        // lo que habia" es que ninguna losa sea igual a la de al lado, y con
+        // una sola malla eso solo se puede conseguir en la FORMA.
+        val contorno = arrayOf(
+            floatArrayOf(-0.50f, -0.28f),
+            floatArrayOf(-0.22f, -0.50f),
+            floatArrayOf(0.30f, -0.46f),
+            floatArrayOf(0.50f, -0.06f),
+            floatArrayOf(0.38f, 0.40f),
+            floatArrayOf(-0.06f, 0.50f),
+            floatArrayOf(-0.44f, 0.24f)
+        )
+        return rotarX(extruir(contorno, 0.085f), -90f)
+    }
 
     // --------------------------------------------------------------- la casa
 
@@ -297,6 +331,175 @@ object PatioMeshes {
         return trasladar(combinar(*piezas.toTypedArray()), 0f, 0.5f, 0f)
     }
 
+    /**
+     * El farol de la puerta.
+     *
+     * Es la unica cosa del patio que EMITE luz, y por eso vale por diez
+     * adornos: una casa con la luz de la entrada prendida dice "te estaban
+     * esperando" sin una sola palabra. Ademas hace de ancla para el ojo — el
+     * camino te lleva a la puerta y el farol te dice cual es la puerta.
+     *
+     * Normalizado: colgado del brazo en y=1, mirando a +Z.
+     */
+    fun farolDePuerta(): Geometry {
+        val piezas = ArrayList<Geometry>()
+        // El brazo que lo sostiene, y su soporte contra la pared.
+        piezas.add(
+            trasladar(escalar(DetailMeshes.roundedBox(1f, 1f, 1f, bevel = 0.02f), 0.09f, 0.22f, 0.07f),
+                0f, 0.90f, -0.02f)
+        )
+        piezas.add(
+            trasladar(escalar(DetailMeshes.roundedBox(1f, 1f, 1f, bevel = 0.02f), 0.06f, 0.06f, 0.42f),
+                0f, 0.96f, 0.20f)
+        )
+        // La caja de vidrio: cuatro montantes y el vidrio adentro.
+        for (sx in intArrayOf(-1, 1)) for (sz in intArrayOf(-1, 1)) {
+            piezas.add(
+                trasladar(escalar(DetailMeshes.roundedBox(1f, 1f, 1f, bevel = 0.01f), 0.035f, 0.42f, 0.035f),
+                    sx * 0.135f, 0.62f, 0.38f + sz * 0.135f)
+            )
+        }
+        piezas.add(
+            trasladar(escalar(DetailMeshes.roundedBox(1f, 1f, 1f, bevel = 0.02f), 0.30f, 0.05f, 0.30f),
+                0f, 0.415f, 0.38f)
+        )
+        // El sombrerete, a cuatro aguas.
+        piezas.add(
+            trasladar(
+                lathe(
+                    arrayOf(
+                        floatArrayOf(0.215f, 0.00f),
+                        floatArrayOf(0.195f, 0.04f),
+                        floatArrayOf(0.105f, 0.13f),
+                        floatArrayOf(0.000f, 0.18f)
+                    ),
+                    segmentos = 4
+                ),
+                0f, 0.835f, 0.38f
+            )
+        )
+        // La llama: una gota adentro del vidrio. El renderer la pinta emisiva.
+        piezas.add(
+            trasladar(
+                lathe(
+                    arrayOf(
+                        floatArrayOf(0.000f, -0.09f),
+                        floatArrayOf(0.055f, -0.02f),
+                        floatArrayOf(0.045f, 0.07f),
+                        floatArrayOf(0.000f, 0.13f)
+                    ),
+                    segmentos = 6
+                ),
+                0f, 0.62f, 0.38f
+            )
+        )
+        return combinar(piezas[0], *piezas.drop(1).toTypedArray())
+    }
+
+    // ------------------------------------------------------------- lo lejos
+
+    /**
+     * Un cerro del fondo.
+     *
+     * ## Por que hace falta
+     *
+     * Hasta ahora, al otro lado del cerco no habia NADA: el mundo se terminaba
+     * en la ultima tabla. Eso hace dos cosas malas a la vez. La obvia es que
+     * se ve el vacio. La que no es obvia, y pesa mas, es que sin nada lejos el
+     * patio no tiene ESCALA: todo lo que se ve esta a la misma distancia, y el
+     * ojo no tiene con que medir cuan grande es la casa ni cuan lejos queda el
+     * arbol.
+     *
+     * Son masas grandes y simples a proposito. A cuarenta metros nadie va a
+     * mirarles la forma; lo unico que importa es la silueta contra el cielo y
+     * que el borde de arriba no sea una curva limpia, porque un cerro con el
+     * lomo liso se lee como una carpa.
+     *
+     * Normalizado: se apoya en y=0 y llega a y=1.
+     */
+    fun cerroLejano(): Geometry {
+        val piezas = ArrayList<Geometry>()
+        // MUY ancho y bajo: 2,4 de radio por 1 de alto, o sea casi cinco a
+        // uno. La primera version era 1 a 1 —una campana— y en la foto se veia
+        // una carpa de circo detras de la casa. Un cerro visto de lejos es
+        // casi todo horizontal; lo que lo hace cerro es la pendiente suave,
+        // no la punta.
+        val r = 2.40f
+        piezas.add(
+            lathe(
+                arrayOf(
+                    floatArrayOf(r, 0.00f),
+                    floatArrayOf(r * 0.93f, 0.12f),
+                    floatArrayOf(r * 0.74f, 0.36f),
+                    floatArrayOf(r * 0.50f, 0.64f),
+                    floatArrayOf(r * 0.25f, 0.87f),
+                    floatArrayOf(0.00f, 1.00f)
+                ),
+                segmentos = 13
+            )
+        )
+        // Estribaciones: lomas laterales que le rompen la simetria. Sin ellas
+        // el cerro se lee como una curva de libro de texto.
+        val jorobas = arrayOf(
+            floatArrayOf(1.30f, -1.30f, 0.06f, 0.70f),
+            floatArrayOf(1.05f, 1.45f, 0.04f, -0.60f),
+            floatArrayOf(0.80f, 0.30f, 0.16f, 1.35f),
+            floatArrayOf(0.66f, -0.75f, 0.10f, -1.15f)
+        )
+        for (j in jorobas) {
+            val m = lathe(
+                arrayOf(
+                    floatArrayOf(j[0], 0.00f),
+                    floatArrayOf(j[0] * 0.80f, j[0] * 0.22f),
+                    floatArrayOf(j[0] * 0.44f, j[0] * 0.38f),
+                    floatArrayOf(0.00f, j[0] * 0.46f)
+                ),
+                segmentos = 9
+            )
+            piezas.add(trasladar(m, j[1], j[2], j[3]))
+        }
+        return combinar(piezas[0], *piezas.drop(1).toTypedArray())
+    }
+
+    /**
+     * Un arbol del fondo: tronco fino y una copa cerrada.
+     *
+     * Mucho mas simple que [copaDeArbol] porque a treinta metros la unica
+     * diferencia que se nota entre los dos es el tamano. Lo que SI importa es
+     * que la copa no sea una esfera: una fila de esferas identicas contra el
+     * cielo se lee como una hilera de globos.
+     *
+     * Normalizado: se apoya en y=0 y llega a y=1.
+     */
+    fun arbolLejano(): Geometry {
+        val tronco = lathe(
+            arrayOf(
+                floatArrayOf(0.055f, 0.00f),
+                floatArrayOf(0.036f, 0.20f),
+                floatArrayOf(0.030f, 0.42f),
+                floatArrayOf(0.000f, 0.48f)
+            ),
+            segmentos = 6
+        )
+        fun masa(r: Float) = lathe(
+            arrayOf(
+                floatArrayOf(0.00f, -r * 0.88f),
+                floatArrayOf(r * 0.72f, -r * 0.54f),
+                floatArrayOf(r * 1.00f, r * 0.04f),
+                floatArrayOf(r * 0.70f, r * 0.62f),
+                floatArrayOf(0.00f, r * 0.98f)
+            ),
+            segmentos = 7
+        )
+        return combinar(
+            tronco,
+            trasladar(masa(0.26f), 0.00f, 0.70f, 0.00f),
+            trasladar(masa(0.20f), -0.17f, 0.52f, 0.08f),
+            trasladar(masa(0.18f), 0.16f, 0.58f, -0.10f),
+            trasladar(masa(0.14f), 0.04f, 0.90f, 0.06f)
+        )
+    }
+
     // -------------------------------------------------------------- el cerco
 
     /**
@@ -306,14 +509,22 @@ object PatioMeshes {
      * En pico se lee como cerco de patio a veinte metros.
      */
     fun tablaDeCerco(): Geometry = extruir(
+        // La tabla no es un rectangulo con punta: tiene la veta comida, los
+        // cantos desparejos y la punta corrida del medio. Como todas las
+        // tablas del cerco salen de la MISMA malla, lo unico que las puede
+        // diferenciar es que la malla ya traiga desprolijidad y que el armado
+        // las gire; una tabla perfectamente simetrica repetida cincuenta veces
+        // se lee como una reja de fabrica.
         arrayOf(
-            floatArrayOf(-0.5f, 0.00f),
-            floatArrayOf(0.5f, 0.00f),
-            floatArrayOf(0.5f, 0.84f),
-            floatArrayOf(0.0f, 1.00f),
-            floatArrayOf(-0.5f, 0.84f)
+            floatArrayOf(-0.50f, 0.000f),
+            floatArrayOf(0.50f, 0.000f),
+            floatArrayOf(0.47f, 0.430f),
+            floatArrayOf(0.50f, 0.790f),
+            floatArrayOf(0.09f, 1.000f),      // la punta, corrida
+            floatArrayOf(-0.47f, 0.815f),
+            floatArrayOf(-0.50f, 0.410f)
         ),
-        0.14f
+        0.12f
     )
 
     /** El travesano horizontal que ata las tablas del cerco. */
@@ -397,22 +608,47 @@ object PatioMeshes {
      * pisan entre si dan la silueta irregular que hace que se lea como follaje.
      */
     fun copaDeArbol(): Geometry {
+        // Un ramillete de lobulos, no tres bolas.
+        //
+        // La version anterior eran tres esferas superpuestas y en la foto se
+        // leia una ROCA apoyada sobre un palo. Lo que separa una copa de una
+        // piedra es el contorno: una copa es mas ancha que alta, tiene el
+        // borde mordido y no cierra en ningun lado con una curva limpia. Por
+        // eso son ocho masas de tamanos bien distintos, cuatro grandes que
+        // arman el volumen y cuatro chicas colgadas afuera que le rompen la
+        // silueta.
         fun masa(r: Float) = lathe(
             arrayOf(
-                floatArrayOf(0.00f, -r),
-                floatArrayOf(r * 0.62f, -r * 0.72f),
-                floatArrayOf(r * 0.98f, -r * 0.12f),
-                floatArrayOf(r * 0.88f, r * 0.48f),
-                floatArrayOf(r * 0.44f, r * 0.86f),
-                floatArrayOf(0.00f, r)
+                floatArrayOf(0.00f, -r * 0.86f),
+                floatArrayOf(r * 0.66f, -r * 0.64f),
+                floatArrayOf(r * 1.00f, -r * 0.08f),
+                floatArrayOf(r * 0.84f, r * 0.52f),
+                floatArrayOf(r * 0.40f, r * 0.84f),
+                floatArrayOf(0.00f, r * 0.94f)
             ),
-            segmentos = 9
+            segmentos = 8
         )
-        return combinar(
-            trasladar(masa(0.50f), 0f, 0.50f, 0f),
-            trasladar(masa(0.34f), -0.34f, 0.34f, 0.12f),
-            trasladar(masa(0.30f), 0.32f, 0.40f, -0.14f)
+        val piezas = ArrayList<Geometry>()
+        // Diez masas de tamanos PARECIDOS y bien encimadas.
+        //
+        // Con cuatro grandes y cuatro chicas la copa se leia como un racimo de
+        // uvas: cada masa se distinguia de la de al lado y ninguna se fundia
+        // con el resto. Lo que hace follaje es que las masas se toquen tanto
+        // que el ojo deje de contarlas y solo le quede el contorno mordido.
+        val puestos = arrayOf(
+            floatArrayOf(0.42f, 0.00f, 0.46f, 0.00f),
+            floatArrayOf(0.38f, -0.34f, 0.40f, 0.12f),
+            floatArrayOf(0.37f, 0.33f, 0.43f, -0.14f),
+            floatArrayOf(0.35f, 0.04f, 0.38f, 0.34f),
+            floatArrayOf(0.34f, -0.08f, 0.42f, -0.32f),
+            floatArrayOf(0.31f, -0.24f, 0.66f, -0.14f),
+            floatArrayOf(0.30f, 0.26f, 0.68f, 0.12f),
+            floatArrayOf(0.29f, 0.02f, 0.74f, 0.00f),
+            floatArrayOf(0.28f, 0.48f, 0.26f, 0.20f),
+            floatArrayOf(0.27f, -0.47f, 0.24f, -0.18f)
         )
+        for (p in puestos) piezas.add(trasladar(masa(p[0]), p[1], p[2], p[3]))
+        return combinar(piezas[0], *piezas.drop(1).toTypedArray())
     }
 
     // ------------------------------------------------------------- muebles

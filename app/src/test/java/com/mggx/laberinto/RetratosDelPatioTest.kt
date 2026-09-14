@@ -22,6 +22,7 @@ class RetratosDelPatioTest {
                 "modulo de casa" to PatioMeshes.moduloDeCasa(),
                 "tejas" to PatioMeshes.tejasDelModulo(),
                 "chimenea" to PatioMeshes.chimeneaDeCasa(),
+                "farol" to PatioMeshes.farolDePuerta(),
                 "cerco" to PatioMeshes.tablaDeCerco(),
                 "tronco" to PatioMeshes.troncoDeArbol(),
                 "copa" to PatioMeshes.copaDeArbol()
@@ -41,7 +42,9 @@ class RetratosDelPatioTest {
                 "silla" to PatioMeshes.sillaDePatio(),
                 "maceta" to PatioMeshes.macetaConPlanta(),
                 "ropa" to PatioMeshes.ropaTendida(),
-                "balde" to PatioMeshes.baldeDeMina()
+                "balde" to PatioMeshes.baldeDeMina(),
+                "cerro lejano" to PatioMeshes.cerroLejano(),
+                "arbol lejano" to PatioMeshes.arbolLejano()
             ),
             "patio-muebles", lado = 230
         )

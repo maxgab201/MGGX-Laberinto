@@ -17,8 +17,17 @@ class PatioArmadoTest {
 
     private val LADO = ElAscenso.LADO_PATIO * GameSession.CELL
 
-    private fun geometria(): PropMeshes.Geometry {
-        val piezas = ArmadoDelPatio.armar(LADO, LADO * 0.5f, 7L).map { p ->
+    /**
+     * @param conElFondo si se incluyen los cerros y arboles lejanos.
+     *   La vista de arriba va SIN ellos: el visor encuadra sola la caja
+     *   entera, y con cerros a ciento veinte metros el patio queda del tamano
+     *   de un sello. La vista desde el tunel si los lleva, porque son la mitad
+     *   de lo que se ve desde ahi.
+     */
+    private fun geometria(conElFondo: Boolean = true): PropMeshes.Geometry {
+        val piezas = ArmadoDelPatio.armar(LADO, LADO * 0.5f, 7L)
+            .filter { conElFondo || !ArmadoDelPatio.esDelFondo(it.malla) }
+            .map { p ->
             PropMeshes.trasladar(
                 PropMeshes.rotarY(
                     PropMeshes.escalar(
@@ -34,7 +43,7 @@ class PatioArmadoTest {
 
     @Test
     fun retratarElPatioEntero() {
-        val g = geometria()
+        val g = geometria(conElFondo = false)
         val f = VisorDeMallas.retrato(
             g, "patio-armado", lado = 420,
             angulos = floatArrayOf(0f, 55f, 180f, 270f), elevacion = 34f
@@ -67,6 +76,8 @@ class PatioArmadoTest {
             if (p.malla == ArmadoDelPatio.Malla.ROPA ||
                 p.malla == ArmadoDelPatio.Malla.COPA ||
                 p.malla == ArmadoDelPatio.Malla.CHIMENEA ||
+                p.malla == ArmadoDelPatio.Malla.FAROL ||
+                ArmadoDelPatio.esDelFondo(p.malla) ||
                 p.malla == ArmadoDelPatio.Malla.VENTANA ||
                 p.malla == ArmadoDelPatio.Malla.CERCO_TRAVESANO
             ) continue      // estos cuelgan o van montados, a proposito
@@ -78,6 +89,9 @@ class PatioArmadoTest {
     @Test
     fun nadaSeSaleDelPatio() {
         for (p in ArmadoDelPatio.armar(LADO, LADO * 0.5f, 7L)) {
+            // Los cerros y los arboles del fondo estan AFUERA a proposito: son
+            // lo que se ve por encima del cerco.
+            if (ArmadoDelPatio.esDelFondo(p.malla)) continue
             assertTrue("${p.malla} se salio por x=${p.x}", p.x > -0.6f && p.x < LADO + 0.6f)
             assertTrue("${p.malla} se salio por z=${p.z}", p.z > -0.6f && p.z < LADO + 0.6f)
         }
@@ -104,10 +118,27 @@ class PatioArmadoTest {
         val losas = piezas.filter { it.malla == ArmadoDelPatio.Malla.LOSA }
         val cerca = losas.minByOrNull { it.z }!!
         val lejos = losas.maxByOrNull { it.z }!!
-        assertTrue("el camino no llega a la puerta (z=${cerca.z})", cerca.z < 1.8f)
+        // Se mide contra la PUERTA de verdad y no contra un numero fijo: la
+        // casa se corrio cuando dejo de ser un panel plano, y un umbral
+        // escrito a mano se habria quedado apuntando a donde estaba antes.
+        val puerta = piezas.first { it.malla == ArmadoDelPatio.Malla.PUERTA }
         assertTrue(
-            "el camino no arranca en la boca (x=${lejos.x}, boca=$bocaX)",
-            kotlin.math.abs(lejos.x - bocaX) < 1.0f
+            "el camino se corta a ${"%.2f".format(cerca.z - puerta.z)} m de la puerta",
+            cerca.z - puerta.z < 1.4f
+        )
+        assertTrue(
+            "el camino se mete adentro de la casa (z=${cerca.z}, puerta=${puerta.z})",
+            cerca.z > puerta.z - 0.2f
+        )
+        // El arranque se mide con el PROMEDIO de las losas del primer tramo,
+        // no con una sola: el camino tiene dos losas por escalon mas alguna
+        // suelta al costado, asi que "la de mas atras" puede ser una del borde
+        // y no dice donde esta el eje.
+        val primeras = losas.filter { it.z > lejos.z - 0.8f }
+        val eje = primeras.map { it.x }.average().toFloat()
+        assertTrue(
+            "el camino no arranca en la boca (eje=${"%.2f".format(eje)}, boca=$bocaX)",
+            kotlin.math.abs(eje - bocaX) < 1.0f
         )
     }
 }
