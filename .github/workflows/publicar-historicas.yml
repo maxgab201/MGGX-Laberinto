@@ -67,6 +67,8 @@ jobs:
             tag: v1.9.3
           - version: 1.9.4
             tag: v1.9.4
+          - version: 1.9.5
+            tag: v1.9.5
     steps:
       # Cada version vive en su propia rama, con su propio RELEASE.md y su
       # propio apks/*.apk: por eso el checkout apunta a esa rama y no a la

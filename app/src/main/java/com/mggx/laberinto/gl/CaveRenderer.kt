@@ -248,8 +248,6 @@ class CaveRenderer(
     // ------------------------------------------------------------ props
     private var shapeGem: InstancedShape? = null
     private var shapeCone: InstancedShape? = null
-    private var shapeBox: InstancedShape? = null
-    private var shapeCylinder: InstancedShape? = null
     private var shapeArrow: InstancedShape? = null
     /** Vigas y travesanos de madera. */
     /**
@@ -1137,8 +1135,6 @@ class CaveRenderer(
         // relacion de "gorro de fiesta" (2.4:1). Ahora una punta de verdad.
         shapeCone = InstancedShape(DetailMeshes.stalagmite(), 340)
         shapeStalactite = InstancedShape(DetailMeshes.stalagmite(true), 340)
-        shapeBox = InstancedShape(DetailMeshes.roundedBox(), 700)
-        shapeCylinder = InstancedShape(PropMeshes.cylinder(7, 1f, 0.1f), 900)
         shapeArrow = InstancedShape(PropMeshes.arrow(), 4)
         shapeSlab = InstancedShape(DetailMeshes.roundedBox(1f, 0.13f, 0.13f, 0.018f), 400)
         shapeWing = InstancedShape(ArmadoDeBichos.geometria(ArmadoDeBichos.Malla.ALA), 200)
@@ -1345,8 +1341,6 @@ class CaveRenderer(
     ) {
         val gem = shapeGem ?: return
         val cone = shapeCone ?: return
-        val boxS = shapeBox ?: return
-        val cyl = shapeCylinder ?: return
         val arrow = shapeArrow ?: return
         val slab = shapeSlab ?: return
         val boulder = shapeBoulder ?: return
@@ -1391,7 +1385,7 @@ class CaveRenderer(
             return dx * dx + dz * dz < cull2
         }
 
-        gem.begin(); cone.begin(); boxS.begin(); cyl.begin(); arrow.begin()
+        gem.begin(); cone.begin(); arrow.begin()
         slab.begin(); ala.begin(); boulder.begin(); post.begin()
         stalactite.begin()
         murcielago.begin(); rastrero.begin(); pata.begin()
@@ -1830,9 +1824,9 @@ class CaveRenderer(
         losa.draw(); bocaPozo.draw(); brocal.draw()
         costra.draw(); bocaFisura.draw(); fuste.draw()
         GLES30.glUniform1i(material, 1)
-        boxS.draw(); slab.draw(); post.draw(); cofre.draw(); via.draw()
+        slab.draw(); post.draw(); cofre.draw(); via.draw()
         GLES30.glUniform1i(material, 2)
-        cyl.draw(); arrow.draw(); antorcha.draw(); pincho.draw(); estacion.draw(); casco.draw()
+        arrow.draw(); antorcha.draw(); pincho.draw(); estacion.draw(); casco.draw()
         topo.draw(); pala.draw(); arana.draw()
         GLES30.glUniform1i(material, 3)
         gem.draw(); cristal.draw(); obelisco.draw()
