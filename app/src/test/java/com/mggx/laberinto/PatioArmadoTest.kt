@@ -66,7 +66,7 @@ class PatioArmadoTest {
         for (p in ArmadoDelPatio.armar(LADO, LADO * 0.5f, 7L)) {
             if (p.malla == ArmadoDelPatio.Malla.ROPA ||
                 p.malla == ArmadoDelPatio.Malla.COPA ||
-                p.malla == ArmadoDelPatio.Malla.ALERO ||
+                p.malla == ArmadoDelPatio.Malla.CHIMENEA ||
                 p.malla == ArmadoDelPatio.Malla.VENTANA ||
                 p.malla == ArmadoDelPatio.Malla.CERCO_TRAVESANO
             ) continue      // estos cuelgan o van montados, a proposito

@@ -2015,10 +2015,11 @@ class CaveRenderer(
         when (m) {
             ArmadoDelPatio.Malla.PASTO -> set(out, 0.16f, 0.38f, 0.11f)
             ArmadoDelPatio.Malla.LOSA -> set(out, 0.52f, 0.50f, 0.46f)
-            ArmadoDelPatio.Malla.PARED_CASA -> set(out, 0.74f, 0.69f, 0.58f)   // revoque claro
+            ArmadoDelPatio.Malla.CASA -> set(out, 0.76f, 0.71f, 0.60f)         // revoque claro
+            ArmadoDelPatio.Malla.TEJAS -> set(out, 0.47f, 0.19f, 0.12f)        // terracota
+            ArmadoDelPatio.Malla.CHIMENEA -> set(out, 0.44f, 0.27f, 0.20f)     // ladrillo
             ArmadoDelPatio.Malla.PUERTA -> set(out, 0.36f, 0.17f, 0.10f)       // madera pintada
             ArmadoDelPatio.Malla.VENTANA -> set(out, 0.70f, 0.78f, 0.82f)      // vidrio y marco
-            ArmadoDelPatio.Malla.ALERO -> set(out, 0.44f, 0.20f, 0.14f)        // teja
             ArmadoDelPatio.Malla.CERCO_TABLA, ArmadoDelPatio.Malla.CERCO_TRAVESANO ->
                 set(out, 0.46f, 0.34f, 0.21f)
             ArmadoDelPatio.Malla.BOCA_MINA -> set(out, 0.30f, 0.22f, 0.14f)

@@ -81,19 +81,137 @@ object PatioMeshes {
 
     // -------------------------------------------------------------- la casa
 
+    // --------------------------------------------------------------- la casa
+
     /**
-     * Un pano de pared de la casa: revoque con zocalo de ladrillo abajo.
-     *
-     * El zocalo existe por una razon de lectura: una pared lisa que sale del
-     * pasto parece un telon. Con una faja distinta abajo se apoya en el suelo.
+     * Cuanto sobresale el alero, en unidades del modulo. Lo usa el armado para
+     * saber donde termina el techo.
      */
-    fun paredDeCasa(): Geometry {
-        val revoque = escalar(DetailMeshes.roundedBox(1f, 1f, 1f, bevel = 0.02f), 1f, 1f, 0.18f)
-        val zocalo = trasladar(
-            escalar(DetailMeshes.roundedBox(1f, 1f, 1f, bevel = 0.03f), 1.03f, 0.16f, 0.22f),
-            0f, -0.42f, 0f
+    const val VUELO_ALERO = 0.470f
+
+    /** A que altura queda el alero, en unidades del modulo. */
+    const val ALTURA_ALERO = 0.560f
+
+    /** Media profundidad del cuerpo de la casa, en unidades del modulo. */
+    const val FONDO_CASA = 0.330f
+
+    /**
+     * Un modulo de casa: un metro de casa, con cuerpo, alero y techo a dos
+     * aguas con sus tejas.
+     *
+     * ## Por que en modulos
+     *
+     * Antes la casa era un PANEL plano repetido: una losa de revoque con un
+     * zocalo. Desde la boca del tunel —que es de donde se la mira— se leia una
+     * pared de hormigon de quince metros, no una casa. Le faltaba lo unico que
+     * hace que una casa sea una casa vista de lejos: el TECHO.
+     *
+     * No se puede modelar la casa entera de una pieza porque el pipeline de
+     * instancias solo admite escala UNIFORME (ver `InstancedShape.add`): una
+     * casa de 3,2 m de alto mediria 3,2 m de ancho, y el patio tiene quince.
+     * Entonces se modela un metro de casa —un corte transversal extruido— y se
+     * encadenan. Como la extrusion trae sus dos tapas, el primer y el ultimo
+     * modulo cierran solos con su propio hastial; no hace falta una pieza
+     * aparte para las puntas.
+     *
+     * Normalizado: se apoya en y=0, la cumbrera llega a y=1 y mide 1 de largo,
+     * asi que el `scale` es la altura en metros Y el paso entre modulos.
+     */
+    fun moduloDeCasa(): Geometry {
+        // El corte va en XY y se extruye a lo largo de Z; despues se gira 90
+        // en Y para que el largo corra por X y el corte quede en ZY.
+        val corte = arrayOf(
+            floatArrayOf(-0.355f, 0.000f),
+            floatArrayOf(-0.355f, 0.062f),
+            floatArrayOf(-FONDO_CASA, 0.080f),      // zocalo
+            floatArrayOf(-FONDO_CASA, ALTURA_ALERO),
+            floatArrayOf(-VUELO_ALERO, ALTURA_ALERO),   // el alero vuela
+            floatArrayOf(-0.452f, 0.615f),
+            floatArrayOf(0.000f, 1.000f),            // cumbrera
+            floatArrayOf(0.452f, 0.615f),
+            floatArrayOf(VUELO_ALERO, ALTURA_ALERO),
+            floatArrayOf(FONDO_CASA, ALTURA_ALERO),
+            floatArrayOf(FONDO_CASA, 0.080f),
+            floatArrayOf(0.355f, 0.062f),
+            floatArrayOf(0.355f, 0.000f)
         )
-        return combinar(trasladar(revoque, 0f, 0.5f, 0f), trasladar(zocalo, 0f, 0.5f, 0f))
+        return rotarY(extruir(corte, 1f), 90f)
+    }
+
+    /**
+     * Las tejas de un modulo: dos hileras de medias canas, una por agua.
+     *
+     * Van en una malla APARTE del cuerpo por una sola razon: llevan otro
+     * color. El revoque es claro y la teja es terracota, y si fueran una sola
+     * pieza habria que elegir uno de los dos.
+     *
+     * Pero se dibujan en el MISMO sitio y con la MISMA escala que el modulo, y
+     * estan medidas en el mismo marco normalizado, asi que se apoyan sobre el
+     * plano del techo por construccion y no por haberle acertado. Esa es la
+     * diferencia con el pico-mastil de la 1.9.3: ahi la pieza se ponia a un
+     * corrimiento fijo que alguien habia estimado.
+     *
+     * El paso de 0,10 divide justo el metro del modulo, asi que la hilera
+     * sigue de un modulo al siguiente sin juntarse ni abrirse.
+     */
+    fun tejasDelModulo(): Geometry {
+        // Pendiente del agua: del alero (z, y) a la cumbrera (0, 1).
+        val zAlero = 0.452f
+        val yAlero = 0.615f
+        val dz = zAlero
+        val dy = 1.000f - yAlero
+        val largo = kotlin.math.sqrt(dz * dz + dy * dy) + 0.045f
+        // Cuanto hay que girar en X para que el cilindro (que nace mirando a
+        // +Y) apunte hacia arriba de la pendiente.
+        val grados = -Math.toDegrees(kotlin.math.atan2(dz.toDouble(), dy.toDouble())).toFloat()
+        val radio = 0.052f
+        // La normal del agua, para apoyar la teja encima del plano y no dentro.
+        val ln = kotlin.math.sqrt(dz * dz + dy * dy)
+        val nz = dy / ln
+        val ny = dz / ln
+
+        val piezas = ArrayList<Geometry>()
+        for (lado in intArrayOf(1, -1)) {
+            for (k in 0 until 10) {
+                val x = -0.45f + k * 0.10f
+                val teja = rotarX(PropMeshes.cylinder(5, largo, radio), grados * lado)
+                piezas.add(
+                    trasladar(
+                        if (lado == 1) teja else rotarY(teja, 180f),
+                        x,
+                        yAlero + ny * radio * 0.55f - 0.012f,
+                        lado * (zAlero + nz * radio * 0.55f)
+                    )
+                )
+            }
+        }
+        return combinar(piezas[0], *piezas.drop(1).toTypedArray())
+    }
+
+    /**
+     * La chimenea: el detalle que termina de decir "aca vive alguien".
+     *
+     * Es la unica cosa de la casa que rompe la linea del techo, y por eso vale
+     * mas que cualquier otro adorno: una silueta con chimenea se lee como casa
+     * desde el otro lado del patio, sin que haga falta distinguir la puerta.
+     *
+     * Normalizada a 1 m de alto, apoyada en y=0.
+     */
+    fun chimeneaDeCasa(): Geometry {
+        val cano = escalar(DetailMeshes.roundedBox(1f, 1f, 1f, bevel = 0.02f), 0.30f, 0.86f, 0.30f)
+        val remate = escalar(DetailMeshes.roundedBox(1f, 1f, 1f, bevel = 0.02f), 0.40f, 0.09f, 0.40f)
+        // Cuatro ladrillos salidos, para que no sea un tubo liso.
+        val ladrillos = ArrayList<Geometry>()
+        for (k in 0 until 4) {
+            val y = 0.14f + k * 0.19f
+            val b = escalar(DetailMeshes.roundedBox(1f, 1f, 1f, bevel = 0.01f), 0.33f, 0.045f, 0.33f)
+            ladrillos.add(trasladar(b, 0f, y, 0f))
+        }
+        return combinar(
+            trasladar(cano, 0f, 0.43f, 0f),
+            trasladar(remate, 0f, 0.915f, 0f),
+            *ladrillos.toTypedArray()
+        )
     }
 
     /**
@@ -177,39 +295,6 @@ object PatioMeshes {
             piezas.add(trasladar(rotarY(postigo, lado * 72f), lado * 0.47f, 0f, 0.09f))
         }
         return trasladar(combinar(*piezas.toTypedArray()), 0f, 0.5f, 0f)
-    }
-
-    /**
-     * El alero del techo: tejas en pendiente que sobresalen de la pared.
-     *
-     * Es lo que remata la casa arriba. Sin alero, la pared se corta contra el
-     * cielo y vuelve a parecer un telon.
-     */
-    fun aleroDeTejas(): Geometry {
-        val tejas = ArrayList<Geometry>()
-        for (k in 0 until 9) {
-            val x = (k - 4) * 0.112f
-            // Cada teja es media cana: un lathe corto acostado.
-            val teja = rotarZ(
-                rotarX(
-                    lathe(
-                        arrayOf(
-                            floatArrayOf(0.00f, -0.50f),
-                            floatArrayOf(0.060f, -0.46f),
-                            floatArrayOf(0.060f, 0.46f),
-                            floatArrayOf(0.00f, 0.50f)
-                        ),
-                        segmentos = 7
-                    ),
-                    90f
-                ),
-                0f
-            )
-            tejas.add(trasladar(teja, x, 0f, 0f))
-        }
-        val tabla = escalar(DetailMeshes.roundedBox(1f, 1f, 1f, bevel = 0.04f), 1.05f, 0.05f, 0.95f)
-        // Todo inclinado como un techo a un agua.
-        return rotarX(combinar(trasladar(tabla, 0f, -0.07f, 0f), *tejas.toTypedArray()), -24f)
     }
 
     // -------------------------------------------------------------- el cerco

@@ -2,6 +2,7 @@ package com.mggx.laberinto.gl
 
 import com.mggx.laberinto.maze.ElAscenso
 import kotlin.math.PI
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /**
@@ -36,7 +37,7 @@ object ArmadoDelPatio {
 
     /** Cada cosa que se planta en el patio. */
     enum class Malla {
-        PASTO, LOSA, PARED_CASA, PUERTA, VENTANA, ALERO,
+        PASTO, LOSA, CASA, TEJAS, CHIMENEA, PUERTA, VENTANA,
         CERCO_TABLA, CERCO_TRAVESANO, BOCA_MINA,
         TRONCO, COPA, BANCO, MESA, SILLA, MACETA, ROPA, BALDE
     }
@@ -57,10 +58,11 @@ object ArmadoDelPatio {
     fun geometria(m: Malla): PropMeshes.Geometry = when (m) {
         Malla.PASTO -> PatioMeshes.mataDePasto()
         Malla.LOSA -> PatioMeshes.losaDePiedra()
-        Malla.PARED_CASA -> PatioMeshes.paredDeCasa()
+        Malla.CASA -> PatioMeshes.moduloDeCasa()
+        Malla.TEJAS -> PatioMeshes.tejasDelModulo()
+        Malla.CHIMENEA -> PatioMeshes.chimeneaDeCasa()
         Malla.PUERTA -> PatioMeshes.puertaDeCasa()
         Malla.VENTANA -> PatioMeshes.ventanaDeCasa()
-        Malla.ALERO -> PatioMeshes.aleroDeTejas()
         Malla.CERCO_TABLA -> PatioMeshes.tablaDeCerco()
         Malla.CERCO_TRAVESANO -> PatioMeshes.travesanoDeCerco()
         Malla.BOCA_MINA -> PatioMeshes.bocaDeMina()
@@ -105,7 +107,7 @@ object ArmadoDelPatio {
                 // boca de la galeria: ahi el pasto queda a un palmo de la
                 // camara y tapa el primer plano con una pared de hojas.
                 val enLaBoca = pz > lado - 1.3f && kotlin.math.abs(px - bocaX) < 1.4f
-                if (!sobreElCamino(px, pz, bocaX, lado) && pz > 0.9f && !enLaBoca) {
+                if (!sobreElCamino(px, pz, bocaX, lado) && pz > 1.75f && !enLaBoca) {
                     out.add(
                         Pieza(
                             Malla.PASTO, px, 0f, pz,
@@ -143,26 +145,53 @@ object ArmadoDelPatio {
 
         // ------------------------------------------------------------- casa
         //
-        // Ocupa el lado de arriba entero (z = 0), mirando hacia el patio (+Z).
-        val altoCasa = 3.1f
-        // Un pano mide lo que dice su escala: repartirlos cada 1 m dibujaba
-        // tres paredes encima de la misma pared.
-        var px = -0.4f
-        while (px < lado + 0.4f) {
-            out.add(Pieza(Malla.PARED_CASA, px, 0f, 0.18f, altoCasa, 0f))
-            px += altoCasa * 0.94f
+        // Ocupa el lado de arriba entero, mirando hacia el patio (+Z), con el
+        // fondo metido en el cerro del que acabas de salir.
+        //
+        // Se arma encadenando modulos de un metro de casa (ver
+        // [PatioMeshes.moduloDeCasa]): el pipeline de instancias solo admite
+        // escala UNIFORME, asi que una casa de una sola pieza mediria tan
+        // ancho como alto. El paso entre modulos es exactamente su escala,
+        // porque el modulo mide 1 de largo — asi el techo sale corrido y sin
+        // junta.
+        // El alto sale de que los modulos entren JUSTO en el ancho del patio.
+        //
+        // Como el modulo mide 1 de largo y 1 de alto, su escala es las dos
+        // cosas a la vez: elegir el alto es elegir el paso. Si se elige un
+        // numero redondo, la hilera termina en cualquier lado y hay que
+        // pasarse de largo metiendo modulos adentro de la roca para que no
+        // quede un hueco en la esquina. Sacandolo del ancho del patio, la casa
+        // arranca en una punta y termina en la otra, exacto.
+        val modulos = (lado / 3.9f).roundToInt().coerceAtLeast(3)
+        val ALTO_CASA = lado / modulos
+        val zCasa = ALTO_CASA * 0.008f
+        /** Donde queda la cara de adelante de la pared. */
+        val frente = zCasa + PatioMeshes.FONDO_CASA * ALTO_CASA
+        val alero = PatioMeshes.ALTURA_ALERO * ALTO_CASA
+
+        var px = ALTO_CASA * 0.5f
+        for (k in 0 until modulos) {
+            out.add(Pieza(Malla.CASA, px, 0f, zCasa, ALTO_CASA, 0f))
+            // Mismo sitio y misma escala que el modulo: las tejas van aparte
+            // solo porque llevan otro color, no porque se ubiquen aparte.
+            out.add(Pieza(Malla.TEJAS, px, 0f, zCasa, ALTO_CASA, 0f))
+            px += ALTO_CASA
         }
-        // Alero corrido arriba de todo.
-        px = 0.5f
-        while (px < lado + 0.5f) {
-            out.add(Pieza(Malla.ALERO, px, altoCasa - 0.05f, 0.05f, 1.15f, 0f))
-            px += 1.05f
-        }
+        // La chimenea, a caballo de la cumbrera y corrida del medio: centrada
+        // se leeria como un adorno simetrico, y lo que tiene que parecer es
+        // que la casa la fue creciendo alguien.
+        out.add(Pieza(Malla.CHIMENEA, medio - ALTO_CASA * 0.62f, ALTO_CASA - 0.30f, zCasa, 1.25f, 0f))
+
         // La puerta va enfrentada al camino.
-        out.add(Pieza(Malla.PUERTA, medio, 0f, 0.30f, 2.15f, 0f))
-        // Y una ventana a cada lado, si hay lugar.
-        out.add(Pieza(Malla.VENTANA, medio - 1.85f, 1.25f, 0.28f, 1.15f, 0f))
-        out.add(Pieza(Malla.VENTANA, medio + 1.85f, 1.25f, 0.28f, 1.15f, 0f))
+        out.add(Pieza(Malla.PUERTA, medio, 0f, frente + 0.02f, 2.15f, 0f))
+        // Y una ventana a cada lado. El alto sale de donde esta el alero: una
+        // ventana que lo cruza se ve metida en el techo.
+        val altoVentana = alero * 0.61f
+        // Colgada del alero y no apoyada en un numero fijo: una ventana que
+        // cruza el alero se ve metida adentro del techo.
+        val yVentana = alero - altoVentana - 0.14f
+        out.add(Pieza(Malla.VENTANA, medio - 2.35f, yVentana, frente + 0.02f, altoVentana, 0f))
+        out.add(Pieza(Malla.VENTANA, medio + 2.35f, yVentana, frente + 0.02f, altoVentana, 0f))
 
         // ------------------------------------------------------------ cerco
         //
@@ -229,17 +258,17 @@ object ArmadoDelPatio {
         out.add(Pieza(Malla.MESA, arbolX - 0.55f, 0f, arbolZ + 1.45f, 0.78f, 0f))
         out.add(Pieza(Malla.SILLA, arbolX - 1.25f, 0f, arbolZ + 1.45f, 0.92f, MEDIA * 0.5f))
         out.add(Pieza(Malla.SILLA, arbolX + 0.10f, 0f, arbolZ + 1.60f, 0.92f, -MEDIA * 0.55f))
-        out.add(Pieza(Malla.BANCO, 1.45f, 0f, 1.25f, 1.35f, MEDIA))
+        out.add(Pieza(Malla.BANCO, 1.45f, 0f, frente + 0.85f, 1.35f, MEDIA))
 
         // Macetas contra la pared de la casa, a los lados de la puerta.
         for (d in floatArrayOf(-0.95f, 0.95f)) {
-            out.add(Pieza(Malla.MACETA, medio + d, 0f, 0.62f, 0.62f, rnd.nextFloat() * 3f))
+            out.add(Pieza(Malla.MACETA, medio + d, 0f, frente + 0.34f, 0.62f, rnd.nextFloat() * 3f))
         }
-        out.add(Pieza(Malla.MACETA, 0.75f, 0f, 0.85f, 0.50f, rnd.nextFloat() * 3f))
+        out.add(Pieza(Malla.MACETA, 0.75f, 0f, frente + 0.55f, 0.50f, rnd.nextFloat() * 3f))
 
         // El balde de la mina, apoyado contra la pared al lado de la puerta.
         // Es el guino: lo trajiste de abajo.
-        out.add(Pieza(Malla.BALDE, medio - 1.35f, 0f, 0.55f, 0.46f, 0.7f))
+        out.add(Pieza(Malla.BALDE, medio - 1.35f, 0f, frente + 0.30f, 0.46f, 0.7f))
 
         // ------------------------------------------------------- la ropa
         //
